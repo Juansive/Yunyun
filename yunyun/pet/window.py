@@ -3,7 +3,7 @@
 窗口只负责"显示"和"鼠标交互"：
 - 显示哪张图，由 set_state()（切换状态）和 tap()（敲一下键盘）决定；
 - 被单击时发出 clicked 信号，至于单击要干什么，由外部（main.py）决定；
-- 右键菜单：设置（气泡语言）/ 暂停·开始 / 退出（要快速双击才退出）。
+- 右键菜单：设置（语言）/ 暂停·开始 / 退出（要快速双击才退出），文字跟随所选语言。
 """
 from PySide6.QtCore import QPointF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QActionGroup, QPainter
@@ -227,12 +227,14 @@ class PetWindow(QWidget):
         self._build_menu().exec(event.globalPos())
 
     def _build_menu(self):
-        """每次右键都重新创建菜单，这样"暂停/开始"、语言勾选总是最新的。"""
+        """每次右键都重新创建菜单，这样菜单的语言、"暂停/开始"、语言勾选总是最新的。"""
+        tr = i18n.tr
         menu = _PetMenu(self)
 
-        # 设置 → 气泡语言 → 中文 / English / 日本語（单选）
-        settings_menu = menu.addMenu("设置")
-        language_menu = settings_menu.addMenu("气泡语言")
+        # 设置 → 语言 → 中文 / English / 日本語（单选）
+        # 语言选项始终用各自的母语显示，切到看不懂的语言时也能找回来
+        settings_menu = menu.addMenu(tr("menu_settings"))
+        language_menu = settings_menu.addMenu(tr("menu_language"))
         group = QActionGroup(menu)  # 放进同一个组的可勾选动作，同时只能勾一个
         for code, name in i18n.LANGUAGES.items():
             action = language_menu.addAction(name)
@@ -243,10 +245,10 @@ class PetWindow(QWidget):
             # 如果直接写 lambda: self._change_language(code)，三个菜单项都会用到最后一个 code。
             action.triggered.connect(lambda checked=False, c=code: self._change_language(c))
 
-        menu.addAction("开始" if self._paused else "暂停", self._toggle_pause)
+        menu.addAction(tr("menu_resume") if self._paused else tr("menu_pause"), self._toggle_pause)
         menu.addSeparator()
 
-        exit_action = menu.addAction("退出")
+        exit_action = menu.addAction(tr("menu_quit"))
         exit_action.triggered.connect(lambda: self._on_exit_clicked(menu))
         menu.keep_open_action = exit_action
         return menu
