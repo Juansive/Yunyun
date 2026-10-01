@@ -5,12 +5,14 @@
 """
 import sys
 
-from PySide6.QtWidgets import QApplication
+from PySide6.QtGui import QIcon
+from PySide6.QtWidgets import QApplication, QSystemTrayIcon
 
 from yunyun import i18n
 from yunyun.activity.keyboard import KeyboardMonitor
 from yunyun.pet.sprites import load_sprites
 from yunyun.pet.state import StateMachine
+from yunyun.pet.tray import PetTray
 from yunyun.pet.window import PetWindow
 
 
@@ -18,7 +20,7 @@ def main():
     app = QApplication(sys.argv)  # 每个 Qt 程序有且只有一个 QApplication
     app.setOrganizationName("Yunyun")  # QSettings 用这两个名字决定设置存在哪里
     app.setApplicationName("Yunyun")
-    i18n.load_language()               # 恢复上次选择的气泡语言
+    i18n.load_language()               # 恢复上次选择的语言
 
     sprites = load_sprites()      # 必须在 QApplication 之后（QPixmap 需要它）
     machine = StateMachine()
@@ -40,6 +42,12 @@ def main():
     app.aboutToQuit.connect(keyboard.stop)  # 退出前停止键盘监听
     pet.show()
     keyboard.start()
+
+    # 托盘图标（极少数系统环境没有托盘，那就不显示）
+    if QSystemTrayIcon.isSystemTrayAvailable():
+        tray = PetTray(pet, QIcon(sprites.tray))
+        tray.show()
+        app.aboutToQuit.connect(tray.hide)  # 退出时立刻移除图标，避免托盘里残留"幽灵图标"
     sys.exit(app.exec())          # 进入事件循环，直到程序退出
 
 

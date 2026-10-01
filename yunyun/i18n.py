@@ -1,4 +1,4 @@
-"""界面文字（气泡 + 右键菜单）的多语言（中 / 英 / 日）。
+"""界面文字（气泡 + 右键菜单 + 托盘）的多语言（中 / 英 / 日）。
 
 用法：
     from yunyun import i18n
@@ -15,9 +15,12 @@ _SETTINGS_KEY = "bubble/language"
 
 # 每条文字一个 key，下面是各语言的版本。以后加新文字就在这里加一项。
 TEXTS = {
+    "app_name": {"zh": "芸芸", "en": "Yunyun", "ja": "芸芸（ユンユン）"},
+
     # ---- 右键菜单 ----
     "menu_settings": {"zh": "设置", "en": "Settings", "ja": "設定"},
     "menu_language": {"zh": "语言", "en": "Language", "ja": "言語"},
+    "menu_always_on_top": {"zh": "始终在上", "en": "Always on Top", "ja": "常に最前面"},
     "menu_pause":    {"zh": "暂停", "en": "Pause", "ja": "一時停止"},
     "menu_resume":   {"zh": "开始", "en": "Resume", "ja": "再開"},
     "menu_quit":     {"zh": "退出", "en": "Quit", "ja": "終了"},
