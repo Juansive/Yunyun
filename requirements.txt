@@ -1,1 +1,2 @@
 PySide6>=6.6
+pynput>=1.7

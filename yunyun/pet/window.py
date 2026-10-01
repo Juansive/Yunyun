@@ -1,20 +1,26 @@
 """芸芸的桌宠窗口：透明背景、无边框、始终置顶、不占任务栏。
 
-M1 阶段还没有正式素材，先画一个纯色圆形当占位。
+窗口只负责"显示"和"鼠标交互"：
+- 显示哪张图，由 set_state()（切换状态）和 tap()（敲一下键盘）决定；
+- 被单击时发出 clicked 信号，至于单击要干什么，由外部（main.py）决定。
 """
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QPainter
+from PySide6.QtCore import QPointF, QSize, Qt, QTimer, Signal
+from PySide6.QtGui import QPainter
 from PySide6.QtWidgets import QApplication, QWidget
 
 from yunyun.pet.bubble import Bubble
+from yunyun.pet.state import PetState
 
 
 class PetWindow(QWidget):
-    SIZE = 160          # 窗口边长（像素）
-    MARGIN = 10         # 圆形距离窗口边缘的留白
-    COLOR = "#7EC8E3"   # 占位圆形的颜色
+    SIZE = 160      # 窗口边长（逻辑像素）
+    MARGIN = 10     # 气泡对齐用：芸芸身体距离窗口边缘大约多远
+    TAP_MS = 90     # 工作状态：敲下的画面停留多久后抬手（毫秒）
+    LOOP_MS = 400   # 待机/激动有多张图时，每张停留多久（毫秒）
 
-    def __init__(self):
+    clicked = Signal()  # 芸芸被单击（不是拖动）
+
+    def __init__(self, sprites):
         super().__init__()
 
         # 窗口标志（flags）可以用 | 组合在一起
@@ -35,12 +41,74 @@ class PetWindow(QWidget):
 
         self._bubble = Bubble()
 
+        # ---- 动画相关 ----
+        self._sprites = sprites
+        self._state = None
+        self._current = None      # 当前显示的原图（QPixmap）
+        self._scaled_cache = {}   # 缩放后的图缓存，避免每次重绘都重新缩放
+        self._loop_frames = []    # 待机/激动：循环播放的帧
+        self._loop_index = 0
+        self._down_index = 0      # 工作：下一次敲击用第几张"敲下"图
+
+        self._loop_timer = QTimer(self)
+        self._loop_timer.setInterval(self.LOOP_MS)
+        self._loop_timer.timeout.connect(self._next_loop_frame)
+
+        self._tap_timer = QTimer(self)
+        self._tap_timer.setSingleShot(True)
+        self._tap_timer.setInterval(self.TAP_MS)
+        self._tap_timer.timeout.connect(self._hands_up)
+
+        self.set_state(PetState.IDLE)
+
+    # ---------- 状态与动画 ----------
+
+    def set_state(self, state):
+        """切换到某个状态，显示对应的画面。"""
+        self._state = state
+        self._loop_timer.stop()
+        self._tap_timer.stop()
+
+        if state is PetState.WORKING:
+            self._show(self._sprites.working_up)
+            return
+
+        frames = self._sprites.idle if state is PetState.IDLE else self._sprites.excited
+        self._loop_frames = frames
+        self._loop_index = 0
+        self._show(frames[0])
+        if len(frames) > 1:       # 只有一张图就不用循环
+            self._loop_timer.start()
+
+    def tap(self):
+        """敲一下键盘：显示"敲下"的画面，TAP_MS 毫秒后自动抬手。"""
+        if self._state is not PetState.WORKING:
+            return
+        downs = self._sprites.working_down
+        self._show(downs[self._down_index % len(downs)])  # 多张"敲下"图轮流用（比如左右手交替）
+        self._down_index += 1
+        self._tap_timer.start()  # 打字很快时，每次按键都重新计时，手会一直"敲"着
+
+    def _hands_up(self):
+        if self._state is PetState.WORKING:
+            self._show(self._sprites.working_up)
+
+    def _next_loop_frame(self):
+        self._loop_index = (self._loop_index + 1) % len(self._loop_frames)
+        self._show(self._loop_frames[self._loop_index])
+
+    def _show(self, pixmap):
+        self._current = pixmap
+        self.update()
+
+    # ---------- 气泡 ----------
+
     def say(self, text):
-        """让芸芸在头顶弹出气泡说一句话。"""
+        """让芸芸弹出气泡说一句话。"""
         self._bubble.show_text(text, self._body_rect())
 
     def _body_rect(self):
-        """芸芸身体（圆形）在屏幕上的区域，不含透明留白。"""
+        """芸芸身体在屏幕上的大致区域，不含透明留白。"""
         m = self.MARGIN
         return self.geometry().adjusted(m, m, -m, -m)
 
@@ -54,14 +122,36 @@ class PetWindow(QWidget):
         area = self.screen().availableGeometry()  # 可用区域，不含任务栏
         self.move(area.right() - self.SIZE - 40, area.bottom() - self.SIZE - 40)
 
+    # ---------- 绘制 ----------
+
     def paintEvent(self, event):
         """Qt 每次需要重绘窗口时都会调用这个方法。"""
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)  # 抗锯齿，边缘更平滑
-        painter.setPen(Qt.PenStyle.NoPen)                         # 不画描边
-        painter.setBrush(QColor(self.COLOR))                      # 填充颜色
-        d = self.SIZE - 2 * self.MARGIN
-        painter.drawEllipse(self.MARGIN, self.MARGIN, d, d)
+        if self._current is None:
+            return
+        pixmap = self._scaled(self._current)
+        size = pixmap.deviceIndependentSize()  # 换算回逻辑像素的大小
+        x = (self.width() - size.width()) / 2   # 居中
+        y = (self.height() - size.height()) / 2
+        QPainter(self).drawPixmap(QPointF(x, y), pixmap)
+
+    def _scaled(self, pixmap):
+        """把原图缩放到窗口大小。
+
+        高分屏（比如 150% 缩放）上，160 个逻辑像素实际是 240 个物理像素，
+        所以按"物理像素"缩放，再告诉 Qt 这张图的像素密度（devicePixelRatio），图才清晰。
+        """
+        dpr = self.devicePixelRatioF()
+        key = (pixmap.cacheKey(), dpr)
+        if key not in self._scaled_cache:
+            target = QSize(round(self.width() * dpr), round(self.height() * dpr))
+            scaled = pixmap.scaled(
+                target,
+                Qt.AspectRatioMode.KeepAspectRatio,           # 保持长宽比
+                Qt.TransformationMode.SmoothTransformation,   # 平滑缩放，不出锯齿
+            )
+            scaled.setDevicePixelRatio(dpr)
+            self._scaled_cache[key] = scaled
+        return self._scaled_cache[key]
 
     # ---------- 鼠标交互 ----------
 
@@ -83,12 +173,12 @@ class PetWindow(QWidget):
 
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton and self._press_pos is not None:
-            # 松开时鼠标离按下位置很近 → 算单击；否则是一次拖动，不弹气泡。
+            # 松开时鼠标离按下位置很近 → 算单击；否则是一次拖动。
             # startDragDistance() 是系统的"拖动阈值"（Windows 上一般约 10 像素），
             # 用它可以容忍手抖。manhattanLength() = |dx| + |dy|，比算直线距离便宜。
             moved = (event.globalPosition().toPoint() - self._press_pos).manhattanLength()
             if moved < QApplication.startDragDistance():
-                self.say("你好，我是芸芸！这是一个测试气泡，过几秒我就会自己消失啦～")
+                self.clicked.emit()
 
             self._drag_offset = None
             self._press_pos = None
