@@ -1,4 +1,4 @@
-"""命令行读取最新的未读邮件（M2 验收用）。
+"""命令行读取最新的未读邮件（开发调试用；普通用户不需要它）。
 
 运行（在项目根目录）：
     .\\.venv\\Scripts\\python -m yunyun.mail        # 每个邮箱显示最新 5 封未读
@@ -20,6 +20,9 @@ def main():
         accounts = accounts_from_config(load_config())
     except (ConfigError, MailError) as e:
         print(e)
+        return 1
+    if not accounts:
+        print("还没有添加邮箱：请启动芸芸，在右键菜单 → 设置 → 邮箱账号 中添加。")
         return 1
 
     for account in accounts:

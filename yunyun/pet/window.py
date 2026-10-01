@@ -13,6 +13,7 @@ from PySide6.QtWidgets import QApplication, QWidget
 from yunyun import i18n
 from yunyun.pet import winapi
 from yunyun.pet.bubble import BubbleStack
+from yunyun.pet.mail_dialog import MailAccountsDialog
 from yunyun.pet.menu import KeepOpenMenu
 from yunyun.pet.state import PetState
 
@@ -30,6 +31,7 @@ class PetWindow(QWidget):
 
     clicked = Signal()            # 芸芸被单击（不是拖动）
     language_changed = Signal()   # 用户在菜单里切换了语言（托盘要更新提示文字）
+    mail_accounts_changed = Signal()  # 用户添加 / 删除了邮箱账号
 
     def __init__(self, sprites):
         super().__init__()
@@ -49,6 +51,7 @@ class PetWindow(QWidget):
         self.setCursor(Qt.CursorShape.OpenHandCursor)  # 鼠标悬停时显示"张开的手"，提示可以拖
 
         self._bubbles = BubbleStack(self)
+        self._mail_dialog = None  # 邮箱账号窗口（用到时才创建）
 
         # 退出要"快速双击"：第一下启动这个定时器，定时器还在跑时点第二下才真正退出。
         # 间隔用系统的双击间隔（Windows 默认 500 毫秒），和用户平时双击的习惯一致。
@@ -327,6 +330,10 @@ class PetWindow(QWidget):
         on_top.setChecked(self._always_on_top)
         on_top.triggered.connect(self.set_always_on_top)  # triggered 会带上勾选后的 True/False
 
+        # 设置 → 邮箱账号…（"…"表示点了会打开一个窗口，这是桌面软件的惯例）
+        settings_menu.addSeparator()
+        settings_menu.addAction(tr("menu_mail_accounts"), self.open_mail_accounts)
+
         menu.addAction(tr("menu_resume") if self._user_paused else tr("menu_pause"), self._toggle_pause)
         menu.addSeparator()
 
@@ -334,6 +341,20 @@ class PetWindow(QWidget):
         exit_action.triggered.connect(lambda: self.request_exit(menu))
         menu.keep_open_action = exit_action
         return menu
+
+    def open_mail_accounts(self):
+        """打开邮箱账号窗口；已经打开了就把它提到前面，不重复创建。"""
+        if self._mail_dialog is None:
+            # parent 设为芸芸：窗口和芸芸同一层（芸芸置顶时它也在最上面）
+            self._mail_dialog = MailAccountsDialog(self)
+            self._mail_dialog.accounts_changed.connect(self.mail_accounts_changed)
+            self._mail_dialog.finished.connect(self._on_mail_dialog_closed)
+        self._mail_dialog.show_centered()
+
+    def _on_mail_dialog_closed(self):
+        # 关闭后丢掉，下次重新创建：这样切换语言后再打开，窗口文字就是新语言
+        self._mail_dialog.deleteLater()
+        self._mail_dialog = None
 
     def _change_language(self, code):
         i18n.set_language(code)

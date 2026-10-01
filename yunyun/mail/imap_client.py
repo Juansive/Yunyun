@@ -22,7 +22,19 @@ MAX_FETCH_BYTES = 1_000_000  # 每封邮件最多下载 1 MB：正文在前面�
 
 
 class MailError(Exception):
-    """读取邮箱失败（异常信息是给用户看的说明）。"""
+    """读取邮箱失败。
+
+    - str(e)：中文说明（命令行工具直接显示）；
+    - e.kind：错误类型，界面根据它显示对应语言的说明：
+      "connect" 连不上服务器 / "login" 登录失败 / "inbox" 打不开收件箱 /
+      "no_password" 没保存授权码 / "other" 其他；
+    - e.detail：服务器返回的原始信息（可能为空），方便排查。
+    """
+
+    def __init__(self, message, kind="other", detail=""):
+        super().__init__(message)
+        self.kind = kind
+        self.detail = detail
 
 
 @dataclass
@@ -42,13 +54,11 @@ def accounts_from_config(config):
             raise MailError(f"不支持的邮箱类型：{provider!r}（可选：{'、'.join(PROVIDERS)}）")
         address = str(item.get("address", "")).strip()
         accounts.append(MailAccount(name=str(item.get("name") or address), provider=provider, address=address))
-    if not accounts:
-        raise MailError("配置文件里还没有邮箱账号（mail → accounts）")
-    return accounts
+    return accounts  # 还没配置任何账号时是空列表
 
 
 def check_login(account, password):
-    """只测试能不能登录、能不能打开收件箱（设置向导用）。"""
+    """只测试能不能登录、能不能打开收件箱（添加账号时用）。"""
     with _connect(account, password):
         pass
 
@@ -58,8 +68,8 @@ def fetch_unread(account, limit=5):
     password = credentials.get_password(account.address)
     if password is None:
         raise MailError(
-            f"还没有保存 {account.address} 的授权码，请先运行：\n"
-            ".\\.venv\\Scripts\\python -m tools.setup_mail"
+            f"还没有保存 {account.address} 的授权码，请在芸芸的右键菜单 → 设置 → 邮箱账号 中重新添加。",
+            kind="no_password",
         )
 
     with _connect(account, password) as imap:
@@ -87,7 +97,7 @@ class _connect:
         try:
             self._imap = imaplib.IMAP4_SSL(host, port, timeout=TIMEOUT)
         except OSError as e:  # 断网、DNS 失败、超时、SSL 错误都属于 OSError
-            raise MailError(f"连接 {host} 失败，请检查网络：{e}") from e
+            raise MailError(f"连接 {host} 失败，请检查网络：{e}", kind="connect", detail=str(e)) from e
 
         try:
             self._imap.login(self._account.address, self._password)
@@ -95,20 +105,25 @@ class _connect:
             self._close()
             raise MailError(
                 "登录失败：请检查邮箱地址和授权码是否正确，以及是否已开启 IMAP 服务。\n"
-                f"（服务器返回：{_text(e)}）"
+                f"（服务器返回：{_text(e)}）",
+                kind="login",
+                detail=_text(e),
             ) from e
+
+        if self._account.provider == "163":
+            _send_client_id(self._imap)
 
         status, _ = self._imap.select("INBOX", readonly=True)  # 只读打开，不会改动任何邮件状态
         if status != "OK":
             self._close()
-            raise MailError("无法打开收件箱")
+            raise MailError("无法打开收件箱", kind="inbox")
         return self._imap
 
     def __exit__(self, exc_type, exc, tb):
         self._close()
         if isinstance(exc, (imaplib.IMAP4.error, OSError)):
             # 把底层的网络 / 协议错误统一换成 MailError，调用方只需要处理一种异常
-            raise MailError(f"读取邮箱时出错：{_text(exc)}") from exc
+            raise MailError(f"读取邮箱时出错：{_text(exc)}", detail=_text(exc)) from exc
         return False  # 其他异常照常向外抛
 
     def _close(self):
@@ -128,6 +143,18 @@ def _fetch_one(imap, uid):
     if status != "OK" or raw is None:
         raise MailError(f"读取邮件（UID {uid}）失败")
     return parse_message(uid, raw)
+
+
+def _send_client_id(imap):
+    """163 邮箱要求客户端登录后先"自我介绍"（IMAP ID 命令），否则打开收件箱时会报 Unsafe Login。
+
+    imaplib 没有内置 ID 命令，所以先把它登记到 imaplib 认识的命令表里，再用底层方法发送。
+    """
+    imaplib.Commands.setdefault("ID", ("AUTH", "SELECTED"))
+    try:
+        imap._simple_command("ID", '("name" "yunyun" "version" "1.0")')
+    except imaplib.IMAP4.error:
+        pass  # 发送失败也继续，最多是后面打开收件箱时报错
 
 
 def _text(error):

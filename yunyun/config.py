@@ -15,7 +15,7 @@ def load_config(path=CONFIG_PATH):
     if not path.exists():
         raise ConfigError(
             f"找不到配置文件 {path}\n"
-            "请先运行：.\\.venv\\Scripts\\python -m tools.setup_mail"
+            "请先启动芸芸，在右键菜单 → 设置 → 邮箱账号 中添加邮箱。"
         )
     with open(path, encoding="utf-8") as f:
         try:

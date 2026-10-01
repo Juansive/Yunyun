@@ -5,11 +5,15 @@
 """
 import sys
 
+from PySide6.QtCore import QTimer
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QSystemTrayIcon
 
 from yunyun import i18n
 from yunyun.activity.keyboard import KeyboardMonitor
+from yunyun.config import ConfigError
+from yunyun.mail import accounts
+from yunyun.mail.imap_client import MailError
 from yunyun.pet.sprites import load_sprites
 from yunyun.pet.state import StateMachine
 from yunyun.pet.tray import PetTray
@@ -48,7 +52,21 @@ def main():
         tray = PetTray(pet, QIcon(sprites.tray))
         tray.show()
         app.aboutToQuit.connect(tray.hide)  # 退出时立刻移除图标，避免托盘里残留"幽灵图标"
+
+    # 首次使用：还没添加邮箱，就打个招呼并打开邮箱设置窗口
+    if not has_mail_account():
+        def first_run():
+            pet.say(i18n.tr("mail_first_run"))
+            pet.open_mail_accounts()
+        QTimer.singleShot(800, first_run)  # 稍等芸芸先出现在桌面上，再弹窗口
     sys.exit(app.exec())          # 进入事件循环，直到程序退出
+
+
+def has_mail_account():
+    try:
+        return bool(accounts.load_accounts())
+    except (ConfigError, MailError):
+        return False  # 配置文件坏了，也当作还没设置，让用户在窗口里重新添加
 
 
 if __name__ == "__main__":

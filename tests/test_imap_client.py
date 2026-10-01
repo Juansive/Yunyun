@@ -75,9 +75,9 @@ def test_wrong_password_gives_friendly_error(fake_server, monkeypatch):
         fetch_unread(ACCOUNT)
 
 
-def test_missing_password_tells_user_to_run_setup(fake_server, monkeypatch):
+def test_missing_password_tells_user_where_to_fix(fake_server, monkeypatch):
     monkeypatch.setattr(imap_client.credentials, "get_password", lambda address: None)
-    with pytest.raises(MailError, match="setup_mail"):
+    with pytest.raises(MailError, match="邮箱账号"):
         fetch_unread(ACCOUNT)
 
 
@@ -96,5 +96,17 @@ def test_accounts_from_config():
     assert accounts_from_config(config) == [ACCOUNT]
     with pytest.raises(MailError, match="不支持"):
         accounts_from_config({"mail": {"accounts": [{"provider": "hotmail", "address": "x"}]}})
-    with pytest.raises(MailError, match="还没有邮箱账号"):
-        accounts_from_config({})
+    assert accounts_from_config({}) == []
+
+
+def test_error_kinds(fake_server, monkeypatch):
+    monkeypatch.setattr(imap_client.credentials, "get_password", lambda address: "wrong")
+    with pytest.raises(MailError) as info:
+        fetch_unread(ACCOUNT)
+    assert info.value.kind == "login"
+    assert "AUTHENTICATIONFAILED" in info.value.detail
+
+    monkeypatch.setattr(imap_client.credentials, "get_password", lambda address: None)
+    with pytest.raises(MailError) as info:
+        fetch_unread(ACCOUNT)
+    assert info.value.kind == "no_password"
