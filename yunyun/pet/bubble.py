@@ -10,6 +10,10 @@
 
 每个气泡都是独立的顶层窗口（而不是芸芸窗口的一部分），
 这样它的大小可以随文字变化，不用把芸芸的窗口撑大。
+
+气泡是芸芸的"从属窗口"（创建时把芸芸窗口传作 parent，并带 Tool 标志）。
+Windows 会让从属窗口始终紧贴在主人正上方：芸芸被别的窗口挡住时气泡也一起被挡住，
+芸芸被提到前面、设为置顶时，气泡也跟着一起。所以气泡自己不设"始终置顶"。
 """
 from PySide6.QtCore import QObject, QPointF, QRect, QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QGuiApplication, QPainter, QPainterPath, QPen
@@ -26,11 +30,11 @@ class Bubble(QWidget):
 
     expired = Signal(object)  # 显示时间到了；参数是气泡自己，方便 BubbleStack 知道是哪个
 
-    def __init__(self, text):
-        super().__init__()
+    def __init__(self, text, owner):
+        # owner：芸芸的窗口。有 parent 又带 Tool 标志的窗口，在 Windows 上就是 parent 的从属窗口
+        super().__init__(owner)
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
-            | Qt.WindowType.WindowStaysOnTopHint
             | Qt.WindowType.Tool
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
@@ -193,8 +197,10 @@ class BubbleStack(QObject):
     MAX_BUBBLES = 3        # 最多同时显示几个，再多就把最旧的挤掉
     HYSTERESIS = 24        # 换方向的"迟滞"距离：要多出这么多空间才换回去，防止在临界处来回抖
 
-    def __init__(self, parent=None):
-        super().__init__(parent)
+    def __init__(self, owner):
+        """owner：芸芸的窗口，气泡都作为它的从属窗口创建。"""
+        super().__init__(owner)
+        self._owner = owner
         self._bubbles = []         # 当前显示的气泡，从旧到新
         self._anchor = QRect()     # 芸芸身体在屏幕上的区域
         self._placement = None     # 整组的方向："above" / "below" / "left" / "right"
@@ -212,7 +218,7 @@ class BubbleStack(QObject):
         if not self._bubbles:
             self._placement = None  # 全新的一组：重新挑方向
 
-        bubble = Bubble(text)
+        bubble = Bubble(text, self._owner)
         bubble.expired.connect(self._remove)
         self._bubbles.append(bubble)
         if len(self._bubbles) > self.MAX_BUBBLES:
