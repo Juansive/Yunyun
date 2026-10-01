@@ -2,14 +2,31 @@
 
 窗口只负责"显示"和"鼠标交互"：
 - 显示哪张图，由 set_state()（切换状态）和 tap()（敲一下键盘）决定；
-- 被单击时发出 clicked 信号，至于单击要干什么，由外部（main.py）决定。
+- 被单击时发出 clicked 信号，至于单击要干什么，由外部（main.py）决定；
+- 右键菜单：设置（气泡语言）/ 暂停·开始 / 退出（要快速双击才退出）。
 """
 from PySide6.QtCore import QPointF, QSize, Qt, QTimer, Signal
-from PySide6.QtGui import QPainter
-from PySide6.QtWidgets import QApplication, QWidget
+from PySide6.QtGui import QActionGroup, QPainter
+from PySide6.QtWidgets import QApplication, QMenu, QWidget
 
-from yunyun.pet.bubble import Bubble
+from yunyun import i18n
+from yunyun.pet.bubble import BubbleStack
 from yunyun.pet.state import PetState
+
+
+class _PetMenu(QMenu):
+    """右键菜单。点击 keep_open_action（"退出"）时菜单不关闭，方便快速点第二下。"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.keep_open_action = None
+
+    def mouseReleaseEvent(self, event):
+        action = self.actionAt(event.position().toPoint())
+        if action is not None and action is self.keep_open_action:
+            action.trigger()  # 只触发动作，不走 QMenu 默认的"触发后关闭菜单"流程
+            return
+        super().mouseReleaseEvent(event)
 
 
 class PetWindow(QWidget):
@@ -39,11 +56,19 @@ class PetWindow(QWidget):
         self._press_pos = None    # 左键按下时鼠标的屏幕坐标，用来区分"单击"和"拖动"
         self.setCursor(Qt.CursorShape.OpenHandCursor)  # 鼠标悬停时显示"张开的手"，提示可以拖
 
-        self._bubble = Bubble()
+        self._bubbles = BubbleStack(self)
+
+        # 退出要"快速双击"：第一下启动这个定时器，定时器还在跑时点第二下才真正退出。
+        # 间隔用系统的双击间隔（Windows 默认 500 毫秒），和用户平时双击的习惯一致。
+        self._exit_timer = QTimer(self)
+        self._exit_timer.setSingleShot(True)
+        self._exit_timer.setInterval(QApplication.doubleClickInterval())
+        self._exit_timer.timeout.connect(lambda: self.say(i18n.tr("exit_hint")))  # 只点了一下
 
         # ---- 动画相关 ----
         self._sprites = sprites
         self._state = None
+        self._paused = False      # 暂停时画面定格，但仍然记录最新的状态，恢复时用
         self._current = None      # 当前显示的原图（QPixmap）
         self._scaled_cache = {}   # 缩放后的图缓存，避免每次重绘都重新缩放
         self._loop_frames = []    # 待机/激动：循环播放的帧
@@ -66,6 +91,8 @@ class PetWindow(QWidget):
     def set_state(self, state):
         """切换到某个状态，显示对应的画面。"""
         self._state = state
+        if self._paused:
+            return  # 暂停中：只记下最新状态，画面不动
         self._loop_timer.stop()
         self._tap_timer.stop()
 
@@ -82,12 +109,25 @@ class PetWindow(QWidget):
 
     def tap(self):
         """敲一下键盘：显示"敲下"的画面，TAP_MS 毫秒后自动抬手。"""
-        if self._state is not PetState.WORKING:
+        if self._paused or self._state is not PetState.WORKING:
             return
         downs = self._sprites.working_down
         self._show(downs[self._down_index % len(downs)])  # 多张"敲下"图轮流用（比如左右手交替）
         self._down_index += 1
         self._tap_timer.start()  # 打字很快时，每次按键都重新计时，手会一直"敲"着
+
+    @property
+    def paused(self):
+        return self._paused
+
+    def set_paused(self, paused):
+        """暂停：画面定格在当前这一帧。恢复：回到芸芸此刻应有的状态。"""
+        self._paused = paused
+        if paused:
+            self._loop_timer.stop()
+            self._tap_timer.stop()
+        else:
+            self.set_state(self._state)  # 暂停期间状态可能变过，用最新的状态重新显示
 
     def _hands_up(self):
         if self._state is PetState.WORKING:
@@ -104,8 +144,8 @@ class PetWindow(QWidget):
     # ---------- 气泡 ----------
 
     def say(self, text):
-        """让芸芸弹出气泡说一句话。"""
-        self._bubble.show_text(text, self._body_rect())
+        """让芸芸弹出气泡说一句话（已有气泡时会再加一个，互不重叠）。"""
+        self._bubbles.add(text, self._body_rect())
 
     def _body_rect(self):
         """芸芸身体在屏幕上的大致区域，不含透明留白。"""
@@ -114,8 +154,7 @@ class PetWindow(QWidget):
 
     def moveEvent(self, event):
         # 窗口每次移动后 Qt 都会调用它：拖动时让气泡跟着走
-        if self._bubble.isVisible():
-            self._bubble.follow(self._body_rect())
+        self._bubbles.follow(self._body_rect())
 
     def _move_to_bottom_right(self):
         """把芸芸放在屏幕右下角（避开任务栏）。"""
@@ -162,9 +201,6 @@ class PetWindow(QWidget):
             self._press_pos = event.globalPosition().toPoint()
             self._drag_offset = self._press_pos - self.pos()
             self.setCursor(Qt.CursorShape.ClosedHandCursor)
-        elif event.button() == Qt.MouseButton.RightButton:
-            # 临时：右键直接退出。之后会换成正式的右键菜单（设置 / 暂停 / 退出）。
-            QApplication.instance().quit()
 
     def mouseMoveEvent(self, event):
         # buttons()（复数）返回"此刻按住了哪些键"；只有按住左键时才拖动
@@ -183,3 +219,51 @@ class PetWindow(QWidget):
             self._drag_offset = None
             self._press_pos = None
             self.setCursor(Qt.CursorShape.OpenHandCursor)
+
+    # ---------- 右键菜单 ----------
+
+    def contextMenuEvent(self, event):
+        """右键时 Qt 会调用它：弹出菜单，直到菜单关闭才返回。"""
+        self._build_menu().exec(event.globalPos())
+
+    def _build_menu(self):
+        """每次右键都重新创建菜单，这样"暂停/开始"、语言勾选总是最新的。"""
+        menu = _PetMenu(self)
+
+        # 设置 → 气泡语言 → 中文 / English / 日本語（单选）
+        settings_menu = menu.addMenu("设置")
+        language_menu = settings_menu.addMenu("气泡语言")
+        group = QActionGroup(menu)  # 放进同一个组的可勾选动作，同时只能勾一个
+        for code, name in i18n.LANGUAGES.items():
+            action = language_menu.addAction(name)
+            action.setCheckable(True)
+            action.setChecked(code == i18n.current_language())
+            action.setActionGroup(group)
+            # 注意 c=code：用默认参数把"这一轮的 code"固定下来。
+            # 如果直接写 lambda: self._change_language(code)，三个菜单项都会用到最后一个 code。
+            action.triggered.connect(lambda checked=False, c=code: self._change_language(c))
+
+        menu.addAction("开始" if self._paused else "暂停", self._toggle_pause)
+        menu.addSeparator()
+
+        exit_action = menu.addAction("退出")
+        exit_action.triggered.connect(lambda: self._on_exit_clicked(menu))
+        menu.keep_open_action = exit_action
+        return menu
+
+    def _change_language(self, code):
+        i18n.set_language(code)
+        self.say(i18n.tr("language_changed"))
+
+    def _toggle_pause(self):
+        self.set_paused(not self._paused)
+
+    def _on_exit_clicked(self, menu):
+        if self._exit_timer.isActive():
+            # 双击间隔内点了第二下：真的退出
+            self._exit_timer.stop()
+            menu.close()
+            QApplication.instance().quit()
+        else:
+            # 第一下：先等等看有没有第二下；没有的话，定时器到时会弹出提示气泡
+            self._exit_timer.start()

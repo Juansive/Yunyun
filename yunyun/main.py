@@ -7,6 +7,7 @@ import sys
 
 from PySide6.QtWidgets import QApplication
 
+from yunyun import i18n
 from yunyun.activity.keyboard import KeyboardMonitor
 from yunyun.pet.sprites import load_sprites
 from yunyun.pet.state import StateMachine
@@ -15,6 +16,9 @@ from yunyun.pet.window import PetWindow
 
 def main():
     app = QApplication(sys.argv)  # 每个 Qt 程序有且只有一个 QApplication
+    app.setOrganizationName("Yunyun")  # QSettings 用这两个名字决定设置存在哪里
+    app.setApplicationName("Yunyun")
+    i18n.load_language()               # 恢复上次选择的气泡语言
 
     sprites = load_sprites()      # 必须在 QApplication 之后（QPixmap 需要它）
     machine = StateMachine()
@@ -29,7 +33,7 @@ def main():
     # 临时：还没接邮箱，先用"单击芸芸"模拟收到一封新邮件
     def fake_mail():
         machine.on_mail()
-        pet.say("（测试）收到新邮件啦！昨天加油的发票到了！")
+        pet.say(i18n.tr("test_mail"))
 
     pet.clicked.connect(fake_mail)
 
