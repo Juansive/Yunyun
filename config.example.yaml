@@ -1,0 +1,12 @@
+# 芸芸的配置模板（会提交到 Git）。
+#
+# 使用方法：运行 .\.venv\Scripts\python -m tools.setup_mail 会自动生成 config.yaml；
+# 也可以手动复制本文件为 config.yaml 再修改。config.yaml 不会提交到 Git。
+#
+# 注意：授权码不要写在这里！它保存在 Windows 凭据管理器中。
+
+mail:
+  accounts:
+    - name: QQ邮箱              # 随便起个名字，显示用
+      provider: qq              # qq / 163 / gmail
+      address: 123456@qq.com    # 你的邮箱地址

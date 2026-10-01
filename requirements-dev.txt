@@ -1,0 +1,3 @@
+# 开发时额外需要的包（运行芸芸本身不需要）
+-r requirements.txt
+pytest>=8
