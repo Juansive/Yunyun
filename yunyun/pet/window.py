@@ -27,6 +27,9 @@ class PetWindow(QWidget):
         self.resize(self.SIZE, self.SIZE)
         self._move_to_bottom_right()
 
+        self._drag_offset = None  # 拖动时：鼠标相对窗口左上角的偏移；不拖动时为 None
+        self.setCursor(Qt.CursorShape.OpenHandCursor)  # 鼠标悬停时显示"张开的手"，提示可以拖
+
     def _move_to_bottom_right(self):
         """把芸芸放在屏幕右下角（避开任务栏）。"""
         area = self.screen().availableGeometry()  # 可用区域，不含任务栏
@@ -41,7 +44,24 @@ class PetWindow(QWidget):
         d = self.SIZE - 2 * self.MARGIN
         painter.drawEllipse(self.MARGIN, self.MARGIN, d, d)
 
+    # ---------- 鼠标交互 ----------
+
     def mousePressEvent(self, event):
-        # 临时：右键直接退出。之后会换成正式的右键菜单（设置 / 暂停 / 退出）。
-        if event.button() == Qt.MouseButton.RightButton:
+        if event.button() == Qt.MouseButton.LeftButton:
+            # 记下"鼠标点在窗口里的哪个位置"，拖动时保持这个相对位置不变，
+            # 否则窗口左上角会突然跳到鼠标下面。
+            self._drag_offset = event.globalPosition().toPoint() - self.pos()
+            self.setCursor(Qt.CursorShape.ClosedHandCursor)
+        elif event.button() == Qt.MouseButton.RightButton:
+            # 临时：右键直接退出。之后会换成正式的右键菜单（设置 / 暂停 / 退出）。
             QApplication.instance().quit()
+
+    def mouseMoveEvent(self, event):
+        # buttons()（复数）返回"此刻按住了哪些键"；只有按住左键时才拖动
+        if event.buttons() & Qt.MouseButton.LeftButton and self._drag_offset is not None:
+            self.move(event.globalPosition().toPoint() - self._drag_offset)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_offset = None
+            self.setCursor(Qt.CursorShape.OpenHandCursor)
