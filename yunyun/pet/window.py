@@ -6,6 +6,8 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import QApplication, QWidget
 
+from yunyun.pet.bubble import Bubble
+
 
 class PetWindow(QWidget):
     SIZE = 160          # 窗口边长（像素）
@@ -28,7 +30,24 @@ class PetWindow(QWidget):
         self._move_to_bottom_right()
 
         self._drag_offset = None  # 拖动时：鼠标相对窗口左上角的偏移；不拖动时为 None
+        self._press_pos = None    # 左键按下时鼠标的屏幕坐标，用来区分"单击"和"拖动"
         self.setCursor(Qt.CursorShape.OpenHandCursor)  # 鼠标悬停时显示"张开的手"，提示可以拖
+
+        self._bubble = Bubble()
+
+    def say(self, text):
+        """让芸芸在头顶弹出气泡说一句话。"""
+        self._bubble.show_text(text, self._body_rect())
+
+    def _body_rect(self):
+        """芸芸身体（圆形）在屏幕上的区域，不含透明留白。"""
+        m = self.MARGIN
+        return self.geometry().adjusted(m, m, -m, -m)
+
+    def moveEvent(self, event):
+        # 窗口每次移动后 Qt 都会调用它：拖动时让气泡跟着走
+        if self._bubble.isVisible():
+            self._bubble.follow(self._body_rect())
 
     def _move_to_bottom_right(self):
         """把芸芸放在屏幕右下角（避开任务栏）。"""
@@ -50,7 +69,8 @@ class PetWindow(QWidget):
         if event.button() == Qt.MouseButton.LeftButton:
             # 记下"鼠标点在窗口里的哪个位置"，拖动时保持这个相对位置不变，
             # 否则窗口左上角会突然跳到鼠标下面。
-            self._drag_offset = event.globalPosition().toPoint() - self.pos()
+            self._press_pos = event.globalPosition().toPoint()
+            self._drag_offset = self._press_pos - self.pos()
             self.setCursor(Qt.CursorShape.ClosedHandCursor)
         elif event.button() == Qt.MouseButton.RightButton:
             # 临时：右键直接退出。之后会换成正式的右键菜单（设置 / 暂停 / 退出）。
@@ -62,6 +82,14 @@ class PetWindow(QWidget):
             self.move(event.globalPosition().toPoint() - self._drag_offset)
 
     def mouseReleaseEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton and self._press_pos is not None:
+            # 松开时鼠标离按下位置很近 → 算单击；否则是一次拖动，不弹气泡。
+            # startDragDistance() 是系统的"拖动阈值"（Windows 上一般约 10 像素），
+            # 用它可以容忍手抖。manhattanLength() = |dx| + |dy|，比算直线距离便宜。
+            moved = (event.globalPosition().toPoint() - self._press_pos).manhattanLength()
+            if moved < QApplication.startDragDistance():
+                self.say("你好，我是芸芸！这是一个测试气泡，过几秒我就会自己消失啦～")
+
             self._drag_offset = None
+            self._press_pos = None
             self.setCursor(Qt.CursorShape.OpenHandCursor)
