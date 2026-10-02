@@ -18,7 +18,8 @@ from yunyun.mail.imap_client import PROVIDERS, MailAccount, MailError, check_log
 
 
 class MailAccountsDialog(QDialog):
-    accounts_changed = Signal()  # 添加或删除了账号（以后收邮件的模块会用到）
+    accounts_changed = Signal()  # 添加或删除了账号（邮件服务据此重新检查）
+    account_added = Signal()     # 成功添加了一个账号（首次引导据此决定要不要接着设置 AI）
 
     # 后台线程测试完登录后发出：(账号, 授权码, 错误或 None)。
     # 跨线程只能通过信号通知主线程，不能在后台线程里直接改界面。
@@ -187,6 +188,7 @@ class MailAccountsDialog(QDialog):
         self._refresh_list()
         self._show_status(i18n.tr("mail_saved"))
         self.accounts_changed.emit()
+        self.account_added.emit()
 
     def _set_busy(self, busy):
         for widget in (self._save_button, self._provider, self._address, self._password):

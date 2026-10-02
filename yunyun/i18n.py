@@ -156,6 +156,11 @@ TEXTS = {
         "en": "Got it~ I'll skip those {} for now.",
         "ja": "了解～その {} 通は今回スルーするね",
     },
+    "onboarding_ai": {
+        "zh": "邮箱设置好啦！再给我一个 AI 的 Key，我就能用一句话告诉你每封邮件是什么～不想设置的话直接关掉就好",
+        "en": "Your mailbox is all set! Give me an AI key and I'll sum up each email in one line~ Just close the window if you'd rather not.",
+        "ja": "メールの設定完了！AI のキーをくれたら、メールを一言で教えられるよ～設定しないなら閉じるだけで大丈夫",
+    },
     "already_running": {
         "zh": "我在这儿呢～",
         "en": "I'm right here~",

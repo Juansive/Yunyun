@@ -14,6 +14,7 @@ from PySide6.QtGui import QActionGroup, QDesktopServices, QGuiApplication, QPain
 from PySide6.QtWidgets import QApplication, QWidget
 
 from yunyun import i18n, logs, shortcut
+from yunyun.ai import settings as ai_settings
 from yunyun.pet import winapi
 from yunyun.pet.ai_dialog import AISettingsDialog
 from yunyun.pet.badge import Badge
@@ -25,6 +26,7 @@ from yunyun.pet.state import PetState
 
 _ALWAYS_ON_TOP_KEY = "window/always_on_top"
 _POSITION_KEY = "window/position"
+_AI_OFFERED_KEY = "onboarding/ai_offered"  # 是否已经引导过"设置 AI"（只引导一次）
 
 log = logging.getLogger(__name__)
 
@@ -72,6 +74,7 @@ class PetWindow(QWidget):
 
         self._bubbles = BubbleStack(self)
         self._mail_dialog = None  # 邮箱账号窗口（用到时才创建）
+        self._account_added_this_time = False  # 这次打开邮箱窗口期间，有没有成功添加邮箱
         self._ai_dialog = None    # AI 设置窗口（用到时才创建）
 
         # ---- 小红点 ----
@@ -548,13 +551,29 @@ class PetWindow(QWidget):
             # parent 设为芸芸：窗口和芸芸同一层（芸芸置顶时它也在最上面）
             self._mail_dialog = MailAccountsDialog(self)
             self._mail_dialog.accounts_changed.connect(self.mail_accounts_changed)
+            self._mail_dialog.account_added.connect(self._on_account_added)
             self._mail_dialog.finished.connect(self._on_mail_dialog_closed)
+            self._account_added_this_time = False
         self._mail_dialog.show_centered()
+
+    def _on_account_added(self):
+        self._account_added_this_time = True
 
     def _on_mail_dialog_closed(self):
         # 关闭后丢掉，下次重新创建：这样切换语言后再打开，窗口文字就是新语言
         self._mail_dialog.deleteLater()
         self._mail_dialog = None
+        if self._account_added_this_time:
+            QTimer.singleShot(300, self._maybe_offer_ai_setup)  # 等邮箱窗口完全关掉再接着引导
+
+    def _maybe_offer_ai_setup(self):
+        """首次引导：刚添加了邮箱、还没设置 AI、以前也没引导过 → 接着打开 AI 设置（只引导这一次）。"""
+        settings = QSettings()
+        if settings.value(_AI_OFFERED_KEY, False, type=bool) or ai_settings.load_settings() is not None:
+            return
+        settings.setValue(_AI_OFFERED_KEY, True)
+        self.say(i18n.tr("onboarding_ai"), 8000)  # 话比较长，多显示一会儿
+        self.open_ai_settings()
 
     def create_desktop_shortcut(self):
         """在桌面创建快捷方式。"""
