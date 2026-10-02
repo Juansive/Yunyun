@@ -61,6 +61,7 @@ class PetWindow(QWidget):
 
         # ---- 小红点 ----
         self._mail_count = 0
+        self._mail_processing = False     # 正在处理邮件：小红点变成转圈
         self._badge_hidden = False  # 用户右键隐藏了小红点（只在本次运行有效，重启后恢复）
         self._badge_wants_corner = False  # 芸芸被挡住时来了新邮件：小红点该去任务栏时钟上方
         self._badge = Badge(self)                            # 跟随用：芸芸的从属窗口
@@ -136,7 +137,11 @@ class PetWindow(QWidget):
             self._show(self._sprites.working_up)
             return
 
-        frames = self._sprites.idle if state is PetState.IDLE else self._sprites.excited
+        frames = {
+            PetState.IDLE: self._sprites.idle,
+            PetState.EXCITED: self._sprites.excited,
+            PetState.THINKING: self._sprites.thinking,
+        }[state]
         self._loop_frames = frames
         self._loop_index = 0
         self._show(frames[0])
@@ -278,6 +283,13 @@ class PetWindow(QWidget):
         self._corner_badge.set_count(count)
         self._update_badge()
 
+    def set_mail_processing(self, processing):
+        """开始 / 结束处理邮件：小红点在数字和转圈之间切换。"""
+        self._mail_processing = processing
+        self._badge.set_loading(processing)
+        self._corner_badge.set_loading(processing)
+        self._update_badge()
+
     def on_new_mail(self):
         """有新邮件到达（由 main 调用）。芸芸被挡住时，小红点单独去任务栏时钟上方等你，芸芸不出来。"""
         self._check_covered()  # 定时检查最多有 0.5 秒的延迟，这里马上重新确认一次
@@ -289,7 +301,9 @@ class PetWindow(QWidget):
         """根据邮件数、是否被隐藏、是否在角落模式，决定显示哪个小红点。"""
         if self._badge.busy or self._corner_badge.busy:
             return  # 正在拖动 / 播放动画，别打扰它（动画结束后会再调用这里）
-        show = self._mail_count > 0 and not self._badge_hidden and self.isVisible()
+        # 处理中即使邮件数已经减到 0，也要一直显示转圈，直到处理完
+        has_something = self._mail_count > 0 or self._mail_processing
+        show = has_something and not self._badge_hidden and self.isVisible()
         if not show:
             self._badge_wants_corner = False
             self._badge.hide()

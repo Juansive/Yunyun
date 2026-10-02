@@ -187,6 +187,33 @@ def excited(frame):
     return img
 
 
+def thinking(frame):
+    """思考：眼睛往上看、一只手托着下巴，头顶的"…"一个点一个点冒出来（frame = 1/2/3）"""
+    img, p = new_canvas()
+    draw_body(p)
+    draw_hand(p, 120, 360)
+    draw_hand(p, 300, 318)                      # 托下巴的手
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(INK)
+    p.drawEllipse(QPointF(208, 222), 13, 16)    # 眼珠往右上看
+    p.drawEllipse(QPointF(320, 222), 13, 16)
+    p.setPen(pen(6))
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    p.drawLine(QPointF(244, 278), QPointF(270, 274))  # 抿着嘴
+    # 头顶右上方的思考小泡泡 + 点点
+    p.setPen(pen(5, QColor("#9AA5B1")))
+    p.setBrush(QColor("#FFFFFF"))
+    p.drawEllipse(QPointF(372, 112), 9, 9)
+    p.drawEllipse(QPointF(396, 80), 14, 14)
+    p.drawRoundedRect(QRectF(368, 14, 128, 56), 28, 28)
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(INK)
+    for i in range(frame):
+        p.drawEllipse(QPointF(400 + i * 32, 42), 8, 8)
+    p.end()
+    return img
+
+
 def main():
     app = QGuiApplication(sys.argv)  # 使用 QPainter 等图形功能前需要先有 QGuiApplication
     OUT.mkdir(parents=True, exist_ok=True)
@@ -197,6 +224,9 @@ def main():
         "working_down_2.png": working("right"),
         "excited_1.png": excited(1),
         "excited_2.png": excited(2),
+        "thinking_1.png": thinking(1),
+        "thinking_2.png": thinking(2),
+        "thinking_3.png": thinking(3),
     }
     for name, img in images.items():
         img.save(str(OUT / name))

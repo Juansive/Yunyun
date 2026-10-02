@@ -73,6 +73,15 @@ class Badge(QWidget):
         self._home = QPoint()      # 拖动开始前红点窗口的位置
         self._dragging = False
         self._pop = 0.0            # "啵"动画进度 0~1
+        self._loading = False      # 正在处理邮件：数字换成转圈
+        self._spin = 0.0           # 转圈的角度（度）
+
+        self._spin_anim = QVariantAnimation(self)
+        self._spin_anim.setStartValue(0.0)
+        self._spin_anim.setEndValue(360.0)
+        self._spin_anim.setDuration(900)    # 转一圈 0.9 秒
+        self._spin_anim.setLoopCount(-1)    # -1 = 无限循环
+        self._spin_anim.valueChanged.connect(self._on_spin)
 
         self._pop_anim = QVariantAnimation(self)
         self._pop_anim.setStartValue(0.0)
@@ -105,9 +114,30 @@ class Badge(QWidget):
         return (self._dragging or self._pop_anim.state() == running
                 or self._snap_anim.state() == running or self._fly_anim.state() == running)
 
+    @property
+    def loading(self):
+        return self._loading
+
     def set_count(self, count):
         self._text = "99+" if count > 99 else str(count)
-        width = max(self.HEIGHT, self._text_width() + 10)  # 一位数是圆形，多位数变成胶囊形
+        self._resize_for_content()
+
+    def set_loading(self, loading):
+        """处理邮件期间：数字换成转圈，并且不响应单击 / 拖动（免得重复处理或误清除）。"""
+        if loading == self._loading:
+            return
+        self._loading = loading
+        if loading:
+            self._spin_anim.start()
+        else:
+            self._spin_anim.stop()
+        self._resize_for_content()
+
+    def _resize_for_content(self):
+        if self._loading:
+            width = self.HEIGHT  # 转圈时是个小圆
+        else:
+            width = max(self.HEIGHT, self._text_width() + 10)  # 一位数是圆形，多位数变成胶囊形
         self.resize(width + 2 * self.PAD, self.HEIGHT + 2 * self.PAD)
         if self._anchor is not None:
             self.follow(self._anchor)
@@ -189,6 +219,17 @@ class Badge(QWidget):
         painter.setPen(QPen(QColor("white"), 1.5))           # 白边：在深色背景上也看得清
         painter.setBrush(QColor(self.COLOR))
         painter.drawRoundedRect(body, r, r)
+
+        if self._loading:
+            # 转圈：一段 3/4 圆的白色弧线，起点随 _spin 转动
+            arc = body.adjusted(4.5, 4.5, -4.5, -4.5)
+            pen = QPen(QColor("white"), 2)
+            pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+            painter.setPen(pen)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            # Qt 的角度单位是 1/16 度；负数 = 顺时针
+            painter.drawArc(arc, int(-self._spin * 16), 270 * 16)
+            return
         painter.setPen(QColor("white"))
         painter.setFont(self._font)
         painter.drawText(body, Qt.AlignmentFlag.AlignCenter, self._text)
@@ -196,7 +237,7 @@ class Badge(QWidget):
     # ---------- 鼠标 ----------
 
     def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton and not self.busy:
+        if event.button() == Qt.MouseButton.LeftButton and not self.busy and not self._loading:
             self._press_pos = event.globalPosition().toPoint()
             self._home = self.pos()
 
@@ -228,6 +269,10 @@ class Badge(QWidget):
         self.hide_requested.emit()
 
     # ---------- "啵"动画回调 ----------
+
+    def _on_spin(self, value):
+        self._spin = value
+        self.update()
 
     def _on_pop_progress(self, value):
         self._pop = value

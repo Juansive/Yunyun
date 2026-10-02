@@ -6,6 +6,9 @@
 
     任意状态 ── 收到邮件 ──▶ 激动 EXCITED ── 几秒后 ──▶ 回到 工作 或 待机
 
+    任意状态 ── 用户点小红点 ──▶ 思考 THINKING ── 邮件处理完 ──▶ 回到 工作 或 待机
+    （思考期间来了新邮件不打断思考，只是小红点 +1）
+
 状态机只负责"逻辑"，不管画面长什么样；
 画面由 PetWindow 收到 state_changed / typed 信号后自己切换。
 """
@@ -18,6 +21,7 @@ class PetState(Enum):
     IDLE = "idle"          # 待机：用户一段时间没敲键盘
     WORKING = "working"    # 工作：用户在敲键盘
     EXCITED = "excited"    # 激动：收到新邮件
+    THINKING = "thinking"  # 思考：正在用 AI 处理邮件
 
 
 class StateMachine(QObject):
@@ -55,21 +59,38 @@ class StateMachine(QObject):
             self._set_state(PetState.WORKING)
         if self._state is PetState.WORKING:
             self.typed.emit()
-        # 激动状态下按键：只记录"用户在活动"，不打断激动
+        # 激动 / 思考状态下按键：只记录"用户在活动"，不打断
 
     def on_mail(self):
         """收到新邮件。"""
+        if self._state is PetState.THINKING:
+            return  # 正在处理邮件：不打断思考
         self._set_state(PetState.EXCITED)
         self._excited_timer.start()  # 连续来邮件会重新计时
+
+    def start_thinking(self):
+        """开始用 AI 处理邮件。"""
+        self._excited_timer.stop()   # 如果正在激动，直接转入思考
+        self._set_state(PetState.THINKING)
+
+    def stop_thinking(self):
+        """邮件处理完了。"""
+        if self._state is PetState.THINKING:
+            self._back_to_normal()
 
     # ---------- 内部 ----------
 
     def _on_idle_timeout(self):
         if self._state is PetState.WORKING:
             self._set_state(PetState.IDLE)
-        # 激动状态下超时：先不管，等激动结束时再决定回到哪个状态
+        # 激动 / 思考状态下超时：先不管，等它们结束时再决定回到哪个状态
 
     def _on_excited_done(self):
+        if self._state is PetState.EXCITED:
+            self._back_to_normal()
+
+    def _back_to_normal(self):
+        """激动 / 思考结束：最近在打字就回到工作，否则待机。"""
         typing_recently = self._idle_timer.isActive()
         self._set_state(PetState.WORKING if typing_recently else PetState.IDLE)
 

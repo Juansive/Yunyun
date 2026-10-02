@@ -60,7 +60,17 @@ def main():
         pet.say(description.bubble)
         mail.mark_handled(address, message.uid)
 
-    mail.fetch_started.connect(batch_notes.clear)
+    def on_fetch_started():
+        batch_notes.clear()
+        machine.start_thinking()         # 芸芸进入思考状态
+        pet.set_mail_processing(True)    # 小红点变成转圈
+
+    def on_fetch_finished():
+        machine.stop_thinking()          # 回到工作 / 待机
+        pet.set_mail_processing(False)   # 小红点恢复成数字（没有剩余邮件就消失）
+
+    mail.fetch_started.connect(on_fetch_started)
+    mail.fetch_finished.connect(on_fetch_finished)
 
     def on_pet_clicked():
         # 单击芸芸：没有待处理的新邮件就说一声（还没添加邮箱时不说，免得误会）
