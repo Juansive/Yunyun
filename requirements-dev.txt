@@ -1,3 +1,4 @@
 # 开发时额外需要的包（运行芸芸本身不需要）
 -r requirements.txt
 pytest>=8
+pyinstaller>=6.10   # 打包成 exe（tools/build_exe.py）

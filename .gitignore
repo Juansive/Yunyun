@@ -3,5 +3,7 @@ __pycache__/
 *.pyc
 config.yaml
 *.db
+build/
+dist/
 .idea/
 .vscode/

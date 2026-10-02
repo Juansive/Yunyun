@@ -28,6 +28,13 @@ def test_launch_command_uses_pythonw_without_console():
     assert Path(workdir) == PROJECT_ROOT
 
 
+def test_launch_command_points_to_exe_when_frozen(monkeypatch, tmp_path):
+    exe = tmp_path / "芸芸" / "芸芸.exe"
+    monkeypatch.setattr(sys, "frozen", True, raising=False)   # 假装是打包后的 exe
+    monkeypatch.setattr(sys, "executable", str(exe))
+    assert shortcut.launch_command() == (exe, "", exe.parent)  # 直接运行 exe，工作目录是 exe 所在的文件夹
+
+
 def test_create_shortcut_roundtrip(qapp, tmp_path):
     from yunyun.pet.sprites import load_sprites
     icon = shortcut.save_icon(load_sprites().tray, tmp_path)
