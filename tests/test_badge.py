@@ -1,10 +1,12 @@
 """小红点的测试：单击、拖走、弹回、右键隐藏、和芸芸的配合。"""
 import time
 
-from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
+import pytest
+from PySide6.QtCore import QEvent, QPoint, QPointF, QRect, Qt
 from PySide6.QtGui import QContextMenuEvent, QGuiApplication, QMouseEvent
 
-from yunyun.pet.badge import Badge
+from yunyun.pet import winapi
+from yunyun.pet.badge import Badge, tray_corner
 from yunyun.pet.sprites import load_sprites
 from yunyun.pet.window import PetWindow
 
@@ -116,3 +118,135 @@ def test_dismiss_from_menu(qapp, tmp_path, monkeypatch):
     assert item.isEnabled()
     item.trigger()
     assert requested == [1]
+
+
+# ---------- 角落模式 ----------
+
+SCREEN = QRect(0, 0, 1920, 1080)
+
+
+@pytest.mark.parametrize("available, expected", [
+    (QRect(0, 0, 1920, 1032), (True, True, False)),    # 任务栏在下 → 右下角
+    (QRect(0, 48, 1920, 1032), (True, False, False)),  # 任务栏在上 → 右上角
+    (QRect(60, 0, 1860, 1080), (False, True, False)),  # 任务栏在左 → 左下角
+    (QRect(0, 0, 1860, 1080), (True, True, False)),    # 任务栏在右 → 右下角
+    (QRect(0, 0, 1920, 1080), (True, True, True)),     # 自动隐藏
+])
+def test_tray_corner(available, expected):
+    assert tray_corner(SCREEN, available) == expected
+
+
+@pytest.fixture
+def fake_desktop(monkeypatch):
+    """假的遮挡检测和全屏检测，测试里可以随时改。"""
+    state = {"covered": 0.0, "busy": False}
+    monkeypatch.setattr(winapi, "covered_ratio", lambda *a, **k: state["covered"])
+    monkeypatch.setattr(winapi, "is_user_busy", lambda: state["busy"])
+    monkeypatch.setattr(winapi, "bring_to_front", lambda hwnd: None)
+    return state
+
+
+def make_real_pet(qapp, tmp_path):
+    """和 make_pet 一样，但保留真正的 _check_covered（用 fake_desktop 控制结果）。"""
+    from PySide6.QtCore import QSettings
+    QSettings.setDefaultFormat(QSettings.Format.IniFormat)
+    QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, str(tmp_path))
+    pet = PetWindow(load_sprites())
+    pet.move(300, 300)
+    pet.show()
+    return pet
+
+
+def covered_new_mail(pet, fake_desktop, count=2):
+    """模拟：芸芸被挡住时来了新邮件。"""
+    fake_desktop["covered"] = 1.0
+    pet._check_covered()
+    pet.set_mail_count(count)
+    pet.on_new_mail()
+
+
+def test_corner_badge_is_independent_topmost_window(qapp):
+    corner = Badge(None, topmost=True)
+    assert corner.parentWidget() is None                                  # 不属于芸芸
+    assert corner.windowFlags() & Qt.WindowType.WindowStaysOnTopHint      # 始终置顶
+
+
+def test_corner_mode_full_flow(qapp, tmp_path, fake_desktop):
+    pet = make_real_pet(qapp, tmp_path)
+    follow, corner = pet._badge, pet._corner_badge
+    area = QGuiApplication.primaryScreen().availableGeometry()
+
+    # 芸芸被挡住时来了新邮件 → 角落的小红点出现，跟随的那个藏起来
+    covered_new_mail(pet, fake_desktop)
+    assert corner.isVisible() and not follow.isVisible()
+    inner = corner.geometry().adjusted(corner.PAD, corner.PAD, -corner.PAD, -corner.PAD)
+    assert area.contains(inner)
+    assert inner.right() > area.right() - 40 and inner.bottom() > area.bottom() - 80   # 在右下角附近
+
+    # 数字变化：角落的也跟着变
+    pet.set_mail_count(12)
+    assert corner._text == "12" and corner.isVisible()
+
+    # 用户进入全屏 → 小红点躲起来，但还记着要在角落；退出全屏 → 重新出现
+    fake_desktop["busy"] = True
+    pet._check_covered()
+    assert not corner.isVisible() and pet._badge_wants_corner
+    fake_desktop["busy"] = False
+    pet._check_covered()
+    assert corner.isVisible()
+
+    # 芸芸露出来 → 角落的飞到芸芸右上角，落地后换成跟随的那个（位置重合）
+    fake_desktop["covered"] = 0.0
+    pet._check_covered()
+    assert corner.busy                         # 正在飞
+    wait(qapp, 0.7)
+    assert not corner.isVisible() and follow.isVisible()
+    assert follow.pos() == follow.pet_position(pet._body_rect())
+
+
+def test_new_mail_while_visible_stays_with_pet(qapp, tmp_path, fake_desktop):
+    pet = make_real_pet(qapp, tmp_path)
+    pet._check_covered()
+    pet.set_mail_count(1)
+    pet.on_new_mail()
+    assert pet._badge.isVisible() and not pet._corner_badge.isVisible()
+
+
+def test_covered_without_new_mail_does_not_go_to_corner(qapp, tmp_path, fake_desktop):
+    pet = make_real_pet(qapp, tmp_path)
+    pet.set_mail_count(1)          # 已有邮件，芸芸后来才被挡住：不去角落（只有"来新邮件"才去）
+    fake_desktop["covered"] = 1.0
+    pet._check_covered()
+    assert not pet._corner_badge.isVisible()
+
+
+def test_hidden_badge_never_goes_to_corner(qapp, tmp_path, fake_desktop, monkeypatch):
+    pet = make_real_pet(qapp, tmp_path)
+    monkeypatch.setattr(pet, "say", lambda text: None)
+    pet.set_mail_count(1)
+    pet._hide_badge()
+    covered_new_mail(pet, fake_desktop)
+    assert not pet._badge.isVisible() and not pet._corner_badge.isVisible()
+
+
+def test_click_in_corner_brings_pet_out(qapp, tmp_path, fake_desktop, monkeypatch):
+    pet = make_real_pet(qapp, tmp_path)
+    covered_new_mail(pet, fake_desktop)
+    clicked, raised = [], []
+    pet.mail_badge_clicked.connect(lambda: clicked.append(1))
+    monkeypatch.setattr(winapi, "bring_to_front", lambda hwnd: (raised.append(hwnd), fake_desktop.update(covered=0.0)))
+
+    pet._corner_badge.clicked.emit()
+    assert raised == [int(pet.winId())] and clicked == [1]
+    assert pet._corner_badge.busy              # 芸芸出来了，小红点正飞回去
+
+
+def test_dismiss_from_corner(qapp, tmp_path, fake_desktop):
+    pet = make_real_pet(qapp, tmp_path)
+    covered_new_mail(pet, fake_desktop, count=5)
+    pet.dismiss_mail_requested.connect(lambda: pet.set_mail_count(0))   # 模拟邮件服务清零
+    corner = pet._corner_badge
+    start = corner.pos() + QPoint(10, 10)
+    drag(corner, start, start + QPoint(-80, -40))
+    wait(qapp, 0.4)
+    assert not corner.isVisible() and not pet._badge.isVisible() and not pet._badge_wants_corner

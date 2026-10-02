@@ -9,6 +9,7 @@ Qt 不提供"窗口有没有被别的窗口挡住"这种信息，所以这里直
 import ctypes
 import os
 import sys
+from contextlib import contextmanager
 from ctypes import wintypes
 
 IS_WINDOWS = sys.platform == "win32"
@@ -25,10 +26,15 @@ HWND_NOTOPMOST = -2
 SWP_NOSIZE = 0x0001
 SWP_NOMOVE = 0x0002
 SWP_NOACTIVATE = 0x0010
+# SHQueryUserNotificationState 的返回值：这三种表示用户正全屏忙着，不该打扰
+QUNS_BUSY = 2                       # 有程序在全屏（比如全屏看视频）
+QUNS_RUNNING_D3D_FULL_SCREEN = 3    # 全屏游戏
+QUNS_PRESENTATION_MODE = 4          # 演示模式（比如 PPT 放映）
 
 if IS_WINDOWS:
     user32 = ctypes.WinDLL("user32", use_last_error=True)
     dwmapi = ctypes.WinDLL("dwmapi")
+    shell32 = ctypes.WinDLL("shell32")
 
     # 声明每个函数的参数和返回值类型。
     # 尤其是 HWND（窗口句柄）是"指针大小"，64 位系统上占 8 字节；
@@ -52,6 +58,8 @@ if IS_WINDOWS:
     user32.SetWindowPos.restype = wintypes.BOOL
     dwmapi.DwmGetWindowAttribute.argtypes = [wintypes.HWND, wintypes.DWORD, ctypes.c_void_p, wintypes.DWORD]
     dwmapi.DwmGetWindowAttribute.restype = ctypes.c_long  # HRESULT，0 表示成功
+    shell32.SHQueryUserNotificationState.argtypes = [ctypes.POINTER(ctypes.c_int)]
+    shell32.SHQueryUserNotificationState.restype = ctypes.c_long
 
 
 # ---------- 置顶 ----------
@@ -78,6 +86,55 @@ def bring_to_front(hwnd):
     """
     set_topmost(hwnd, True)
     set_topmost(hwnd, False)
+
+
+@contextmanager
+def keep_z_order(owner_hwnd):
+    """在 with 块里显示从属窗口（气泡、小红点）时，保持主人窗口（芸芸）在叠放顺序中的位置不变。
+
+    为什么需要：Windows 规定从属窗口必须在主人上面，所以显示一个从属窗口时，
+    会把主人也一起拉到最前面——芸芸被别的窗口挡住时，一弹气泡就会自己"跳"出来。
+    做法：先记下压在芸芸正上方的那个窗口，显示完以后，把芸芸放回那个窗口的下面；
+    从属窗口会自动跟着主人一起回去。
+
+    用法：
+        with winapi.keep_z_order(int(pet.winId())):
+            bubble.show()
+    """
+    above = _first_foreign_window_above(owner_hwnd) if IS_WINDOWS else None
+    try:
+        yield
+    finally:
+        if above:
+            # hWndInsertAfter = above：把芸芸放到 above 的正下方
+            user32.SetWindowPos(owner_hwnd, above, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE)
+
+
+def _first_foreign_window_above(hwnd):
+    """压在 hwnd 正上方的第一个"别的程序的、看得见的、非置顶"窗口；没有就返回 None。
+
+    跳过置顶窗口（比如任务栏）：如果把芸芸放到置顶窗口的正下方，芸芸会意外地变成置顶。
+    """
+    for h in _windows_above(hwnd):
+        if (user32.IsWindowVisible(h) and not _is_cloaked(h) and not is_topmost(h)
+                and _process_id(h) != os.getpid()):
+            return h
+    return None
+
+
+# ---------- 用户是否在忙 ----------
+
+def is_user_busy():
+    """用户是不是正在全屏看视频、玩游戏或放 PPT。这时不应该弹出提醒。
+
+    用的是 Windows 自己判断"现在能不能弹通知"的接口，系统通知也是根据它决定要不要打扰你。
+    """
+    if not IS_WINDOWS:
+        return False
+    state = ctypes.c_int()
+    if shell32.SHQueryUserNotificationState(ctypes.byref(state)) != 0:
+        return False  # 查询失败：当作不忙
+    return state.value in (QUNS_BUSY, QUNS_RUNNING_D3D_FULL_SCREEN, QUNS_PRESENTATION_MODE)
 
 
 # ---------- 遮挡检测 ----------

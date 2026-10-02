@@ -43,8 +43,10 @@ def main():
 
     def on_pending_changed(total, newly):
         pet.set_mail_count(total)
-        if newly and pet.is_visible_to_user():
-            machine.on_mail()  # 芸芸看得见时，来新邮件就激动几秒（不弹文字，还没经过 AI）
+        if newly:
+            if pet.is_visible_to_user():
+                machine.on_mail()  # 芸芸看得见：激动几秒（不弹文字，还没经过 AI）
+            pet.on_new_mail()      # 芸芸被挡住：小红点单独去任务栏时钟上方
 
     def on_message_ready(address, message):
         # 临时（第 3 步会换成"思考状态 + 卡片堆"）：用假的 AI 拼一句话，弹气泡

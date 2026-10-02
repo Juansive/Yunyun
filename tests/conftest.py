@@ -14,6 +14,26 @@ def qapp():
     return QApplication.instance() or QApplication([])
 
 
+@pytest.fixture(autouse=True)
+def close_windows_after_test():
+    """每个测试结束后，明确关闭并销毁它创建的所有窗口（autouse：所有测试自动使用）。
+
+    不这样做的话，窗口要等 Python 垃圾回收"随机"地删除；如果恰好在别的窗口
+    重绘到一半时删掉，就会访问已释放的内存，整个测试进程崩溃。
+    """
+    yield  # yield 之前是测试前的准备，之后是测试后的清理
+    from PySide6.QtCore import QCoreApplication, QEvent
+    from PySide6.QtWidgets import QApplication
+    app = QApplication.instance()
+    if app is None:
+        return
+    for widget in app.topLevelWidgets():
+        widget.close()
+        widget.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)  # 立刻执行 deleteLater
+    app.processEvents()
+
+
 @pytest.fixture
 def fake_store(tmp_path, monkeypatch):
     """用临时目录里的 config.yaml 和一个字典代替真实的配置文件和 Windows 凭据管理器。"""

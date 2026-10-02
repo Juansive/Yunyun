@@ -59,10 +59,13 @@ class PetWindow(QWidget):
         # ---- 小红点 ----
         self._mail_count = 0
         self._badge_hidden = False  # 用户右键隐藏了小红点（只在本次运行有效，重启后恢复）
-        self._badge = Badge(self)
-        self._badge.clicked.connect(self.mail_badge_clicked)
-        self._badge.dismissed.connect(self._on_badge_dismissed)
-        self._badge.hide_requested.connect(self._hide_badge)
+        self._badge_wants_corner = False  # 芸芸被挡住时来了新邮件：小红点该去任务栏时钟上方
+        self._badge = Badge(self)                            # 跟随用：芸芸的从属窗口
+        self._corner_badge = Badge(None, topmost=True)       # 角落用：独立的置顶窗口
+        for badge in (self._badge, self._corner_badge):
+            badge.clicked.connect(self._on_badge_clicked)
+            badge.dismissed.connect(self._on_badge_dismissed)
+            badge.hide_requested.connect(self._hide_badge)
 
         # 退出要"快速双击"：第一下启动这个定时器，定时器还在跑时点第二下才真正退出。
         # 间隔用系统的双击间隔（Windows 默认 500 毫秒），和用户平时双击的习惯一致。
@@ -227,6 +230,18 @@ class PetWindow(QWidget):
         elif self._auto_paused and not self._resume_timer.isActive():
             self._resume_timer.start()  # 露出来了：先定格半秒，再恢复
 
+        # 小红点的角落模式：芸芸露出来了，就飞回芸芸身边；
+        # 还被挡着，就顺便检查一下用户是不是进入 / 退出了全屏
+        if self._badge_wants_corner:
+            if not self._occluded:
+                self._badge_wants_corner = False
+                if self._corner_badge.isVisible() and not self._corner_badge.busy:
+                    # 角落的小红点飞到芸芸右上角，落地后换成跟随用的那个（位置完全重合）
+                    target = self._badge.pet_position(self._body_rect())
+                    self._corner_badge.fly_to(target, on_finished=self._update_badge)
+                    return
+            self._update_badge()
+
     def _auto_resume(self):
         self._auto_paused = False
         self._update_frozen()
@@ -253,18 +268,47 @@ class PetWindow(QWidget):
         """更新待处理邮件数（由邮件服务通知）。"""
         self._mail_count = count
         self._badge.set_count(count)
+        self._corner_badge.set_count(count)
+        self._update_badge()
+
+    def on_new_mail(self):
+        """有新邮件到达（由 main 调用）。芸芸被挡住时，小红点单独去任务栏时钟上方等你，芸芸不出来。"""
+        self._check_covered()  # 定时检查最多有 0.5 秒的延迟，这里马上重新确认一次
+        if self._occluded and not self._badge_hidden:
+            self._badge_wants_corner = True
         self._update_badge()
 
     def _update_badge(self):
-        if self._badge.busy:
-            return  # 正在拖动 / 播放动画，别打扰它
+        """根据邮件数、是否被隐藏、是否在角落模式，决定显示哪个小红点。"""
+        if self._badge.busy or self._corner_badge.busy:
+            return  # 正在拖动 / 播放动画，别打扰它（动画结束后会再调用这里）
         show = self._mail_count > 0 and not self._badge_hidden and self.isVisible()
-        if show:
-            self._badge.follow(self._body_rect())
-            self._badge.show()
-            self._badge.raise_()
-        else:
+        if not show:
+            self._badge_wants_corner = False
             self._badge.hide()
+            self._corner_badge.hide()
+        elif self._badge_wants_corner:
+            self._badge.hide()  # 跟随的那个反正被挡着，先藏起来
+            if winapi.is_user_busy():
+                self._corner_badge.hide()   # 用户在全屏：只计数，不弹出；退出全屏后再出现
+            else:
+                appearing = not self._corner_badge.isVisible()
+                self._corner_badge.move(self._corner_badge.corner_position())
+                self._corner_badge.show()   # 独立窗口：显示、置顶都不会把芸芸带出来
+                if appearing:
+                    self._corner_badge.fade_in()
+        else:
+            self._corner_badge.hide()
+            self._badge.follow(self._body_rect())
+            # 显示从属窗口会把芸芸也拉到最前面（芸芸被挡住时就会自己"跳"出来），
+            # 所以用 keep_z_order 包起来，显示完把芸芸放回原位。也不要调用 raise_()。
+            with winapi.keep_z_order(int(self.winId())):
+                self._badge.show()
+
+    def _on_badge_clicked(self):
+        if self._corner_badge.isVisible():
+            self.bring_to_front()  # 在角落点它 = 想看邮件了：先把芸芸叫出来，结果才看得到
+        self.mail_badge_clicked.emit()
 
     def _hide_badge(self):
         self._badge_hidden = True

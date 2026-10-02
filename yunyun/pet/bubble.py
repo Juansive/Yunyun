@@ -19,6 +19,8 @@ from PySide6.QtCore import QObject, QPointF, QRect, QRectF, QSize, Qt, QTimer, S
 from PySide6.QtGui import QColor, QFont, QGuiApplication, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import QWidget
 
+from yunyun.pet import winapi
+
 
 class Bubble(QWidget):
     MAX_TEXT_WIDTH = 220   # 文字区域最大宽度，超过就自动换行
@@ -225,8 +227,9 @@ class BubbleStack(QObject):
             self._discard(self._bubbles[0])
 
         self._layout(new=bubble)
-        bubble.show()
-        bubble.raise_()
+        # 显示从属窗口会把芸芸（主人）也拉到最前面，用 keep_z_order 保持芸芸原来的层级。也不要 raise_()。
+        with winapi.keep_z_order(int(self._owner.winId())):
+            bubble.show()
         bubble.start_countdown(duration_ms)
 
     def follow(self, anchor):
