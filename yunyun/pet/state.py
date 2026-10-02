@@ -29,7 +29,8 @@ class StateMachine(QObject):
     EXCITED_MS = 5_000       # 激动状态持续多久（毫秒）
 
     state_changed = Signal(object)  # 状态变化时发出，参数是新的 PetState
-    typed = Signal()                # 工作状态下，用户每敲一下键盘发出一次
+    typed = Signal()                # 工作状态下，用户每按下一个键发出一次（按住不放的自动重复不算）
+    released = Signal()             # 用户松开了一个键
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -52,14 +53,19 @@ class StateMachine(QObject):
 
     # ---------- 外部事件（槽） ----------
 
-    def on_key(self):
-        """用户按了一下键盘。"""
-        self._idle_timer.start()  # 重新开始计时：又过 IDLE_AFTER_MS 没按键才算待机
+    def on_key(self, repeat=False):
+        """用户按了一下键盘。repeat=True 表示按住不放产生的自动重复。"""
+        self._idle_timer.start()  # 重新开始计时：又过 IDLE_AFTER_MS 没按键才算待机（按住不放也算在活动）
+        if repeat:
+            return                # 自动重复：芸芸的手保持不动
         if self._state is PetState.IDLE:
             self._set_state(PetState.WORKING)
         if self._state is PetState.WORKING:
             self.typed.emit()
         # 激动 / 思考状态下按键：只记录"用户在活动"，不打断
+
+    def on_key_release(self):
+        self.released.emit()
 
     def on_mail(self):
         """收到新邮件。"""

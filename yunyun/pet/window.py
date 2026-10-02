@@ -125,6 +125,7 @@ class PetWindow(QWidget):
         self._loop_frames = []    # 待机/激动：循环播放的帧
         self._loop_index = 0
         self._down_index = 0      # 工作：下一次敲击用第几张"敲下"图
+        self._held_keys = 0       # 工作：还按着没松开的键有几个（按住不放时手一直落着）
 
         self._loop_timer = QTimer(self)
         self._loop_timer.setInterval(self.LOOP_MS)
@@ -152,6 +153,7 @@ class PetWindow(QWidget):
     def set_state(self, state):
         """切换到某个状态，显示对应的画面。"""
         self._state = state
+        self._held_keys = 0  # 换了状态：之前"按着的键"不再影响手的姿势
         if self._frozen:
             return  # 暂停中：只记下最新状态，画面不动
         self._loop_timer.stop()
@@ -173,16 +175,27 @@ class PetWindow(QWidget):
             self._loop_timer.start()
 
     def tap(self):
-        """敲一下键盘：显示"敲下"的画面，TAP_MS 毫秒后自动抬手。"""
+        """按下一个键：显示"敲下"的画面。手至少落下 TAP_MS 毫秒；键还按着就一直落着，松开才抬手。"""
         if self._frozen or self._state is not PetState.WORKING:
             return
         downs = self._sprites.working_down
         self._show(downs[self._down_index % len(downs)])  # 多张"敲下"图轮流用（比如左右手交替）
         self._down_index += 1
+        self._held_keys += 1
         self._tap_timer.start()  # 打字很快时，每次按键都重新计时，手会一直"敲"着
 
+    def release(self):
+        """松开一个键。所有键都松开了，并且手已经落够 TAP_MS 了，就抬手。"""
+        if self._held_keys == 0:
+            return  # 这个键是在别的状态下按的（或者暂停时），和现在的手没关系
+        self._held_keys -= 1
+        if self._held_keys == 0 and not self._tap_timer.isActive():
+            self._hands_up()
+
     def _hands_up(self):
-        if self._state is PetState.WORKING:
+        if self._held_keys > 0:
+            return  # 还有键按着不放：手保持落下（就像真的一直按着）
+        if self._state is PetState.WORKING and not self._frozen:
             self._show(self._sprites.working_up)
 
     def _next_loop_frame(self):

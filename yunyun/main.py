@@ -49,9 +49,11 @@ def main():
     guard.show_requested.connect(on_second_launch)
 
     # 用信号把模块连起来：各模块之间互不 import，以后换界面层时只换 PetWindow
-    keyboard.key_pressed.connect(machine.on_key)   # 敲键盘 → 状态机
-    machine.state_changed.connect(pet.set_state)   # 状态变化 → 换画面
-    machine.typed.connect(pet.tap)                 # 工作中敲一下 → 芸芸也敲一下
+    keyboard.key_pressed.connect(machine.on_key)            # 敲键盘 → 状态机（参数：是不是按住不放的自动重复）
+    keyboard.key_released.connect(machine.on_key_release)   # 松开键 → 状态机
+    machine.state_changed.connect(pet.set_state)            # 状态变化 → 换画面
+    machine.typed.connect(pet.tap)                          # 工作中按下一个键 → 芸芸的手落下
+    machine.released.connect(pet.release)                   # 松开 → 芸芸抬手（按住不放就一直落着）
 
     # ---- 邮件：后台定时检查 → 小红点；点小红点 → 读邮件 → AI 写一句提醒 ----
     # describe 在后台线程里运行（要联网）；语言在调用时读取，切换语言后立刻生效
