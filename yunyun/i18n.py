@@ -24,6 +24,23 @@ TEXTS = {
     "menu_mail_accounts": {"zh": "邮箱账号…", "en": "Mail Accounts…", "ja": "メールアカウント…"},
     "menu_dismiss_mail": {"zh": "全部标为已看", "en": "Mark All as Seen", "ja": "すべて確認済みにする"},
     "menu_ai_settings": {"zh": "AI 设置…", "en": "AI Settings…", "ja": "AI 設定…"},
+    "menu_create_shortcut": {"zh": "创建桌面快捷方式", "en": "Create Desktop Shortcut", "ja": "デスクトップにショートカットを作成"},
+    "menu_open_logs": {"zh": "打开日志文件夹", "en": "Open Log Folder", "ja": "ログフォルダーを開く"},
+    "shortcut_description": {
+        "zh": "芸芸：你的桌面邮件小助手",
+        "en": "Yunyun: your desktop mail buddy",
+        "ja": "芸芸：デスクトップのメール相棒",
+    },
+    "shortcut_created": {
+        "zh": "桌面上多了一个芸芸的图标，以后双击它就能叫我出来啦～",
+        "en": "There's a Yunyun icon on your desktop now. Double-click it to call me anytime~",
+        "ja": "デスクトップに芸芸のアイコンができたよ。ダブルクリックでいつでも呼んでね～",
+    },
+    "shortcut_failed": {
+        "zh": "快捷方式没建成……（{}）",
+        "en": "Couldn't create the shortcut… ({})",
+        "ja": "ショートカットを作れなかった…（{}）",
+    },
     "menu_pause":    {"zh": "暂停", "en": "Pause", "ja": "一時停止"},
     "menu_resume":   {"zh": "开始", "en": "Resume", "ja": "再開"},
     "menu_quit":     {"zh": "退出", "en": "Quit", "ja": "終了"},

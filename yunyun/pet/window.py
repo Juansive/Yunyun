@@ -6,11 +6,14 @@
 - 右键菜单：设置（语言、始终在上）/ 暂停·开始 / 退出（要快速双击才退出），文字跟随所选语言；
 - 没开"始终在上"时，被别的窗口挡住会自动暂停，露出来半秒后自动恢复。
 """
-from PySide6.QtCore import QPointF, QSettings, QSize, Qt, QTimer, Signal
-from PySide6.QtGui import QActionGroup, QGuiApplication, QPainter
+import logging
+import threading
+
+from PySide6.QtCore import QPointF, QSettings, QSize, Qt, QTimer, QUrl, Signal
+from PySide6.QtGui import QActionGroup, QDesktopServices, QGuiApplication, QPainter
 from PySide6.QtWidgets import QApplication, QWidget
 
-from yunyun import i18n
+from yunyun import i18n, logs, shortcut
 from yunyun.pet import winapi
 from yunyun.pet.ai_dialog import AISettingsDialog
 from yunyun.pet.badge import Badge
@@ -21,6 +24,8 @@ from yunyun.pet.menu import KeepOpenMenu
 from yunyun.pet.state import PetState
 
 _ALWAYS_ON_TOP_KEY = "window/always_on_top"
+
+log = logging.getLogger(__name__)
 
 
 class PetWindow(QWidget):
@@ -38,6 +43,7 @@ class PetWindow(QWidget):
     mail_accounts_changed = Signal()  # 用户添加 / 删除了邮箱账号
     mail_badge_clicked = Signal()     # 用户左键点了小红点：要处理邮件
     dismiss_mail_requested = Signal() # 用户拖走了小红点 / 点了"全部标为已看"：这批邮件不处理
+    _shortcut_done = Signal(object)   # 后台线程 → 主线程：创建快捷方式的结果（None = 成功，否则是错误信息）
 
     def __init__(self, sprites):
         super().__init__()
@@ -118,6 +124,7 @@ class PetWindow(QWidget):
         self._tap_timer.setInterval(self.TAP_MS)
         self._tap_timer.timeout.connect(self._hands_up)
 
+        self._shortcut_done.connect(self._on_shortcut_done)
         self.set_state(PetState.IDLE)
 
     def _window_flags(self):
@@ -489,6 +496,11 @@ class PetWindow(QWidget):
         settings_menu.addAction(tr("menu_mail_accounts"), self.open_mail_accounts)
         settings_menu.addAction(tr("menu_ai_settings"), self.open_ai_settings)
 
+        # 设置 → 创建桌面快捷方式 / 打开日志文件夹
+        settings_menu.addSeparator()
+        settings_menu.addAction(tr("menu_create_shortcut"), self.create_desktop_shortcut)
+        settings_menu.addAction(tr("menu_open_logs"), self.open_log_folder)
+
         dismiss = menu.addAction(tr("menu_dismiss_mail"), self._dismiss_mail)
         dismiss.setEnabled(self._mail_count > 0)  # 没有待处理邮件时变灰
         menu.addAction(tr("menu_resume") if self._user_paused else tr("menu_pause"), self._toggle_pause)
@@ -512,6 +524,36 @@ class PetWindow(QWidget):
         # 关闭后丢掉，下次重新创建：这样切换语言后再打开，窗口文字就是新语言
         self._mail_dialog.deleteLater()
         self._mail_dialog = None
+
+    def create_desktop_shortcut(self):
+        """在桌面创建快捷方式。要调用 PowerShell（约 1 秒），放到后台线程，菜单不卡。"""
+        icon = self._sprites.tray
+        description = i18n.tr("shortcut_description")
+
+        def worker():
+            try:
+                shortcut.create_desktop_shortcut(icon, description)
+                error = None
+            except Exception as e:  # 包括 ShortcutError、超时、没有 PowerShell 等
+                log.warning("创建桌面快捷方式失败：%s", e)
+                error = str(e)
+            try:
+                self._shortcut_done.emit(error)
+            except RuntimeError:
+                pass  # 程序正在退出
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_shortcut_done(self, error):
+        if error is None:
+            self.say(i18n.tr("shortcut_created"))
+        else:
+            self.say(i18n.tr("shortcut_failed", error[:60]))
+
+    def open_log_folder(self):
+        folder = logs.log_dir()
+        folder.mkdir(parents=True, exist_ok=True)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))  # 用资源管理器打开
 
     def open_ai_settings(self):
         """打开 AI 设置窗口；已经打开了就提到前面。"""
