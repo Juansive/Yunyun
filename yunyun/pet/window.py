@@ -10,7 +10,7 @@
 import logging
 import threading
 
-from PySide6.QtCore import QPoint, QPointF, QRect, QSettings, QSize, Qt, QTimer, QUrl, Signal
+from PySide6.QtCore import QElapsedTimer, QPoint, QPointF, QRect, QSettings, QSize, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QGuiApplication, QPainter
 from PySide6.QtWidgets import QApplication, QWidget
 
@@ -23,6 +23,7 @@ from yunyun.pet.card_deck import CardDeck, MailCard
 from yunyun.pet.menu import KeepOpenMenu
 from yunyun.pet.settings_window import SettingsWindow
 from yunyun.pet.state import PetState
+from yunyun.pet.sway import Sway
 
 _ALWAYS_ON_TOP_KEY = "window/always_on_top"
 _POSITION_KEY = "window/position"
@@ -41,6 +42,7 @@ class PetWindow(QWidget):
     RESUME_DELAY_MS = 500   # 露出来后，先定格多久再恢复（毫秒）
     SHORT_SAY_MS = 2000     # 简短提示（比如"现在没有新邮件"）显示多久（毫秒）
     SAVE_POS_DELAY_MS = 500 # 拖动停下多久后保存位置（毫秒）
+    SWAY_TICK_MS = 16       # 被拎着摆动时多久算一帧（约每秒 60 帧，只在拎着的时候运行）
 
     clicked = Signal()            # 芸芸被单击（不是拖动）
     language_changed = Signal()   # 用户切换了语言（托盘、设置窗口要更新文字）
@@ -139,6 +141,13 @@ class PetWindow(QWidget):
         self._tap_timer.setSingleShot(True)
         self._tap_timer.setInterval(self.TAP_MS)
         self._tap_timer.timeout.connect(self._hands_up)
+
+        # 被拎着时左右摆动（像拎着小猫走）：角度由 Sway 的小物理模型算，这里只负责定时和重绘
+        self._sway = Sway()
+        self._sway_clock = QElapsedTimer()   # 量两帧之间实际隔了多久（定时器不是绝对准时的）
+        self._sway_timer = QTimer(self)
+        self._sway_timer.setInterval(self.SWAY_TICK_MS)
+        self._sway_timer.timeout.connect(self._sway_tick)
 
         self._task_done.connect(self._on_task_done)
         self.set_state(PetState.IDLE)
@@ -489,7 +498,15 @@ class PetWindow(QWidget):
         size = pixmap.deviceIndependentSize()  # 换算回逻辑像素的大小
         x = (self.width() - size.width()) / 2   # 居中
         y = (self.height() - size.height()) / 2
-        QPainter(self).drawPixmap(QPointF(x, y), pixmap)
+        painter = QPainter(self)
+        if self._lifted and self._sway.angle:
+            # 绕"后颈"（头顶正中）转一个角度：先把原点挪到支点，转，再挪回来
+            painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)   # 转动后边缘不出锯齿
+            pivot = QPointF(self.width() / 2, self.MARGIN)
+            painter.translate(pivot)
+            painter.rotate(self._sway.angle)
+            painter.translate(-pivot)
+        painter.drawPixmap(QPointF(x, y), pixmap)
 
     def _scaled(self, pixmap):
         """把原图缩放到窗口大小。
@@ -558,6 +575,9 @@ class PetWindow(QWidget):
             self._show(self._sprites.lifted[0])   # 暂停中：换成拎起来的画面，但不播放动画
         else:
             self._play_loop(self._sprites.lifted)
+        self._sway.reset(self.x())
+        self._sway_clock.start()
+        self._sway_timer.start()
 
     def _end_drag(self):
         """放下：回到当前的状态（拖动期间状态可能变过，比如来了新邮件）。"""
@@ -565,12 +585,28 @@ class PetWindow(QWidget):
         if not self._lifted:
             return
         self._lifted = False
+        self._sway_timer.stop()
+        self._sway.reset()                         # 放下就站直
         self._loop_timer.stop()
         if self._frozen:
             self._show(self._frame_before_lift)    # 暂停中：回到原来定格的那一帧
         else:
             self.set_state(self._state)
         self._frame_before_lift = None
+        self.update()
+
+    def _sway_tick(self):
+        """拎着的时候每一帧调用：按拖动的速度算出摆动的角度，角度变了才重绘。"""
+        if not self._left_button_down():
+            self._end_drag()   # "松开"的消息丢了（比如拖到一半切换了窗口）：当作已经放下
+            return
+        before = self._sway.angle
+        self._sway.update(self.x(), self._sway_clock.restart() / 1000)  # restart() 返回经过的毫秒数
+        if abs(self._sway.angle - before) > 0.01:
+            self.update()
+
+    def _left_button_down(self):
+        return bool(QGuiApplication.mouseButtons() & Qt.MouseButton.LeftButton)
 
     # ---------- 右键菜单 ----------
 
