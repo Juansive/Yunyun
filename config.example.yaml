@@ -1,7 +1,7 @@
 # 芸芸的配置示例（会提交到 Git）：说明 config.yaml 长什么样。
 #
 # 真正的 config.yaml 由芸芸自动生成和维护，不需要手动编辑：
-#   右键芸芸 → 设置 → 邮箱账号… / AI 设置…
+#   右键芸芸 → 设置… → 邮箱 / AI
 # config.yaml 不会提交到 Git（已写进 .gitignore）。
 #
 # 注意：授权码、API Key 不在这里，保存在 Windows 凭据管理器中

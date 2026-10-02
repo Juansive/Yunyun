@@ -1,10 +1,9 @@
-"""AI 设置窗口：选择大模型服务商、填写 API Key，测试通过才保存。不需要打开终端。"""
+"""设置窗口的"AI"页：选择大模型服务商、填写 API Key，测试通过才保存。不需要打开终端。"""
 import threading
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
-    QComboBox, QDialog, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout,
+    QComboBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget,
 )
 
 from yunyun import i18n
@@ -21,15 +20,13 @@ def test_connection(settings):
          [{"role": "user", "content": "你好，请只回复 OK"}], extra=info.extra, max_tokens=10, timeout=20)
 
 
-class AISettingsDialog(QDialog):
+class AISettingsPage(QWidget):
     settings_saved = Signal()
     _test_finished = Signal(object, object)  # (设置, 错误或 None)：后台线程 → 主线程
 
     def __init__(self, parent=None):
         super().__init__(parent)
         tr = i18n.tr
-        self.setWindowTitle(tr("ai_dialog_title"))
-        self.setMinimumWidth(480)
         self._test_finished.connect(self._on_test_finished)
 
         layout = QVBoxLayout(self)
@@ -63,15 +60,12 @@ class AISettingsDialog(QDialog):
         layout.addWidget(self._status)
 
         self._save_button = QPushButton(tr("mail_test_and_save"))
-        self._save_button.setDefault(True)
         self._save_button.clicked.connect(self._test_and_save)
-        close_button = QPushButton(tr("mail_close"))
-        close_button.clicked.connect(self.close)
         row = QHBoxLayout()
         row.addStretch()
         row.addWidget(self._save_button)
-        row.addWidget(close_button)
         layout.addLayout(row)
+        layout.addStretch()  # 内容靠上，多余的空间留在下面
 
         # 预先填好上次的选择
         provider, model = ai_settings.saved_choice()
@@ -80,14 +74,6 @@ class AISettingsDialog(QDialog):
         self._key.setText(ai_settings.get_api_key(provider) or "")
         self._provider.currentIndexChanged.connect(self._on_provider_changed)
         self._update_hint()
-
-    def show_centered(self):
-        self.adjustSize()
-        area = QGuiApplication.primaryScreen().availableGeometry()
-        self.move(area.center() - self.rect().center())
-        self.show()
-        self.raise_()
-        self.activateWindow()
 
     def _on_provider_changed(self):
         provider = self._provider.currentData()

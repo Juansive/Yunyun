@@ -171,9 +171,9 @@ def test_settings_keep_mail_accounts(fake_keyring):
 
 # ---------- AI 设置窗口 ----------
 
-def test_ai_dialog_saves_only_after_successful_test(qapp, fake_keyring, monkeypatch):
+def test_ai_page_saves_only_after_successful_test(qapp, fake_keyring, monkeypatch):
     import time
-    from yunyun.pet import ai_dialog
+    from yunyun.pet import ai_page
     i18n._current = "zh"
     results = iter([AIError("x", kind="auth", detail="invalid key"), None])
 
@@ -182,9 +182,9 @@ def test_ai_dialog_saves_only_after_successful_test(qapp, fake_keyring, monkeypa
         error = next(results)
         if error:
             raise error
-    monkeypatch.setattr(ai_dialog, "test_connection", fake_test)
+    monkeypatch.setattr(ai_page, "test_connection", fake_test)
 
-    d = ai_dialog.AISettingsDialog()
+    d = ai_page.AISettingsPage()
     assert d._model.text() == "glm-4.7-flash"                # 默认推荐智谱
     d._key.setText("bad-key")
     d._save_button.click()

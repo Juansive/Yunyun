@@ -1,4 +1,4 @@
-"""首次引导：添加邮箱后接着设置 AI（只引导一次）。"""
+"""首次引导：在设置窗口里添加邮箱后，自动翻到 AI 页（只引导一次）。"""
 import time
 
 import pytest
@@ -29,33 +29,34 @@ def pet(qapp, tmp_path, monkeypatch, fake_store):
     return p
 
 
-def add_account_then_close(qapp, pet, added=True):
+def add_account(qapp, pet, added=True):
     pet.open_mail_accounts()
+    assert pet.settings_window.current_page == "mail"
     if added:
-        pet._mail_dialog.account_added.emit()
-    pet._mail_dialog.close()
-    wait(qapp, 0.5)
+        pet.settings_window.mail_page.account_added.emit()
+    wait(qapp, 0.9)
 
 
 def test_offers_ai_once_after_first_account(qapp, pet, monkeypatch):
     monkeypatch.setattr(ai_settings, "load_settings", lambda: None)
-    add_account_then_close(qapp, pet)
-    assert pet._ai_dialog is not None and pet._ai_dialog.isVisible()   # 接着打开了 AI 设置
+    add_account(qapp, pet)
+    assert pet.settings_window.current_page == "ai"   # 同一个窗口里翻到了 AI 页
     assert pet.said == [i18n.tr("onboarding_ai")]
 
-    pet._ai_dialog.close()                         # 用户不想设置，直接关掉
+    pet.settings_window.close()                    # 用户不想设置，直接关掉
     wait(qapp, 0.1)
-    add_account_then_close(qapp, pet)              # 以后再添加邮箱：不再打扰
-    assert pet._ai_dialog is None and len(pet.said) == 1
+    assert pet.settings_window is None
+    add_account(qapp, pet)                         # 以后再添加邮箱：不再打扰
+    assert pet.settings_window.current_page == "mail" and len(pet.said) == 1
 
 
 def test_no_offer_when_ai_already_set(qapp, pet, monkeypatch):
     monkeypatch.setattr(ai_settings, "load_settings", lambda: AISettings("zhipu", "glm-4.7-flash", "k"))
-    add_account_then_close(qapp, pet)
-    assert pet._ai_dialog is None and pet.said == []
+    add_account(qapp, pet)
+    assert pet.settings_window.current_page == "mail" and pet.said == []
 
 
 def test_no_offer_when_nothing_added(qapp, pet, monkeypatch):
     monkeypatch.setattr(ai_settings, "load_settings", lambda: None)
-    add_account_then_close(qapp, pet, added=False)  # 只是打开看看 / 删除了邮箱
-    assert pet._ai_dialog is None and pet.said == []
+    add_account(qapp, pet, added=False)            # 只是打开看看 / 删除了邮箱
+    assert pet.settings_window.current_page == "mail" and pet.said == []

@@ -1,4 +1,4 @@
-"""邮箱账号增删，以及"邮箱账号"窗口的完整流程测试。"""
+"""邮箱账号增删，以及设置窗口"邮箱"页的完整流程测试。"""
 import time
 
 from PySide6.QtWidgets import QMessageBox
@@ -6,7 +6,7 @@ from PySide6.QtWidgets import QMessageBox
 from yunyun import config as cfg
 from yunyun.mail import accounts
 from yunyun.mail.imap_client import MailAccount, MailError
-from yunyun.pet import mail_dialog
+from yunyun.pet import mail_page
 
 QQ = MailAccount(name="QQ邮箱", provider="qq", address="me@qq.com")
 
@@ -51,8 +51,8 @@ def make_dialog(qapp, monkeypatch, login_error=None):
         time.sleep(0.05)  # 模拟网络延迟
         if login_error:
             raise login_error
-    monkeypatch.setattr(mail_dialog, "check_login", fake_check_login)
-    return mail_dialog.MailAccountsDialog()
+    monkeypatch.setattr(mail_page, "check_login", fake_check_login)
+    return mail_page.MailAccountsPage()
 
 
 def test_dialog_adds_account_after_successful_login(qapp, fake_store, monkeypatch):

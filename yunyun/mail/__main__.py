@@ -22,7 +22,7 @@ def main():
         print(e)
         return 1
     if not accounts:
-        print("还没有添加邮箱：请启动芸芸，在右键菜单 → 设置 → 邮箱账号 中添加。")
+        print("还没有添加邮箱：请启动芸芸，在右键菜单 → 设置… → 邮箱 中添加。")
         return 1
 
     for account in accounts:

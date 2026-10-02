@@ -3,25 +3,25 @@
 窗口只负责"显示"和"鼠标交互"：
 - 显示哪张图，由 set_state()（切换状态）和 tap()（敲一下键盘）决定；
 - 被单击时发出 clicked 信号，至于单击要干什么，由外部（main.py）决定；
-- 右键菜单：设置（语言、始终在上）/ 暂停·开始 / 退出（要快速双击才退出），文字跟随所选语言；
+- 右键菜单：设置… / 全部标为已看 / 暂停·开始 / 退出（要快速双击才退出），文字跟随所选语言；
+  所有设置都在设置窗口（pet/settings_window.py）里；
 - 没开"始终在上"时，被别的窗口挡住会自动暂停，露出来半秒后自动恢复。
 """
 import logging
 import threading
 
 from PySide6.QtCore import QPoint, QPointF, QRect, QSettings, QSize, Qt, QTimer, QUrl, Signal
-from PySide6.QtGui import QActionGroup, QDesktopServices, QGuiApplication, QPainter
+from PySide6.QtGui import QDesktopServices, QGuiApplication, QPainter
 from PySide6.QtWidgets import QApplication, QWidget
 
 from yunyun import i18n, logs, shortcut
 from yunyun.ai import settings as ai_settings
 from yunyun.pet import winapi
-from yunyun.pet.ai_dialog import AISettingsDialog
 from yunyun.pet.badge import Badge
 from yunyun.pet.bubble import BubbleStack
 from yunyun.pet.card_deck import CardDeck
-from yunyun.pet.mail_dialog import MailAccountsDialog
 from yunyun.pet.menu import KeepOpenMenu
+from yunyun.pet.settings_window import SettingsWindow
 from yunyun.pet.state import PetState
 
 _ALWAYS_ON_TOP_KEY = "window/always_on_top"
@@ -43,7 +43,8 @@ class PetWindow(QWidget):
     SAVE_POS_DELAY_MS = 500 # 拖动停下多久后保存位置（毫秒）
 
     clicked = Signal()            # 芸芸被单击（不是拖动）
-    language_changed = Signal()   # 用户在菜单里切换了语言（托盘要更新提示文字）
+    language_changed = Signal()   # 用户切换了语言（托盘、设置窗口要更新文字）
+    background_task_finished = Signal()  # 后台任务（创建快捷方式、开机启动）做完了：设置窗口据此刷新勾选状态
     mail_accounts_changed = Signal()  # 用户添加 / 删除了邮箱账号
     mail_badge_clicked = Signal()     # 用户左键点了小红点：要处理邮件
     dismiss_mail_requested = Signal() # 用户拖走了小红点 / 点了"全部标为已看"：这批邮件不处理
@@ -73,9 +74,7 @@ class PetWindow(QWidget):
         self.setCursor(Qt.CursorShape.OpenHandCursor)  # 鼠标悬停时显示"张开的手"，提示可以拖
 
         self._bubbles = BubbleStack(self)
-        self._mail_dialog = None  # 邮箱账号窗口（用到时才创建）
-        self._account_added_this_time = False  # 这次打开邮箱窗口期间，有没有成功添加邮箱
-        self._ai_dialog = None    # AI 设置窗口（用到时才创建）
+        self._settings_window = None  # 设置窗口（用到时才创建，关掉就销毁）
 
         # ---- 小红点 ----
         self._mail_count = 0
@@ -513,41 +512,8 @@ class PetWindow(QWidget):
         """每次右键都重新创建菜单，这样菜单的语言、"暂停/开始"、勾选状态总是最新的。"""
         tr = i18n.tr
         menu = KeepOpenMenu(self)
-        settings_menu = menu.addMenu(tr("menu_settings"))
-
-        # 设置 → 语言 → 中文 / English / 日本語（单选）
-        # 语言选项始终用各自的母语显示，切到看不懂的语言时也能找回来
-        language_menu = settings_menu.addMenu(tr("menu_language"))
-        group = QActionGroup(menu)  # 放进同一个组的可勾选动作，同时只能勾一个
-        for code, name in i18n.LANGUAGES.items():
-            action = language_menu.addAction(name)
-            action.setCheckable(True)
-            action.setChecked(code == i18n.current_language())
-            action.setActionGroup(group)
-            # 注意 c=code：用默认参数把"这一轮的 code"固定下来。
-            # 如果直接写 lambda: self._change_language(code)，三个菜单项都会用到最后一个 code。
-            action.triggered.connect(lambda checked=False, c=code: self._change_language(c))
-
-        # 设置 → 始终在上（可勾选：勾上就是"按下去"的状态）
-        on_top = settings_menu.addAction(tr("menu_always_on_top"))
-        on_top.setCheckable(True)
-        on_top.setChecked(self._always_on_top)
-        on_top.triggered.connect(self.set_always_on_top)  # triggered 会带上勾选后的 True/False
-
-        # 设置 → 邮箱账号…（"…"表示点了会打开一个窗口，这是桌面软件的惯例）
-        settings_menu.addSeparator()
-        settings_menu.addAction(tr("menu_mail_accounts"), self.open_mail_accounts)
-        settings_menu.addAction(tr("menu_ai_settings"), self.open_ai_settings)
-
-        # 设置 → 开机时启动（可勾选）/ 创建桌面快捷方式 / 打开日志文件夹
-        settings_menu.addSeparator()
-        autostart = settings_menu.addAction(tr("menu_autostart"))
-        autostart.setCheckable(True)
-        autostart.setChecked(shortcut.is_autostart_enabled())
-        autostart.triggered.connect(self.set_autostart)
-        settings_menu.addAction(tr("menu_create_shortcut"), self.create_desktop_shortcut)
-        settings_menu.addAction(tr("menu_open_logs"), self.open_log_folder)
-
+        # "设置…"：所有设置都在设置窗口里（"…"表示点了会打开一个窗口，这是桌面软件的惯例）
+        menu.addAction(tr("menu_settings"), self.open_settings)
         dismiss = menu.addAction(tr("menu_dismiss_mail"), self._dismiss_mail)
         dismiss.setEnabled(self._mail_count > 0)  # 没有待处理邮件时变灰
         menu.addAction(tr("menu_resume") if self._user_paused else tr("menu_pause"), self._toggle_pause)
@@ -558,29 +524,40 @@ class PetWindow(QWidget):
         menu.keep_open_action = exit_action
         return menu
 
-    def open_mail_accounts(self):
-        """打开邮箱账号窗口；已经打开了就把它提到前面，不重复创建。"""
-        if self._mail_dialog is None:
+    def open_settings(self, page="general"):
+        """打开设置窗口并翻到某一页；已经打开了就翻页并提到前面。"""
+        if self._settings_window is None:
             # parent 设为芸芸：窗口和芸芸同一层（芸芸置顶时它也在最上面）
-            self._mail_dialog = MailAccountsDialog(self)
-            self._mail_dialog.accounts_changed.connect(self.mail_accounts_changed)
-            self._mail_dialog.account_added.connect(self._on_account_added)
-            self._mail_dialog.finished.connect(self._on_mail_dialog_closed)
-            self._account_added_this_time = False
-        self._mail_dialog.show_centered()
+            self._settings_window = SettingsWindow(self)
+            self._settings_window.accounts_changed.connect(self.mail_accounts_changed)
+            self._settings_window.account_added.connect(self._on_account_added)
+            self._settings_window.finished.connect(self._on_settings_closed)
+            self._settings_window.show_page(page)
+            self._settings_window.show_centered()
+        else:
+            self._settings_window.show_page(page)
+            self._settings_window.raise_()
+            self._settings_window.activateWindow()
+
+    def open_mail_accounts(self):
+        self.open_settings("mail")
+
+    def open_ai_settings(self):
+        self.open_settings("ai")
+
+    @property
+    def settings_window(self):
+        return self._settings_window
+
+    def _on_settings_closed(self):
+        self._settings_window.deleteLater()
+        self._settings_window = None
 
     def _on_account_added(self):
-        self._account_added_this_time = True
-
-    def _on_mail_dialog_closed(self):
-        # 关闭后丢掉，下次重新创建：这样切换语言后再打开，窗口文字就是新语言
-        self._mail_dialog.deleteLater()
-        self._mail_dialog = None
-        if self._account_added_this_time:
-            QTimer.singleShot(300, self._maybe_offer_ai_setup)  # 等邮箱窗口完全关掉再接着引导
+        QTimer.singleShot(600, self._maybe_offer_ai_setup)  # 先让用户看清"添加成功"，再翻页
 
     def _maybe_offer_ai_setup(self):
-        """首次引导：刚添加了邮箱、还没设置 AI、以前也没引导过 → 接着打开 AI 设置（只引导这一次）。"""
+        """首次引导：刚添加了邮箱、还没设置 AI、以前也没引导过 → 翻到 AI 页（只引导这一次）。"""
         settings = QSettings()
         if settings.value(_AI_OFFERED_KEY, False, type=bool) or ai_settings.load_settings() is not None:
             return
@@ -618,24 +595,16 @@ class PetWindow(QWidget):
 
     def _on_task_done(self, ok_text, fail_key, error):
         self.say(ok_text if error is None else i18n.tr(fail_key, error[:60]))
+        self.background_task_finished.emit()
 
     def open_log_folder(self):
         folder = logs.log_dir()
         folder.mkdir(parents=True, exist_ok=True)
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))  # 用资源管理器打开
 
-    def open_ai_settings(self):
-        """打开 AI 设置窗口；已经打开了就提到前面。"""
-        if self._ai_dialog is None:
-            self._ai_dialog = AISettingsDialog(self)
-            self._ai_dialog.finished.connect(self._on_ai_dialog_closed)
-        self._ai_dialog.show_centered()
-
-    def _on_ai_dialog_closed(self):
-        self._ai_dialog.deleteLater()
-        self._ai_dialog = None
-
-    def _change_language(self, code):
+    def change_language(self, code):
+        if code == i18n.current_language():
+            return
         i18n.set_language(code)
         self.language_changed.emit()
         self.say(i18n.tr("language_changed"))

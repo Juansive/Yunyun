@@ -1,4 +1,4 @@
-"""邮箱账号窗口：在芸芸里直接添加 / 删除邮箱，不需要打开终端。
+"""设置窗口的"邮箱"页：在芸芸里直接添加 / 删除邮箱，不需要打开终端。
 
 添加流程：填写 → 点"测试并保存" → 后台线程测试登录（界面不卡）→ 成功才保存。
 授权码保存在 Windows 凭据管理器，以后不用再输入。
@@ -6,10 +6,9 @@
 import threading
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
-    QComboBox, QDialog, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
-    QListWidget, QListWidgetItem, QMessageBox, QPushButton, QVBoxLayout,
+    QComboBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
+    QListWidget, QListWidgetItem, QMessageBox, QPushButton, QVBoxLayout, QWidget,
 )
 
 from yunyun import i18n
@@ -17,7 +16,7 @@ from yunyun.mail import accounts
 from yunyun.mail.imap_client import PROVIDERS, MailAccount, MailError, check_login
 
 
-class MailAccountsDialog(QDialog):
+class MailAccountsPage(QWidget):
     accounts_changed = Signal()  # 添加或删除了账号（邮件服务据此重新检查）
     account_added = Signal()     # 成功添加了一个账号（首次引导据此决定要不要接着设置 AI）
 
@@ -28,8 +27,6 @@ class MailAccountsDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         tr = i18n.tr
-        self.setWindowTitle(tr("mail_dialog_title"))
-        self.setMinimumWidth(460)
         self._login_finished.connect(self._on_login_finished)
 
         layout = QVBoxLayout(self)
@@ -80,27 +77,15 @@ class MailAccountsDialog(QDialog):
         layout.addWidget(self._status)
 
         self._save_button = QPushButton(tr("mail_test_and_save"))
-        self._save_button.setDefault(True)
         self._save_button.clicked.connect(self._test_and_save)
-        close_button = QPushButton(tr("mail_close"))
-        close_button.clicked.connect(self.close)
         row = QHBoxLayout()
         row.addStretch()
         row.addWidget(self._save_button)
-        row.addWidget(close_button)
         layout.addLayout(row)
+        layout.addStretch()  # 内容靠上，多余的空间留在下面
 
         self._update_hint()
         self._refresh_list()
-
-    def show_centered(self):
-        """显示在屏幕正中间，并放到最前面。"""
-        self.adjustSize()
-        area = QGuiApplication.primaryScreen().availableGeometry()
-        self.move(area.center() - self.rect().center())
-        self.show()
-        self.raise_()
-        self.activateWindow()
 
     # ---------- 列表 ----------
 
@@ -126,7 +111,7 @@ class MailAccountsDialog(QDialog):
         address = item.data(Qt.ItemDataRole.UserRole) if item else None
         if not address:
             return
-        answer = QMessageBox.question(self, self.windowTitle(), i18n.tr("mail_confirm_remove", address))
+        answer = QMessageBox.question(self, self.window().windowTitle(), i18n.tr("mail_confirm_remove", address))
         if answer != QMessageBox.StandardButton.Yes:
             return
         accounts.remove_account(address)

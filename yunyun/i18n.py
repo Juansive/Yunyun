@@ -18,13 +18,12 @@ TEXTS = {
     "app_name": {"zh": "芸芸", "en": "Yunyun", "ja": "芸芸（ユンユン）"},
 
     # ---- 右键菜单 ----
-    "menu_settings": {"zh": "设置", "en": "Settings", "ja": "設定"},
+    "menu_settings": {"zh": "设置…", "en": "Settings…", "ja": "設定…"},
     "menu_language": {"zh": "语言", "en": "Language", "ja": "言語"},
     "menu_always_on_top": {"zh": "始终在上", "en": "Always on Top", "ja": "常に最前面"},
-    "menu_mail_accounts": {"zh": "邮箱账号…", "en": "Mail Accounts…", "ja": "メールアカウント…"},
     "menu_dismiss_mail": {"zh": "全部标为已看", "en": "Mark All as Seen", "ja": "すべて確認済みにする"},
-    "menu_ai_settings": {"zh": "AI 设置…", "en": "AI Settings…", "ja": "AI 設定…"},
-    "menu_create_shortcut": {"zh": "创建桌面快捷方式", "en": "Create Desktop Shortcut", "ja": "デスクトップにショートカットを作成"},
+    "setting_shortcut": {"zh": "桌面快捷方式", "en": "Desktop shortcut", "ja": "デスクトップのショートカット"},
+    "button_create": {"zh": "创建", "en": "Create", "ja": "作成"},
     "menu_open_logs": {"zh": "打开日志文件夹", "en": "Open Log Folder", "ja": "ログフォルダーを開く"},
     "menu_autostart": {"zh": "开机时启动", "en": "Start with Windows", "ja": "Windows 起動時に開始"},
     "autostart_on": {
@@ -78,8 +77,40 @@ TEXTS = {
         "ja": "こんにちは、芸芸だよ！メールアドレスを教えてくれたら、新着メールをすぐ知らせるね～",
     },
 
-    # ---- 邮箱账号窗口 ----
-    "mail_dialog_title": {"zh": "芸芸 · 邮箱账号", "en": "Yunyun · Mail Accounts", "ja": "芸芸 · メールアカウント"},
+    # ---- 设置窗口 ----
+    "settings_title": {"zh": "芸芸 · 设置", "en": "Yunyun · Settings", "ja": "芸芸 · 設定"},
+    "page_general": {"zh": "通用", "en": "General", "ja": "一般"},
+    "page_mail": {"zh": "邮箱", "en": "Mail", "ja": "メール"},
+    "page_ai": {"zh": "AI", "en": "AI", "ja": "AI"},
+    "page_about": {"zh": "关于", "en": "About", "ja": "情報"},
+    "about_version": {"zh": "版本 {}", "en": "Version {}", "ja": "バージョン {}"},
+    "about_privacy_title": {"zh": "隐私", "en": "Privacy", "ja": "プライバシー"},
+    "about_privacy_text": {
+        "zh": "· 芸芸不会改动你的邮箱：看过的邮件在邮箱里仍然是未读。\n"
+              "· 只有你点了小红点，才会把邮件的发件人、标题、附件名和正文开头（最多 1500 字）发给你选择的 AI 服务商；拖走小红点清掉的邮件不会发送。\n"
+              "· 芸芸只检测你有没有在打字，从不记录按了哪个键。\n"
+              "· 日志里不写邮件内容、授权码和 API Key，邮箱地址会打码。",
+        "en": "· Yunyun never changes your mailbox: emails it reads stay unread.\n"
+              "· Only after you click the badge are the sender, subject, attachment names and the beginning of the body (up to 1,500 characters) sent to the AI provider you chose. Emails you dismiss are never sent.\n"
+              "· Yunyun only notices whether you're typing — it never records which keys you press.\n"
+              "· Logs never contain email content, authorization codes or API keys, and email addresses are masked.",
+        "ja": "· 芸芸はメールボックスを変更しません。読んだメールも未読のままです。\n"
+              "· バッジをクリックしたときだけ、差出人・件名・添付ファイル名・本文の冒頭（最大 1,500 文字）が選択した AI プロバイダーに送られます。消したメールは送られません。\n"
+              "· 芸芸は入力しているかどうかだけを検知し、どのキーを押したかは記録しません。\n"
+              "· ログにはメール本文・認証コード・API キーは書かれず、メールアドレスは伏せ字になります。",
+    },
+    "about_data_title": {"zh": "数据存放在哪里", "en": "Where your data lives", "ja": "データの保存場所"},
+    "about_data_secrets": {"zh": "授权码、API Key", "en": "Auth codes, API keys", "ja": "認証コード・API キー"},
+    "about_data_secrets_where": {
+        "zh": "Windows 凭据管理器（yunyun-mail、yunyun-ai）",
+        "en": "Windows Credential Manager (yunyun-mail, yunyun-ai)",
+        "ja": "Windows 資格情報マネージャー（yunyun-mail、yunyun-ai）",
+    },
+    "about_data_config": {"zh": "邮箱地址、AI 服务商", "en": "Email addresses, AI provider", "ja": "メールアドレス・AI プロバイダー"},
+    "about_data_state": {"zh": "提醒记录、日志", "en": "Reminder records, logs", "ja": "通知の記録・ログ"},
+    "about_open_data": {"zh": "打开数据文件夹", "en": "Open Data Folder", "ja": "データフォルダーを開く"},
+
+    # ---- 设置窗口：邮箱页 ----
     "mail_accounts_label": {"zh": "已添加的邮箱", "en": "Added accounts", "ja": "追加済みのアカウント"},
     "mail_no_accounts": {"zh": "（还没有添加邮箱）", "en": "(No accounts yet)", "ja": "（まだありません）"},
     "mail_remove": {"zh": "删除所选", "en": "Remove Selected", "ja": "選択を削除"},
@@ -117,7 +148,6 @@ TEXTS = {
     },
     # 注意：按钮 / 菜单文字里的 & 会被 Qt 当成快捷键标记吃掉，所以英文不用 "Test & Save"
     "mail_test_and_save": {"zh": "测试并保存", "en": "Test and Save", "ja": "テストして保存"},
-    "mail_close": {"zh": "关闭", "en": "Close", "ja": "閉じる"},
     "mail_testing": {"zh": "正在连接邮箱，请稍候……", "en": "Connecting to your mailbox…", "ja": "メールボックスに接続中…"},
     "mail_saved": {
         "zh": "添加成功！以后芸芸会帮你留意这个邮箱。",
@@ -172,9 +202,9 @@ TEXTS = {
         "ja": "今は新しいメールはないよ～",
     },
     "mail_auth_expired": {
-        "zh": "邮箱 {} 的授权好像失效了，右键我 → 设置 → 邮箱账号，重新添加一下吧～",
-        "en": "The authorization for {} seems to have expired. Right-click me → Settings → Mail Accounts to add it again~",
-        "ja": "{} の認証が切れたみたい。右クリック → 設定 → メールアカウントからもう一度追加してね～",
+        "zh": "邮箱 {} 的授权好像失效了，右键我 → 设置… → 邮箱，重新添加一下吧～",
+        "en": "The authorization for {} seems to have expired. Right-click me → Settings… → Mail to add it again~",
+        "ja": "{} の認証が切れたみたい。右クリック → 設定… → メールからもう一度追加してね～",
     },
     # AI 用不了时的兜底提醒：发件人 + 标题
     "ai_fallback": {
@@ -183,9 +213,9 @@ TEXTS = {
         "ja": "{} から「{}」が届いたよ",
     },
     "ai_not_configured": {
-        "zh": "还没设置 AI，我先用标题告诉你～右键我 → 设置 → AI 设置，我就能更聪明啦",
-        "en": "AI isn't set up yet, so I'll just use the subject~ Right-click me → Settings → AI Settings to make me smarter!",
-        "ja": "AI がまだ設定されていないので、件名で伝えるね～右クリック → 設定 → AI 設定で賢くなれるよ",
+        "zh": "还没设置 AI，我先用标题告诉你～右键我 → 设置… → AI，我就能更聪明啦",
+        "en": "AI isn't set up yet, so I'll just use the subject~ Right-click me → Settings… → AI to make me smarter!",
+        "ja": "AI がまだ設定されていないので、件名で伝えるね～右クリック → 設定… → AI で賢くなれるよ",
     },
     "ai_failed": {
         "zh": "AI 暂时没回应，我先用标题告诉你～",
@@ -202,8 +232,7 @@ TEXTS = {
     "card_detail_line": {"zh": "{}：{}", "en": "{}: {}", "ja": "{}：{}"},   # "标题：xxx"
     "list_separator": {"zh": "、", "en": ", ", "ja": "、"},                  # 多个附件之间
 
-    # ---- AI 设置窗口 ----
-    "ai_dialog_title": {"zh": "芸芸 · AI 设置", "en": "Yunyun · AI Settings", "ja": "芸芸 · AI 設定"},
+    # ---- 设置窗口：AI 页 ----
     "ai_provider": {"zh": "服务商", "en": "Provider", "ja": "プロバイダー"},
     "ai_model": {"zh": "模型", "en": "Model", "ja": "モデル"},
     "ai_key": {"zh": "API Key", "en": "API Key", "ja": "API キー"},

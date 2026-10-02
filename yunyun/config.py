@@ -24,7 +24,7 @@ def load_config(path=None):
     if not path.exists():
         raise ConfigError(
             f"找不到配置文件 {path}\n"
-            "请先启动芸芸，在右键菜单 → 设置 → 邮箱账号 中添加邮箱。"
+            "请先启动芸芸，在右键菜单 → 设置… → 邮箱 中添加邮箱。"
         )
     with open(path, encoding="utf-8") as f:
         try:

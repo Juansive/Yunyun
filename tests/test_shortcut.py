@@ -72,7 +72,7 @@ def test_real_startup_folder_location():
     assert folder.parts[-3:] == ("Start Menu", "Programs", "Startup") and folder.exists()
 
 
-def test_menu_shows_autostart_state(qapp, tmp_path, monkeypatch):
+def test_settings_window_toggles_autostart(qapp, tmp_path, monkeypatch):
     import time
     from PySide6.QtCore import QSettings
     from yunyun import i18n
@@ -86,15 +86,13 @@ def test_menu_shows_autostart_state(qapp, tmp_path, monkeypatch):
     said = []
     monkeypatch.setattr(pet, "say", lambda text, duration_ms=4000: said.append(text))
 
-    def autostart_action():
-        settings = pet._build_menu().actions()[0].menu()
-        return next(a for a in settings.actions() if a.text() == "开机时启动")
-
-    assert not autostart_action().isChecked()
-    autostart_action().trigger()                           # 勾上
+    pet.open_settings("general")
+    checkbox = pet.settings_window.general_page._autostart
+    assert not checkbox.isChecked()
+    checkbox.setChecked(True)                              # 勾上：立即生效
     end = time.time() + 15
     while not said and time.time() < end:
         qapp.processEvents()
         time.sleep(0.02)
     assert said == [i18n.tr("autostart_on")]
-    assert autostart_action().isChecked()                  # 再打开菜单：显示已勾选
+    assert shortcut.is_autostart_enabled() and checkbox.isChecked()

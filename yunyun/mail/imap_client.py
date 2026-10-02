@@ -99,7 +99,7 @@ def _password_for(account):
     password = credentials.get_password(account.address)
     if password is None:
         raise MailError(
-            f"还没有保存 {account.address} 的授权码，请在芸芸的右键菜单 → 设置 → 邮箱账号 中重新添加。",
+            f"还没有保存 {account.address} 的授权码，请在芸芸的右键菜单 → 设置… → 邮箱 中重新添加。",
             kind="no_password",
         )
     return password

@@ -92,7 +92,7 @@ def test_wrong_password_gives_friendly_error(fake_server, monkeypatch):
 
 def test_missing_password_tells_user_where_to_fix(fake_server, monkeypatch):
     monkeypatch.setattr(imap_client.credentials, "get_password", lambda address: None)
-    with pytest.raises(MailError, match="邮箱账号"):
+    with pytest.raises(MailError, match="设置… → 邮箱"):
         fetch_unread(ACCOUNT)
 
 
