@@ -31,7 +31,8 @@ def make_service(qapp, tmp_path, monkeypatch, mailbox):
     monkeypatch.setattr(service_module, "check_unseen", fake_check)
     monkeypatch.setattr(service_module, "fetch_messages", fake_fetch)
     monkeypatch.setattr(service_module.accounts, "load_accounts", lambda: [A])
-    s = service_module.MailService(tracker=MailTracker(tmp_path / "s.json"))
+    s = service_module.MailService(tracker=MailTracker(tmp_path / "s.json"),
+                                   process_message=lambda m: f"processed-{m.uid}")
     s._load_accounts()
     events = []
     s.pending_changed.connect(lambda total, newly: events.append((total, newly)))
@@ -62,10 +63,11 @@ def test_fetch_pending_newest_first_and_mark_handled(qapp, tmp_path, monkeypatch
     poll(qapp, s)
 
     got = []
-    s.message_ready.connect(lambda address, m: (got.append(m.uid), s.mark_handled(address, m.uid)))
-    s.fetch_pending()
+    s.message_ready.connect(lambda address, m, result: (got.append((m.uid, result)), s.mark_handled(address, m.uid)))
+    assert s.fetch_pending() is True
+    assert s.fetch_pending() is False          # 正在处理中：不会重复开始
     assert wait_until(qapp, lambda: not s.fetching)
-    assert got == [11, 10]
+    assert got == [(11, "processed-11"), (10, "processed-10")]   # 每封都经过了 process_message
     assert s.pending_count == 0 and events[-1] == (0, 0)
 
 

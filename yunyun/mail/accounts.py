@@ -7,23 +7,14 @@ config.yaml 由程序自动维护，用户不需要手动编辑。
 """
 from dataclasses import asdict
 
-import yaml
-
 from yunyun import config as cfg
 from yunyun.mail import credentials
 from yunyun.mail.imap_client import accounts_from_config
 
-_HEADER = (
-    "# 芸芸的本地配置，由程序自动维护（不会提交到 Git）。\n"
-    "# 授权码不在这里，保存在 Windows 凭据管理器中。\n\n"
-)
-
 
 def load_accounts():
     """读取已添加的邮箱账号；还没有配置文件时返回空列表。"""
-    if not cfg.CONFIG_PATH.exists():
-        return []
-    return accounts_from_config(cfg.load_config(cfg.CONFIG_PATH))
+    return accounts_from_config(cfg.load_config_or_empty())
 
 
 def save_account(account, password):
@@ -44,10 +35,8 @@ def _same(a, b):
 
 
 def _write_accounts(accounts):
-    config = cfg.load_config(cfg.CONFIG_PATH) if cfg.CONFIG_PATH.exists() else {}
+    config = cfg.load_config_or_empty()
     mail = config.get("mail") or {}
     mail["accounts"] = [asdict(a) for a in accounts]  # asdict：把 dataclass 变成普通字典
     config["mail"] = mail
-    # allow_unicode：中文原样写入；sort_keys=False：保持字段顺序
-    text = yaml.safe_dump(config, allow_unicode=True, sort_keys=False)
-    cfg.CONFIG_PATH.write_text(_HEADER + text, encoding="utf-8")
+    cfg.save_config(config)  # 只改 mail 部分，其他部分（比如 ai）原样保留

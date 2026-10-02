@@ -23,6 +23,7 @@ TEXTS = {
     "menu_always_on_top": {"zh": "始终在上", "en": "Always on Top", "ja": "常に最前面"},
     "menu_mail_accounts": {"zh": "邮箱账号…", "en": "Mail Accounts…", "ja": "メールアカウント…"},
     "menu_dismiss_mail": {"zh": "全部标为已看", "en": "Mark All as Seen", "ja": "すべて確認済みにする"},
+    "menu_ai_settings": {"zh": "AI 设置…", "en": "AI Settings…", "ja": "AI 設定…"},
     "menu_pause":    {"zh": "暂停", "en": "Pause", "ja": "一時停止"},
     "menu_resume":   {"zh": "开始", "en": "Resume", "ja": "再開"},
     "menu_quit":     {"zh": "退出", "en": "Quit", "ja": "終了"},
@@ -132,12 +133,80 @@ TEXTS = {
         "en": "The authorization for {} seems to have expired. Right-click me → Settings → Mail Accounts to add it again~",
         "ja": "{} の認証が切れたみたい。右クリック → 設定 → メールアカウントからもう一度追加してね～",
     },
-    # M3 接入真正的 AI 之前，用标题拼出来的"假"提醒
-    "fake_summary": {
-        "zh": "嘿！「{}」来啦！",
-        "en": "Hey! “{}” just arrived!",
-        "ja": "ねえ！「{}」が届いたよ！",
+    # AI 用不了时的兜底提醒：发件人 + 标题
+    "ai_fallback": {
+        "zh": "{} 发来了「{}」",
+        "en": "{} sent you “{}”",
+        "ja": "{} から「{}」が届いたよ",
     },
+    "ai_not_configured": {
+        "zh": "还没设置 AI，我先用标题告诉你～右键我 → 设置 → AI 设置，我就能更聪明啦",
+        "en": "AI isn't set up yet, so I'll just use the subject~ Right-click me → Settings → AI Settings to make me smarter!",
+        "ja": "AI がまだ設定されていないので、件名で伝えるね～右クリック → 設定 → AI 設定で賢くなれるよ",
+    },
+    "ai_failed": {
+        "zh": "AI 暂时没回应，我先用标题告诉你～",
+        "en": "The AI isn't responding right now, so I'll use the subject~",
+        "ja": "AI が応答しないので、件名で伝えるね～",
+    },
+
+    # ---- AI 设置窗口 ----
+    "ai_dialog_title": {"zh": "芸芸 · AI 设置", "en": "Yunyun · AI Settings", "ja": "芸芸 · AI 設定"},
+    "ai_provider": {"zh": "服务商", "en": "Provider", "ja": "プロバイダー"},
+    "ai_model": {"zh": "模型", "en": "Model", "ja": "モデル"},
+    "ai_key": {"zh": "API Key", "en": "API Key", "ja": "API キー"},
+    "provider_zhipu": {"zh": "智谱 GLM（推荐，免费）", "en": "Zhipu GLM (recommended, free)", "ja": "Zhipu GLM（おすすめ・無料）"},
+    "provider_siliconflow": {"zh": "硅基流动", "en": "SiliconFlow", "ja": "SiliconFlow"},
+    "provider_dashscope": {"zh": "通义千问（阿里云百炼）", "en": "Qwen (Alibaba Cloud)", "ja": "Qwen（Alibaba Cloud）"},
+    "ai_hint_zhipu": {
+        "zh": "Key 怎么拿：打开 {} 注册并登录 → 右上角头像 → API Keys → 添加新的 API Key，复制到这里。",
+        "en": "How to get a key: open {} and sign in → avatar (top right) → API Keys → add a new API key, then paste it here.",
+        "ja": "キーの取得：{} で登録・ログイン → 右上のアバター → API Keys → 新しい API キーを追加して、ここに貼り付け。",
+    },
+    "ai_hint_siliconflow": {
+        "zh": "Key 怎么拿：打开 {} 注册并登录 → 左侧「API 密钥」→ 新建 API 密钥。默认的模型是免费的。",
+        "en": "How to get a key: open {} and sign in → “API Keys” on the left → create a new key. The default model is free.",
+        "ja": "キーの取得：{} で登録・ログイン → 左側の「API キー」→ 新規作成。デフォルトのモデルは無料です。",
+    },
+    "ai_hint_dashscope": {
+        "zh": "Key 怎么拿：打开 {} 登录阿里云 → API-KEY → 创建。新用户有免费额度，用完后会按量收费。",
+        "en": "How to get a key: open {} and sign in → API-KEY → create. New users get free quota; usage is billed after that.",
+        "ja": "キーの取得：{} にログイン → API-KEY → 作成。新規ユーザーは無料枠あり、超過分は従量課金です。",
+    },
+    "ai_privacy_note": {
+        "zh": "使用 AI 时，邮件的发件人、标题和正文开头（最多 1500 字）会发送给所选的服务商，用来生成提醒。API Key 只保存在这台电脑的 Windows 凭据管理器里。",
+        "en": "When AI is used, each email's sender, subject and the beginning of its body (up to 1,500 characters) are sent to the selected provider to write the reminder. The API key is stored only in Windows Credential Manager on this PC.",
+        "ja": "AI を使うと、メールの差出人・件名・本文の冒頭（最大 1,500 文字）が通知文の作成のため選択したプロバイダーに送信されます。API キーはこの PC の Windows 資格情報マネージャーにのみ保存されます。",
+    },
+    "ai_testing": {"zh": "正在测试连接……", "en": "Testing the connection…", "ja": "接続をテスト中…"},
+    "ai_saved": {
+        "zh": "设置好啦！之后芸芸会用 AI 帮你读邮件～",
+        "en": "All set! I'll use AI to read your mail from now on~",
+        "ja": "設定完了！これからは AI でメールを読むね～",
+    },
+    "ai_empty_key": {"zh": "请填写 API Key。", "en": "Please enter the API key.", "ja": "API キーを入力してください。"},
+    "ai_empty_model": {"zh": "请填写模型名。", "en": "Please enter the model name.", "ja": "モデル名を入力してください。"},
+    "ai_error_auth": {
+        "zh": "API Key 不对，或者没有使用这个模型的权限。",
+        "en": "The API key is wrong, or it can't use this model.",
+        "ja": "API キーが正しくないか、このモデルを使う権限がありません。",
+    },
+    "ai_error_rate_limit": {
+        "zh": "调用太频繁，或者免费额度用完了，稍后再试试。",
+        "en": "Too many requests, or the free quota is used up. Please try again later.",
+        "ja": "リクエストが多すぎるか、無料枠を使い切りました。しばらくしてから試してください。",
+    },
+    "ai_error_network": {
+        "zh": "连不上服务商，请检查网络。",
+        "en": "Couldn't reach the provider. Please check your network.",
+        "ja": "プロバイダーに接続できません。ネットワークを確認してください。",
+    },
+    "ai_error_bad_response": {
+        "zh": "服务商返回的内容看不懂，可以换个模型试试。",
+        "en": "The provider's reply couldn't be understood. Try another model.",
+        "ja": "プロバイダーの応答を解釈できません。別のモデルを試してください。",
+    },
+    "ai_error_other": {"zh": "出错了。", "en": "Something went wrong.", "ja": "エラーが発生しました。"},
 }
 
 _current = DEFAULT_LANGUAGE  # 模块级变量：整个程序共享"当前语言"

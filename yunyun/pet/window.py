@@ -12,6 +12,7 @@ from PySide6.QtWidgets import QApplication, QWidget
 
 from yunyun import i18n
 from yunyun.pet import winapi
+from yunyun.pet.ai_dialog import AISettingsDialog
 from yunyun.pet.badge import Badge
 from yunyun.pet.bubble import BubbleStack
 from yunyun.pet.mail_dialog import MailAccountsDialog
@@ -56,6 +57,7 @@ class PetWindow(QWidget):
 
         self._bubbles = BubbleStack(self)
         self._mail_dialog = None  # 邮箱账号窗口（用到时才创建）
+        self._ai_dialog = None    # AI 设置窗口（用到时才创建）
 
         # ---- 小红点 ----
         self._mail_count = 0
@@ -436,6 +438,7 @@ class PetWindow(QWidget):
         # 设置 → 邮箱账号…（"…"表示点了会打开一个窗口，这是桌面软件的惯例）
         settings_menu.addSeparator()
         settings_menu.addAction(tr("menu_mail_accounts"), self.open_mail_accounts)
+        settings_menu.addAction(tr("menu_ai_settings"), self.open_ai_settings)
 
         dismiss = menu.addAction(tr("menu_dismiss_mail"), self._dismiss_mail)
         dismiss.setEnabled(self._mail_count > 0)  # 没有待处理邮件时变灰
@@ -460,6 +463,17 @@ class PetWindow(QWidget):
         # 关闭后丢掉，下次重新创建：这样切换语言后再打开，窗口文字就是新语言
         self._mail_dialog.deleteLater()
         self._mail_dialog = None
+
+    def open_ai_settings(self):
+        """打开 AI 设置窗口；已经打开了就提到前面。"""
+        if self._ai_dialog is None:
+            self._ai_dialog = AISettingsDialog(self)
+            self._ai_dialog.finished.connect(self._on_ai_dialog_closed)
+        self._ai_dialog.show_centered()
+
+    def _on_ai_dialog_closed(self):
+        self._ai_dialog.deleteLater()
+        self._ai_dialog = None
 
     def _change_language(self, code):
         i18n.set_language(code)

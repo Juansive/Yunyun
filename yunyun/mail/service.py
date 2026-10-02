@@ -26,19 +26,23 @@ class MailService(QObject):
     MAX_FETCH = 20               # 一次最多处理多少封（每个邮箱）
 
     # ---- 对外信号（都在主线程发出）----
-    pending_changed = Signal(int, int)   # (待处理总数, 这次新到达的封数)
-    message_ready = Signal(str, object)  # (邮箱地址, MailMessage)：点小红点后，读到一封发一次
-    fetch_finished = Signal()            # 这一轮读取结束
-    auth_failed = Signal(str)            # 某个邮箱的授权码失效了（每个邮箱每次运行只提醒一次）
+    pending_changed = Signal(int, int)           # (待处理总数, 这次新到达的封数)
+    fetch_started = Signal()                     # 开始处理（用户点了小红点）
+    message_ready = Signal(str, object, object)  # (邮箱地址, MailMessage, 处理结果)：处理好一封发一次
+    fetch_finished = Signal()                    # 这一轮处理结束
+    auth_failed = Signal(str)                    # 某个邮箱的授权码失效了（每个邮箱每次运行只提醒一次）
 
     # ---- 内部信号：后台线程 → 主线程 ----
     _poll_done = Signal(object)
-    _fetched = Signal(str, object)
+    _fetched = Signal(str, object, object)
     _fetch_done = Signal()
 
-    def __init__(self, tracker=None, parent=None):
+    def __init__(self, tracker=None, process_message=None, parent=None):
+        """process_message(message)：可选，在后台线程里对每封邮件调用（比如交给 AI），
+        它的返回值会随 message_ready 一起送出。不给就送出 None。"""
         super().__init__(parent)
         self._tracker = tracker or MailTracker(default_state_path())
+        self._process = process_message
         self._accounts = []
         self._polling = False
         self._fetching = False
@@ -111,23 +115,34 @@ class MailService(QObject):
     # ---------- 读取待处理的邮件（用户点了小红点）----------
 
     def fetch_pending(self):
+        """读取并处理待处理的邮件（最新的在前）。真的开始处理了返回 True。"""
         if self._fetching:
-            return
+            return False
         jobs = [(a, self._tracker.pending(a.address)[: self.MAX_FETCH]) for a in self._accounts]
         jobs = [(a, uids) for a, uids in jobs if uids]
         if not jobs:
-            return
+            return False
         self._fetching = True
+        self.fetch_started.emit()
         threading.Thread(target=self._fetch_worker, args=(jobs,), daemon=True).start()
+        return True
 
     def _fetch_worker(self, jobs):
         for account, uids in jobs:
             try:
-                for message in fetch_messages(account, uids):  # 读到一封就送出一封
-                    _safe_emit(self._fetched, account.address, message)
+                for message in fetch_messages(account, uids):  # 读到一封、处理一封、送出一封
+                    _safe_emit(self._fetched, account.address, message, self._run_process(message))
             except Exception:
                 pass  # 这个邮箱读失败了：没读到的邮件仍然留在待处理里，下次点击再试
         _safe_emit(self._fetch_done)
+
+    def _run_process(self, message):
+        if self._process is None:
+            return None
+        try:
+            return self._process(message)
+        except Exception:
+            return None  # 处理出意外：这封照样送出（界面会用兜底文字），不影响后面的邮件
 
     def _on_fetch_done(self):
         self._fetching = False

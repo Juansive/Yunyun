@@ -11,7 +11,7 @@ from PySide6.QtWidgets import QApplication, QSystemTrayIcon
 
 from yunyun import i18n
 from yunyun.activity.keyboard import KeyboardMonitor
-from yunyun.ai import fake as ai
+from yunyun import ai
 from yunyun.config import ConfigError
 from yunyun.mail import accounts
 from yunyun.mail.imap_client import MailError
@@ -38,8 +38,10 @@ def main():
     machine.state_changed.connect(pet.set_state)   # 状态变化 → 换画面
     machine.typed.connect(pet.tap)                 # 工作中敲一下 → 芸芸也敲一下
 
-    # ---- 邮件：后台定时检查 → 小红点 ----
-    mail = MailService()
+    # ---- 邮件：后台定时检查 → 小红点；点小红点 → 读邮件 → AI 写一句提醒 ----
+    # describe 在后台线程里运行（要联网）；语言在调用时读取，切换语言后立刻生效
+    mail = MailService(process_message=lambda message: ai.describe(message, i18n.current_language()))
+    batch_notes = set()  # 这一轮处理里已经说过的提示（比如"还没设置 AI"），每轮只说一次
 
     def on_pending_changed(total, newly):
         pet.set_mail_count(total)
@@ -48,10 +50,17 @@ def main():
                 machine.on_mail()  # 芸芸看得见：激动几秒（不弹文字，还没经过 AI）
             pet.on_new_mail()      # 芸芸被挡住：小红点单独去任务栏时钟上方
 
-    def on_message_ready(address, message):
-        # 临时（第 3 步会换成"思考状态 + 卡片堆"）：用假的 AI 拼一句话，弹气泡
-        pet.say(ai.summarize(message)["bubble"])
+    def on_message_ready(address, message, description):
+        # 临时（第 3 步后面会换成卡片堆）：先用普通气泡显示 AI 写的提醒
+        if description is None:  # 处理时出了意外：用兜底文字
+            description = ai.Description(ai.fallback_bubble(message), "failed")
+        if description.status != "ok" and description.status not in batch_notes:
+            batch_notes.add(description.status)
+            pet.say(i18n.tr("ai_not_configured" if description.status == "not_configured" else "ai_failed"))
+        pet.say(description.bubble)
         mail.mark_handled(address, message.uid)
+
+    mail.fetch_started.connect(batch_notes.clear)
 
     def on_pet_clicked():
         # 单击芸芸：没有待处理的新邮件就说一声（还没添加邮箱时不说，免得误会）
