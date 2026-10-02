@@ -14,6 +14,18 @@
 - **不改动你的邮箱**：芸芸看过的邮件，在你的邮箱里仍然是"未读"。
 - 界面支持中文、English、日本語。
 
+## 安装
+
+需要 Windows 10/11（64 位），**不需要安装 Python**。
+
+1. 下载 `Yunyun-<版本>-windows.zip`，解压到你喜欢的位置（比如 `D:\芸芸`）。
+2. 双击文件夹里的 **`芸芸.exe`**。整个文件夹要放在一起，不要只把 exe 拷出来（它要用旁边 `_internal` 里的文件）。
+3. 第一次运行时，Windows 可能提示"Windows 已保护你的电脑"（因为芸芸没有付费的数字签名）：点 **更多信息 → 仍要运行**。
+4. 芸芸出现后，**右键芸芸 → 设置… → 通用**，可以创建桌面快捷方式、设置开机时启动。
+
+**升级到新版本**：右键芸芸 → 快速双击"退出"，用新的文件夹替换旧的即可。邮箱、AI 设置和历史记录都存在 `%APPDATA%\Yunyun`，不会丢。
+如果换了文件夹的位置，请在 设置… → 通用 里重新创建桌面快捷方式、重新勾选开机时启动（它们记的是旧位置）。
+
 ## 安装（开发版）
 
 需要 Windows 10/11 和 Python 3.11 及以上。在项目文件夹里打开终端：
@@ -75,7 +87,7 @@ python -m venv .venv
 
 **遇到问题怎么反馈？** 右键 → 设置… → 关于 → 打开日志文件夹，把 `yunyun.log` 发给开发者。
 
-**怎么彻底删除芸芸的数据？** 先在 右键 → 设置… → 通用 里取消"开机时启动"；删除项目文件夹、桌面快捷方式和 `%APPDATA%\Yunyun`；在"控制面板 → 凭据管理器 → Windows 凭据"里删除 `yunyun-mail`、`yunyun-ai` 开头的条目；删除注册表 `HKEY_CURRENT_USER\Software\Yunyun`。
+**怎么彻底删除芸芸的数据？** 先在 右键 → 设置… → 通用 里取消"开机时启动"；删除芸芸的文件夹（或项目文件夹）、桌面快捷方式和 `%APPDATA%\Yunyun`；在"控制面板 → 凭据管理器 → Windows 凭据"里删除 `yunyun-mail`、`yunyun-ai` 开头的条目；删除注册表 `HKEY_CURRENT_USER\Software\Yunyun`。
 
 ## 开发
 
@@ -84,7 +96,11 @@ python -m venv .venv
 .\.venv\Scripts\python -m pytest            # 运行测试
 .\.venv\Scripts\python -m yunyun.mail       # 调试：在命令行读取未读邮件
 .\.venv\Scripts\python tools\make_placeholders.py   # 重新生成占位图
+.\.venv\Scripts\python tools\build_exe.py   # 打包成 exe（也可以双击 tools\build_exe.bat）
 ```
+
+打包结果在 `dist\`：`dist\芸芸\芸芸.exe` 和发给别人用的 `dist\Yunyun-<版本>-windows.zip`。
+构建脚本最后会在"没有 Python"的环境里运行 exe 的自检，看到 6 行 `OK` 才算成功。
 
 - 架构、设计决定和开发约定见 [CLAUDE.md](CLAUDE.md)。
 - 给画师的形象素材要求见 [assets/pet/README.md](assets/pet/README.md)。
