@@ -12,6 +12,7 @@ from PySide6.QtWidgets import QApplication, QWidget
 
 from yunyun import i18n
 from yunyun.pet import winapi
+from yunyun.pet.badge import Badge
 from yunyun.pet.bubble import BubbleStack
 from yunyun.pet.mail_dialog import MailAccountsDialog
 from yunyun.pet.menu import KeepOpenMenu
@@ -32,6 +33,8 @@ class PetWindow(QWidget):
     clicked = Signal()            # 芸芸被单击（不是拖动）
     language_changed = Signal()   # 用户在菜单里切换了语言（托盘要更新提示文字）
     mail_accounts_changed = Signal()  # 用户添加 / 删除了邮箱账号
+    mail_badge_clicked = Signal()     # 用户左键点了小红点：要处理邮件
+    dismiss_mail_requested = Signal() # 用户拖走了小红点 / 点了"全部标为已看"：这批邮件不处理
 
     def __init__(self, sprites):
         super().__init__()
@@ -52,6 +55,14 @@ class PetWindow(QWidget):
 
         self._bubbles = BubbleStack(self)
         self._mail_dialog = None  # 邮箱账号窗口（用到时才创建）
+
+        # ---- 小红点 ----
+        self._mail_count = 0
+        self._badge_hidden = False  # 用户右键隐藏了小红点（只在本次运行有效，重启后恢复）
+        self._badge = Badge(self)
+        self._badge.clicked.connect(self.mail_badge_clicked)
+        self._badge.dismissed.connect(self._on_badge_dismissed)
+        self._badge.hide_requested.connect(self._hide_badge)
 
         # 退出要"快速双击"：第一下启动这个定时器，定时器还在跑时点第二下才真正退出。
         # 间隔用系统的双击间隔（Windows 默认 500 毫秒），和用户平时双击的习惯一致。
@@ -232,8 +243,47 @@ class PetWindow(QWidget):
         return self.geometry().adjusted(m, m, -m, -m)
 
     def moveEvent(self, event):
-        # 窗口每次移动后 Qt 都会调用它：拖动时让气泡跟着走
+        # 窗口每次移动后 Qt 都会调用它：拖动时让气泡和小红点跟着走
         self._bubbles.follow(self._body_rect())
+        self._badge.follow(self._body_rect())
+
+    # ---------- 小红点 ----------
+
+    def set_mail_count(self, count):
+        """更新待处理邮件数（由邮件服务通知）。"""
+        self._mail_count = count
+        self._badge.set_count(count)
+        self._update_badge()
+
+    def _update_badge(self):
+        if self._badge.busy:
+            return  # 正在拖动 / 播放动画，别打扰它
+        show = self._mail_count > 0 and not self._badge_hidden and self.isVisible()
+        if show:
+            self._badge.follow(self._body_rect())
+            self._badge.show()
+            self._badge.raise_()
+        else:
+            self._badge.hide()
+
+    def _hide_badge(self):
+        self._badge_hidden = True
+        self._update_badge()
+        self.say(i18n.tr("badge_hidden_hint"))
+
+    def _restore_badge(self):
+        if self._badge_hidden:
+            self._badge_hidden = False
+            self._update_badge()
+
+    def _on_badge_dismissed(self):
+        self._dismiss_mail()
+
+    def _dismiss_mail(self):
+        count = self._mail_count
+        self.dismiss_mail_requested.emit()  # 邮件服务清零后会调用 set_mail_count(0)
+        if count:
+            self.say(i18n.tr("mail_dismissed", count))
 
     def _move_to_bottom_right(self):
         """把芸芸放在屏幕右下角（避开任务栏）。"""
@@ -303,6 +353,7 @@ class PetWindow(QWidget):
 
     def contextMenuEvent(self, event):
         """右键时 Qt 会调用它：弹出菜单，直到菜单关闭才返回。"""
+        self._restore_badge()  # 右键芸芸 = 把隐藏的小红点找回来
         self._build_menu().exec(event.globalPos())
 
     def _build_menu(self):
@@ -334,6 +385,8 @@ class PetWindow(QWidget):
         settings_menu.addSeparator()
         settings_menu.addAction(tr("menu_mail_accounts"), self.open_mail_accounts)
 
+        dismiss = menu.addAction(tr("menu_dismiss_mail"), self._dismiss_mail)
+        dismiss.setEnabled(self._mail_count > 0)  # 没有待处理邮件时变灰
         menu.addAction(tr("menu_resume") if self._user_paused else tr("menu_pause"), self._toggle_pause)
         menu.addSeparator()
 

@@ -22,6 +22,7 @@ TEXTS = {
     "menu_language": {"zh": "语言", "en": "Language", "ja": "言語"},
     "menu_always_on_top": {"zh": "始终在上", "en": "Always on Top", "ja": "常に最前面"},
     "menu_mail_accounts": {"zh": "邮箱账号…", "en": "Mail Accounts…", "ja": "メールアカウント…"},
+    "menu_dismiss_mail": {"zh": "全部标为已看", "en": "Mark All as Seen", "ja": "すべて確認済みにする"},
     "menu_pause":    {"zh": "暂停", "en": "Pause", "ja": "一時停止"},
     "menu_resume":   {"zh": "开始", "en": "Resume", "ja": "再開"},
     "menu_quit":     {"zh": "退出", "en": "Quit", "ja": "終了"},
@@ -110,10 +111,27 @@ TEXTS = {
     "mail_error_other": {"zh": "出错了。", "en": "Something went wrong.", "ja": "エラーが発生しました。"},
     "mail_error_detail": {"zh": "（服务器返回：{}）", "en": "(Server said: {})", "ja": "（サーバーの応答：{}）"},
 
-    "test_mail": {
-        "zh": "（测试）收到新邮件啦！昨天加油的发票到了！",
-        "en": "(Test) New mail! Yesterday's fuel receipt has arrived!",
-        "ja": "（テスト）新着メール！昨日の給油の領収書が届いたよ！",
+    # ---- 小红点 / 新邮件 ----
+    "badge_hidden_hint": {
+        "zh": "好哦，小红点先藏起来～右键我就能把它找回来哦",
+        "en": "Okay, I've hidden the badge~ Right-click me to bring it back!",
+        "ja": "了解、バッジを隠したよ～右クリックすれば戻せるよ！",
+    },
+    "mail_dismissed": {
+        "zh": "好～这 {} 封我就先不管啦",
+        "en": "Got it~ I'll skip those {} for now.",
+        "ja": "了解～その {} 通は今回スルーするね",
+    },
+    "mail_auth_expired": {
+        "zh": "邮箱 {} 的授权好像失效了，右键我 → 设置 → 邮箱账号，重新添加一下吧～",
+        "en": "The authorization for {} seems to have expired. Right-click me → Settings → Mail Accounts to add it again~",
+        "ja": "{} の認証が切れたみたい。右クリック → 設定 → メールアカウントからもう一度追加してね～",
+    },
+    # M3 接入真正的 AI 之前，用标题拼出来的"假"提醒
+    "fake_summary": {
+        "zh": "嘿！「{}」来啦！",
+        "en": "Hey! “{}” just arrived!",
+        "ja": "ねえ！「{}」が届いたよ！",
     },
 }
 

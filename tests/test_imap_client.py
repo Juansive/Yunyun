@@ -42,6 +42,10 @@ class FakeIMAP:
             return "OK", [(f"1 (UID {uid} BODY[]<0> {{50}}".encode(), raw_mail(f"mail-{uid}")), b")"]
         raise AssertionError(command)
 
+    def response(self, name):
+        # 打开收件箱时服务器顺带告诉的信息：* OK [UIDVALIDITY 7] / * OK [UIDNEXT 11]
+        return name, [{"UIDVALIDITY": b"7", "UIDNEXT": b"11"}.get(name)]
+
     def logout(self):
         self.logged_out = True
 
@@ -67,6 +71,17 @@ def test_fetch_unread_newest_first_and_read_only(fake_server):
     fetches = [c for c in imap.commands if c[:2] == ("uid", "FETCH")]
     assert all("BODY.PEEK" in c[3] for c in fetches)     # 用 PEEK，不会标记为已读
     assert imap.logged_out                                # 用完自动登出
+
+
+def test_check_unseen_only_lists_uids(fake_server):
+    status = imap_client.check_unseen(ACCOUNT)
+    assert (status.uidvalidity, status.uidnext, status.unseen) == (7, 11, [3, 7, 10])
+    imap = fake_server.instances[0]
+    assert not [c for c in imap.commands if c[:2] == ("uid", "FETCH")]  # 没有下载任何邮件内容
+
+
+def test_fetch_messages_in_given_order(fake_server):
+    assert [m.uid for m in imap_client.fetch_messages(ACCOUNT, [10, 3])] == [10, 3]
 
 
 def test_wrong_password_gives_friendly_error(fake_server, monkeypatch):

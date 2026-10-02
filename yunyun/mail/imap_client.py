@@ -6,6 +6,7 @@
 所以芸芸读过的邮件，在你的邮箱里仍然是"未读"。
 """
 import imaplib
+import re
 from dataclasses import dataclass
 
 from yunyun.mail import credentials
@@ -44,6 +45,14 @@ class MailAccount:
     address: str    # 邮箱地址
 
 
+@dataclass
+class MailboxStatus:
+    """收件箱的概况（不含邮件内容）。"""
+    uidvalidity: int    # UID 有效期标识：它变了，说明服务器重建了编号，以前记的 UID 全部作废
+    uidnext: int        # 下一封新邮件会拿到的 UID（所以现有邮件的 UID 都 < uidnext）
+    unseen: list[int]   # 所有未读邮件的 UID
+
+
 def accounts_from_config(config):
     """从配置（load_config() 的结果）里读出所有邮箱账号。"""
     items = (config.get("mail") or {}).get("accounts") or []
@@ -65,20 +74,61 @@ def check_login(account, password):
 
 def fetch_unread(account, limit=5):
     """读取最新的 limit 封未读邮件，最新的排在最前面。"""
+    with _connect(account, _password_for(account)) as imap:
+        uids = _search_unseen(imap)
+        newest = uids[-limit:][::-1] if limit > 0 else []  # UID 越大越新：取最后几个，再倒序
+        return [_fetch_one(imap, uid) for uid in newest]
+
+
+def check_unseen(account):
+    """只查"有哪些未读邮件"（UID 列表），不下载内容。很轻量，适合定时检查。"""
+    with _connect(account, _password_for(account)) as imap:
+        uidvalidity = _untagged_int(imap, "UIDVALIDITY") or 0
+        uidnext = _untagged_int(imap, "UIDNEXT") or _last_uid(imap) + 1
+        return MailboxStatus(uidvalidity=uidvalidity, uidnext=uidnext, unseen=_search_unseen(imap))
+
+
+def fetch_messages(account, uids):
+    """按给定顺序逐封读取邮件。这是个生成器：读到一封就交出一封，调用方可以边读边处理。"""
+    with _connect(account, _password_for(account)) as imap:
+        for uid in uids:
+            yield _fetch_one(imap, uid)
+
+
+def _password_for(account):
     password = credentials.get_password(account.address)
     if password is None:
         raise MailError(
             f"还没有保存 {account.address} 的授权码，请在芸芸的右键菜单 → 设置 → 邮箱账号 中重新添加。",
             kind="no_password",
         )
+    return password
 
-    with _connect(account, password) as imap:
-        status, data = imap.uid("SEARCH", None, "UNSEEN")  # 按 UID 搜索所有未读邮件
-        if status != "OK":
-            raise MailError("搜索未读邮件失败")
-        uids = sorted(int(u) for u in data[0].split())
-        newest = uids[-limit:][::-1] if limit > 0 else []  # UID 越大越新：取最后几个，再倒序
-        return [_fetch_one(imap, uid) for uid in newest]
+
+def _search_unseen(imap):
+    status, data = imap.uid("SEARCH", None, "UNSEEN")  # 按 UID 搜索所有未读邮件
+    if status != "OK":
+        raise MailError("搜索未读邮件失败")
+    return sorted(int(u) for u in data[0].split())
+
+
+def _untagged_int(imap, name):
+    """读取打开收件箱时服务器顺带告诉我们的数字，比如 * OK [UIDNEXT 1234]。没有就返回 None。"""
+    _, data = imap.response(name)
+    try:
+        return int(data[0])
+    except (TypeError, ValueError, IndexError):
+        return None
+
+
+def _last_uid(imap):
+    """服务器没告诉 UIDNEXT 时的备用办法：查最后一封邮件的 UID（* 表示最后一封）。"""
+    try:
+        status, data = imap.fetch("*", "(UID)")
+    except imaplib.IMAP4.error:
+        return 0  # 收件箱是空的
+    match = re.search(rb"UID (\d+)", data[0] or b"") if status == "OK" and data else None
+    return int(match.group(1)) if match else 0
 
 
 class _connect:

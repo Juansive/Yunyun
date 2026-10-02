@@ -11,9 +11,11 @@ from PySide6.QtWidgets import QApplication, QSystemTrayIcon
 
 from yunyun import i18n
 from yunyun.activity.keyboard import KeyboardMonitor
+from yunyun.ai import fake as ai
 from yunyun.config import ConfigError
 from yunyun.mail import accounts
 from yunyun.mail.imap_client import MailError
+from yunyun.mail.service import MailService
 from yunyun.pet.sprites import load_sprites
 from yunyun.pet.state import StateMachine
 from yunyun.pet.tray import PetTray
@@ -36,16 +38,30 @@ def main():
     machine.state_changed.connect(pet.set_state)   # 状态变化 → 换画面
     machine.typed.connect(pet.tap)                 # 工作中敲一下 → 芸芸也敲一下
 
-    # 临时：还没接邮箱，先用"单击芸芸"模拟收到一封新邮件
-    def fake_mail():
-        machine.on_mail()
-        pet.say(i18n.tr("test_mail"))
+    # ---- 邮件：后台定时检查 → 小红点 ----
+    mail = MailService()
 
-    pet.clicked.connect(fake_mail)
+    def on_pending_changed(total, newly):
+        pet.set_mail_count(total)
+        if newly and pet.is_visible_to_user():
+            machine.on_mail()  # 芸芸看得见时，来新邮件就激动几秒（不弹文字，还没经过 AI）
+
+    def on_message_ready(address, message):
+        # 临时（第 3 步会换成"思考状态 + 卡片堆"）：用假的 AI 拼一句话，弹气泡
+        pet.say(ai.summarize(message)["bubble"])
+        mail.mark_handled(address, message.uid)
+
+    mail.pending_changed.connect(on_pending_changed)
+    mail.message_ready.connect(on_message_ready)
+    mail.auth_failed.connect(lambda address: pet.say(i18n.tr("mail_auth_expired", address)))
+    pet.mail_badge_clicked.connect(mail.fetch_pending)        # 点小红点 → 才去读邮件
+    pet.dismiss_mail_requested.connect(mail.dismiss_all)      # 拖走小红点 → 这批不处理
+    pet.mail_accounts_changed.connect(mail.reload_accounts)   # 增删邮箱 → 马上重新检查
 
     app.aboutToQuit.connect(keyboard.stop)  # 退出前停止键盘监听
     pet.show()
     keyboard.start()
+    mail.start()
 
     # 托盘图标（极少数系统环境没有托盘，那就不显示）
     if QSystemTrayIcon.isSystemTrayAvailable():
