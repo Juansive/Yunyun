@@ -19,7 +19,7 @@ from yunyun.ai import settings as ai_settings
 from yunyun.pet import winapi
 from yunyun.pet.badge import Badge
 from yunyun.pet.bubble import BubbleStack
-from yunyun.pet.card_deck import CardDeck
+from yunyun.pet.card_deck import CardDeck, MailCard
 from yunyun.pet.menu import KeepOpenMenu
 from yunyun.pet.settings_window import SettingsWindow
 from yunyun.pet.state import PetState
@@ -75,6 +75,7 @@ class PetWindow(QWidget):
 
         self._bubbles = BubbleStack(self)
         self._settings_window = None  # 设置窗口（用到时才创建，关掉就销毁）
+        self._history = None          # 邮件提醒的历史记录（main 里设置）
 
         # ---- 小红点 ----
         self._mail_count = 0
@@ -342,6 +343,25 @@ class PetWindow(QWidget):
         """这一轮的结果还要不要放进卡片堆。用户中途收起了卡片堆，就是 False（剩下的邮件下次再看）。"""
         return self._deck_accepting
 
+    def set_history(self, history):
+        self._history = history
+
+    @property
+    def history(self):
+        return self._history
+
+    def show_recent_mail(self):
+        """右键菜单"刚才的邮件"：把最近一批卡片重新展开成卡片堆，和当时看到的一样。"""
+        if self._history is None or self._mail_processing:
+            return
+        entries = self._history.latest_batch()
+        if not entries:
+            return
+        self._deck.reset()
+        self._deck_accepting = False  # 这是回看历史，不是正在处理的一轮
+        for e in entries:
+            self._deck.add_card(MailCard(e.bubble, e.subject, e.sender, e.date, e.attachments), self._body_rect())
+
     def add_mail_card(self, card):
         self._deck.add_card(card, self._body_rect())
 
@@ -514,6 +534,10 @@ class PetWindow(QWidget):
         menu = KeepOpenMenu(self)
         # "设置…"：所有设置都在设置窗口里（"…"表示点了会打开一个窗口，这是桌面软件的惯例）
         menu.addAction(tr("menu_settings"), self.open_settings)
+        # 刚才的邮件：把最近一批卡片重新展开（没有历史、或正在处理邮件时变灰）
+        recent = menu.addAction(tr("menu_recent_mail"), self.show_recent_mail)
+        recent.setEnabled(self._history is not None and not self._history.is_empty() and not self._mail_processing)
+
         dismiss = menu.addAction(tr("menu_dismiss_mail"), self._dismiss_mail)
         dismiss.setEnabled(self._mail_count > 0)  # 没有待处理邮件时变灰
         menu.addAction(tr("menu_resume") if self._user_paused else tr("menu_pause"), self._toggle_pause)

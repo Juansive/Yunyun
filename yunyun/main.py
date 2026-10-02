@@ -5,6 +5,7 @@
 """
 import logging
 import sys
+import time
 
 from PySide6.QtCore import QTimer
 from PySide6.QtGui import QIcon
@@ -16,6 +17,7 @@ from yunyun.config import ConfigError
 from yunyun.mail import accounts
 from yunyun.mail.imap_client import MailError
 from yunyun.mail.service import MailService
+from yunyun.notify.history import HistoryEntry, MailHistory, default_path as history_path
 from yunyun.pet.card_deck import MailCard
 from yunyun.pet.sprites import load_sprites
 from yunyun.pet.state import StateMachine
@@ -58,7 +60,9 @@ def main():
     # ---- 邮件：后台定时检查 → 小红点；点小红点 → 读邮件 → AI 写一句提醒 ----
     # describe 在后台线程里运行（要联网）；语言在调用时读取，切换语言后立刻生效
     mail = MailService(process_message=lambda message: ai.describe(message, i18n.current_language()))
-    connect_mail(mail, pet, machine)
+    history = MailHistory(history_path())   # 展示过的卡片存 7 天，可以找回
+    pet.set_history(history)
+    connect_mail(mail, pet, machine, history)
 
     app.aboutToQuit.connect(keyboard.stop)       # 退出前停止键盘监听
     app.aboutToQuit.connect(pet.save_position)   # 退出前记下芸芸的位置（万一刚拖完还没来得及保存）
@@ -81,8 +85,9 @@ def main():
     sys.exit(app.exec())          # 进入事件循环，直到程序退出
 
 
-def connect_mail(mail, pet, machine):
-    """用信号把邮件服务和芸芸连起来（单独写成函数，测试里也能直接用）。"""
+def connect_mail(mail, pet, machine, history=None):
+    """用信号把邮件服务和芸芸连起来（单独写成函数，测试里也能直接用）。history：可选，记录展示过的卡片。"""
+    batch = {"id": ""}  # 当前这一轮处理的编号（用开始时间），历史记录按"批"分组
 
     def on_pending_changed(total, newly):
         pet.set_mail_count(total)
@@ -106,8 +111,12 @@ def connect_mail(mail, pet, machine):
             attachments=message.attachments,
         ))
         mail.mark_handled(address, message.uid)  # 放进卡片堆了，才算处理过
+        if history is not None:
+            history.add(HistoryEntry(description.bubble, message.subject, message.sender,
+                                     message.date, message.attachments, time.time(), batch["id"]))
 
     def on_fetch_started():
+        batch["id"] = f"{time.time():.3f}"
         pet.begin_mail_batch()           # 清空卡片堆，接收这一轮的结果
         machine.start_thinking()         # 芸芸进入思考状态
         pet.set_mail_processing(True)    # 小红点变成转圈

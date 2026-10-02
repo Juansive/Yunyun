@@ -12,6 +12,7 @@ from yunyun.mail import service as service_module
 from yunyun.mail.imap_client import MailAccount, MailboxStatus
 from yunyun.mail.message import MailMessage
 from yunyun.mail.tracker import MailTracker
+from yunyun.notify.history import MailHistory
 from yunyun.pet.sprites import load_sprites
 from yunyun.pet.state import PetState, StateMachine
 from yunyun.pet.window import PetWindow
@@ -52,7 +53,9 @@ def world(qapp, tmp_path, monkeypatch):
     pet.show()
     machine = StateMachine()
     machine.state_changed.connect(pet.set_state)
-    connect_mail(mail, pet, machine)
+    history = MailHistory(tmp_path / "history.db")
+    pet.set_history(history)
+    connect_mail(mail, pet, machine, history)
 
     def poll():
         mail.poll_now()
@@ -97,3 +100,27 @@ def test_close_midway_keeps_rest_for_later(qapp, world):
     pet._on_badge_clicked()                       # 再点：只处理剩下的
     assert wait_until(qapp, lambda: not mail.fetching and pet._deck.card_count >= 1)
     assert mail.pending_count == 0
+
+
+def recent_action(pet):
+    return next(a for a in pet._build_menu().actions() if a.text() == "刚才的邮件")
+
+
+def test_history_records_batch_and_recent_mail_reopens_it(qapp, world):
+    mail, pet, machine = world
+    assert not recent_action(pet).isEnabled()                  # 还没有历史：灰的
+    pet._on_badge_clicked()
+    assert wait_until(qapp, lambda: pet._deck.card_count >= 1)
+    assert not recent_action(pet).isEnabled()                  # 正在处理：灰的
+    assert wait_until(qapp, lambda: not mail.fetching)
+
+    batch = pet.history.latest_batch()
+    assert [e.bubble for e in batch] == ["AI：标题12来啦！", "AI：标题11来啦！", "AI：标题10来啦！"]
+    assert len({e.batch for e in batch}) == 1                  # 同一批
+
+    pet._deck.close_deck()
+    assert recent_action(pet).isEnabled()
+    recent_action(pet).trigger()                               # 右键 → 刚才的邮件
+    assert pet._deck.isVisible()
+    assert [c.bubble for c in pet._deck._cards] == [e.bubble for e in batch]   # 和当时看到的一样
+    assert not pet.deck_accepting                              # 这是回看，不是在处理

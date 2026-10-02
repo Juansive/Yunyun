@@ -21,6 +21,7 @@ TEXTS = {
     "menu_settings": {"zh": "设置…", "en": "Settings…", "ja": "設定…"},
     "menu_language": {"zh": "语言", "en": "Language", "ja": "言語"},
     "menu_always_on_top": {"zh": "始终在上", "en": "Always on Top", "ja": "常に最前面"},
+    "menu_recent_mail": {"zh": "刚才的邮件", "en": "Recent Mail", "ja": "さっきのメール"},
     "menu_dismiss_mail": {"zh": "全部标为已看", "en": "Mark All as Seen", "ja": "すべて確認済みにする"},
     "setting_shortcut": {"zh": "桌面快捷方式", "en": "Desktop shortcut", "ja": "デスクトップのショートカット"},
     "button_create": {"zh": "创建", "en": "Create", "ja": "作成"},
