@@ -29,6 +29,7 @@ class PetWindow(QWidget):
     COVER_CHECK_MS = 500    # 多久检查一次有没有被挡住（毫秒）
     COVERED_RATIO = 0.9     # 被挡住多少比例才算"被挡住"（0~1）
     RESUME_DELAY_MS = 500   # 露出来后，先定格多久再恢复（毫秒）
+    SHORT_SAY_MS = 2000     # 简短提示（比如"现在没有新邮件"）显示多久（毫秒）
 
     clicked = Signal()            # 芸芸被单击（不是拖动）
     language_changed = Signal()   # 用户在菜单里切换了语言（托盘要更新提示文字）
@@ -248,9 +249,13 @@ class PetWindow(QWidget):
 
     # ---------- 气泡 ----------
 
-    def say(self, text):
-        """让芸芸弹出气泡说一句话（已有气泡时会再加一个，互不重叠）。"""
-        self._bubbles.add(text, self._body_rect())
+    def say(self, text, duration_ms=4000):
+        """让芸芸弹出气泡说一句话，duration_ms 毫秒后消失（已有气泡时会再加一个，互不重叠）。"""
+        self._bubbles.add(text, self._body_rect(), duration_ms)
+
+    def tell_no_new_mail(self):
+        """告诉用户现在没有新邮件（显示一小会儿）。"""
+        self.say(i18n.tr("no_new_mail"), self.SHORT_SAY_MS)
 
     def _body_rect(self):
         """芸芸身体在屏幕上的大致区域，不含透明留白。"""
@@ -319,6 +324,9 @@ class PetWindow(QWidget):
         if self._badge_hidden:
             self._badge_hidden = False
             self._update_badge()
+            if self._mail_count == 0:
+                # 隐藏期间邮件已经被处理掉了（比如在手机上读了）：说一声，免得以为小红点"没回来"
+                self.tell_no_new_mail()
 
     def _on_badge_dismissed(self):
         self._dismiss_mail()

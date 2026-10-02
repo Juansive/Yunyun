@@ -60,6 +60,10 @@ class MailService(QObject):
     def fetching(self):
         return self._fetching
 
+    @property
+    def has_accounts(self):
+        return bool(self._accounts)
+
     def start(self):
         self._load_accounts()
         self._timer.start()

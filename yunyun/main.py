@@ -53,6 +53,12 @@ def main():
         pet.say(ai.summarize(message)["bubble"])
         mail.mark_handled(address, message.uid)
 
+    def on_pet_clicked():
+        # 单击芸芸：没有待处理的新邮件就说一声（还没添加邮箱时不说，免得误会）
+        if mail.has_accounts and mail.pending_count == 0:
+            pet.tell_no_new_mail()
+
+    pet.clicked.connect(on_pet_clicked)
     mail.pending_changed.connect(on_pending_changed)
     mail.message_ready.connect(on_message_ready)
     mail.auth_failed.connect(lambda address: pet.say(i18n.tr("mail_auth_expired", address)))

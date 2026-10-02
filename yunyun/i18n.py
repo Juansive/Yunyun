@@ -122,6 +122,11 @@ TEXTS = {
         "en": "Got it~ I'll skip those {} for now.",
         "ja": "了解～その {} 通は今回スルーするね",
     },
+    "no_new_mail": {
+        "zh": "现在没有新邮件哦～",
+        "en": "No new mail right now~",
+        "ja": "今は新しいメールはないよ～",
+    },
     "mail_auth_expired": {
         "zh": "邮箱 {} 的授权好像失效了，右键我 → 设置 → 邮箱账号，重新添加一下吧～",
         "en": "The authorization for {} seems to have expired. Right-click me → Settings → Mail Accounts to add it again~",

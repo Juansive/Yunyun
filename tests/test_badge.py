@@ -250,3 +250,33 @@ def test_dismiss_from_corner(qapp, tmp_path, fake_desktop):
     drag(corner, start, start + QPoint(-80, -40))
     wait(qapp, 0.4)
     assert not corner.isVisible() and not pet._badge.isVisible() and not pet._badge_wants_corner
+
+
+# ---------- "现在没有新邮件"提示 ----------
+
+def test_no_new_mail_hint_is_short(qapp, tmp_path, monkeypatch):
+    pet = make_pet(qapp, tmp_path, monkeypatch)
+    said = []
+    monkeypatch.setattr(pet._bubbles, "add", lambda text, anchor, duration_ms: said.append((text, duration_ms)))
+    pet.tell_no_new_mail()
+    assert said == [("现在没有新邮件哦～", pet.SHORT_SAY_MS)]
+
+
+def test_restore_hint_only_when_mail_gone(qapp, tmp_path, monkeypatch):
+    pet = make_pet(qapp, tmp_path, monkeypatch)
+    hints = []
+    monkeypatch.setattr(pet, "say", lambda text, duration_ms=4000: None)
+    monkeypatch.setattr(pet, "tell_no_new_mail", lambda: hints.append(1))
+
+    pet.set_mail_count(2)
+    pet._hide_badge()
+    pet._restore_badge()               # 邮件还在：小红点回来，不用提示
+    assert pet._badge.isVisible() and hints == []
+
+    pet._hide_badge()
+    pet.set_mail_count(0)              # 隐藏期间邮件在手机上被读掉了
+    pet._restore_badge()
+    assert hints == [1]
+
+    pet._restore_badge()               # 没隐藏过：右键芸芸不提示
+    assert hints == [1]
