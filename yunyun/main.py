@@ -58,7 +58,8 @@ def main():
     mail = MailService(process_message=lambda message: ai.describe(message, i18n.current_language()))
     connect_mail(mail, pet, machine)
 
-    app.aboutToQuit.connect(keyboard.stop)  # 退出前停止键盘监听
+    app.aboutToQuit.connect(keyboard.stop)       # 退出前停止键盘监听
+    app.aboutToQuit.connect(pet.save_position)   # 退出前记下芸芸的位置（万一刚拖完还没来得及保存）
     pet.show()
     keyboard.start()
     mail.start()

@@ -9,7 +9,7 @@
 import logging
 import threading
 
-from PySide6.QtCore import QPointF, QSettings, QSize, Qt, QTimer, QUrl, Signal
+from PySide6.QtCore import QPoint, QPointF, QRect, QSettings, QSize, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QActionGroup, QDesktopServices, QGuiApplication, QPainter
 from PySide6.QtWidgets import QApplication, QWidget
 
@@ -24,6 +24,7 @@ from yunyun.pet.menu import KeepOpenMenu
 from yunyun.pet.state import PetState
 
 _ALWAYS_ON_TOP_KEY = "window/always_on_top"
+_POSITION_KEY = "window/position"
 
 log = logging.getLogger(__name__)
 
@@ -37,6 +38,7 @@ class PetWindow(QWidget):
     COVERED_RATIO = 0.9     # 被挡住多少比例才算"被挡住"（0~1）
     RESUME_DELAY_MS = 500   # 露出来后，先定格多久再恢复（毫秒）
     SHORT_SAY_MS = 2000     # 简短提示（比如"现在没有新邮件"）显示多久（毫秒）
+    SAVE_POS_DELAY_MS = 500 # 拖动停下多久后保存位置（毫秒）
 
     clicked = Signal()            # 芸芸被单击（不是拖动）
     language_changed = Signal()   # 用户在菜单里切换了语言（托盘要更新提示文字）
@@ -56,7 +58,13 @@ class PetWindow(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 
         self.resize(self.SIZE, self.SIZE)
-        self._move_to_bottom_right()
+
+        # 记住位置：拖动停下半秒后才保存（不用每移动一个像素就写一次）
+        self._save_pos_timer = QTimer(self)
+        self._save_pos_timer.setSingleShot(True)
+        self._save_pos_timer.setInterval(self.SAVE_POS_DELAY_MS)
+        self._save_pos_timer.timeout.connect(self.save_position)
+        self._restore_position()
 
         self._drag_offset = None  # 拖动时：鼠标相对窗口左上角的偏移；不拖动时为 None
         self._press_pos = None    # 左键按下时鼠标的屏幕坐标，用来区分"单击"和"拖动"
@@ -287,6 +295,25 @@ class PetWindow(QWidget):
         self._bubbles.follow(self._body_rect())
         self._badge.follow(self._body_rect())
         self._deck.follow(self._body_rect())
+        if self.isVisible():
+            self._save_pos_timer.start()  # 每次移动都重新计时：停下半秒后才真正保存
+
+    # ---------- 记住位置 ----------
+
+    def save_position(self):
+        self._save_pos_timer.stop()
+        QSettings().setValue(_POSITION_KEY, self.pos())
+
+    def _restore_position(self):
+        """回到上次的位置；上次的位置现在不在任何屏幕上（比如拔了外接显示器），就回右下角。"""
+        saved = QSettings().value(_POSITION_KEY)
+        if isinstance(saved, QPoint):
+            m = self.MARGIN
+            body = QRect(saved, self.size()).adjusted(m, m, -m, -m)
+            if QGuiApplication.screenAt(body.center()) is not None:
+                self.move(saved)
+                return
+        self._move_to_bottom_right()
 
     # ---------- 卡片堆 ----------
 
