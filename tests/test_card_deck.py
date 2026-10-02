@@ -41,9 +41,23 @@ def wheel(deck, dy):
     deck.wheelEvent(event)
 
 
-def click(deck, pos):
+def press(deck, pos):
     deck.mousePressEvent(QMouseEvent(QEvent.Type.MouseButtonPress, QPointF(pos), QPointF(deck.mapToGlobal(pos)),
                                      Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier))
+
+
+def release(deck, pos):
+    deck.mouseReleaseEvent(QMouseEvent(QEvent.Type.MouseButtonRelease, QPointF(pos), QPointF(deck.mapToGlobal(pos)),
+                                       Qt.MouseButton.LeftButton, Qt.MouseButton.NoButton, Qt.KeyboardModifier.NoModifier))
+
+
+def click(deck, pos):
+    press(deck, pos)
+    release(deck, pos)
+
+
+def front_center(deck):
+    return deck._current_front_rect().center().toPoint()
 
 
 def test_opacity_layers():
@@ -87,17 +101,55 @@ def test_wheel_scrolls_and_clamps(qapp, pet):
     assert deck._pos == 3.0                       # 平滑滑动最终停在目标位置
 
 
-def test_click_expands_and_jumps(qapp, pet):
+def test_press_sinks_then_expands_smoothly(qapp, pet):
     deck = pet._deck
     pet.begin_mail_batch()
     for n in range(1, 4):
         pet.add_mail_card(card(n))
-    collapsed_h = deck.height()
-    front = deck._front_rect(deck._card_height()).center().toPoint()
-    click(deck, front)                            # 单击当前卡片 → 放大
-    assert deck.expanded and deck.height() != collapsed_h
-    click(deck, deck._front_rect(deck._card_height()).center().toPoint())
-    assert not deck.expanded                      # 再点一下 → 缩回
+    collapsed = deck.geometry()
+    start_card = deck._current_front_rect().translated(QPointF(collapsed.topLeft()))   # 卡片在屏幕上的位置
+
+    press(deck, front_center(deck))               # 按下：微微下沉，还没展开
+    wait(qapp, 0.15)
+    assert deck._press_t == pytest.approx(1.0) and not deck.animating and not deck.expanded
+
+    release(deck, front_center(deck))             # 松开：弹回 + 开始平滑展开
+    assert deck.animating and deck.expanded
+    heights = []
+    while deck.animating:
+        heights.append(deck._current_front_rect().height())
+        wait(qapp, 0.02)
+    assert len(heights) >= 5                      # 动画有很多帧，不是一下子变大
+    assert heights == sorted(heights)             # 高度是一点点长大的
+    assert heights[0] < heights[-1]
+    assert deck._press_t == pytest.approx(0.0)    # 已经弹回来了
+
+    end_card = deck._current_front_rect().translated(QPointF(deck.geometry().topLeft()))
+    assert end_card.height() > start_card.height()
+    assert end_card.width() == start_card.width()
+    assert deck.geometry() != collapsed           # 结束后窗口收成展开后的大小
+
+    click(deck, front_center(deck))               # 再点一下 → 平滑缩回
+    while deck.animating:
+        wait(qapp, 0.02)
+    assert not deck.expanded and deck.geometry() == collapsed
+
+
+def test_press_then_release_outside_does_nothing(qapp, pet):
+    deck = pet._deck
+    pet.begin_mail_batch()
+    pet.add_mail_card(card(1))
+    press(deck, front_center(deck))
+    release(deck, QPoint(1, 1))                   # 按下后拖到卡片外面才松开：取消
+    wait(qapp, 0.2)
+    assert not deck.expanded and deck._press_t == pytest.approx(0.0)
+
+
+def test_click_jumps_to_peeking_card(qapp, pet):
+    deck = pet._deck
+    pet.begin_mail_batch()
+    for n in range(1, 4):
+        pet.add_mail_card(card(n))
 
     rect, _ = deck._card_rect(1, deck._card_height())
     peek = QPoint(int(rect.center().x()), int(rect.bottom() - 2))   # 第 2 张从下面露出来的那条边
@@ -151,6 +203,8 @@ def test_deck_stays_on_screen(qapp, pet):
         pet.move(x, y)
         assert area.contains(pet._deck.geometry())
     pet._deck.toggle_expanded()
+    while pet._deck.animating:
+        wait(qapp, 0.02)
     assert area.contains(pet._deck.geometry())
 
 
