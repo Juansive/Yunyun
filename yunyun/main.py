@@ -16,6 +16,7 @@ from yunyun.config import ConfigError
 from yunyun.mail import accounts
 from yunyun.mail.imap_client import MailError
 from yunyun.mail.service import MailService
+from yunyun.pet.card_deck import MailCard
 from yunyun.pet.sprites import load_sprites
 from yunyun.pet.state import StateMachine
 from yunyun.pet.tray import PetTray
@@ -41,49 +42,7 @@ def main():
     # ---- 邮件：后台定时检查 → 小红点；点小红点 → 读邮件 → AI 写一句提醒 ----
     # describe 在后台线程里运行（要联网）；语言在调用时读取，切换语言后立刻生效
     mail = MailService(process_message=lambda message: ai.describe(message, i18n.current_language()))
-    batch_notes = set()  # 这一轮处理里已经说过的提示（比如"还没设置 AI"），每轮只说一次
-
-    def on_pending_changed(total, newly):
-        pet.set_mail_count(total)
-        if newly:
-            if pet.is_visible_to_user():
-                machine.on_mail()  # 芸芸看得见：激动几秒（不弹文字，还没经过 AI）
-            pet.on_new_mail()      # 芸芸被挡住：小红点单独去任务栏时钟上方
-
-    def on_message_ready(address, message, description):
-        # 临时（第 3 步后面会换成卡片堆）：先用普通气泡显示 AI 写的提醒
-        if description is None:  # 处理时出了意外：用兜底文字
-            description = ai.Description(ai.fallback_bubble(message), "failed")
-        if description.status != "ok" and description.status not in batch_notes:
-            batch_notes.add(description.status)
-            pet.say(i18n.tr("ai_not_configured" if description.status == "not_configured" else "ai_failed"))
-        pet.say(description.bubble)
-        mail.mark_handled(address, message.uid)
-
-    def on_fetch_started():
-        batch_notes.clear()
-        machine.start_thinking()         # 芸芸进入思考状态
-        pet.set_mail_processing(True)    # 小红点变成转圈
-
-    def on_fetch_finished():
-        machine.stop_thinking()          # 回到工作 / 待机
-        pet.set_mail_processing(False)   # 小红点恢复成数字（没有剩余邮件就消失）
-
-    mail.fetch_started.connect(on_fetch_started)
-    mail.fetch_finished.connect(on_fetch_finished)
-
-    def on_pet_clicked():
-        # 单击芸芸：没有待处理的新邮件就说一声（还没添加邮箱时不说，免得误会）
-        if mail.has_accounts and mail.pending_count == 0:
-            pet.tell_no_new_mail()
-
-    pet.clicked.connect(on_pet_clicked)
-    mail.pending_changed.connect(on_pending_changed)
-    mail.message_ready.connect(on_message_ready)
-    mail.auth_failed.connect(lambda address: pet.say(i18n.tr("mail_auth_expired", address)))
-    pet.mail_badge_clicked.connect(mail.fetch_pending)        # 点小红点 → 才去读邮件
-    pet.dismiss_mail_requested.connect(mail.dismiss_all)      # 拖走小红点 → 这批不处理
-    pet.mail_accounts_changed.connect(mail.reload_accounts)   # 增删邮箱 → 马上重新检查
+    connect_mail(mail, pet, machine)
 
     app.aboutToQuit.connect(keyboard.stop)  # 退出前停止键盘监听
     pet.show()
@@ -103,6 +62,57 @@ def main():
             pet.open_mail_accounts()
         QTimer.singleShot(800, first_run)  # 稍等芸芸先出现在桌面上，再弹窗口
     sys.exit(app.exec())          # 进入事件循环，直到程序退出
+
+
+def connect_mail(mail, pet, machine):
+    """用信号把邮件服务和芸芸连起来（单独写成函数，测试里也能直接用）。"""
+
+    def on_pending_changed(total, newly):
+        pet.set_mail_count(total)
+        if newly:
+            if pet.is_visible_to_user():
+                machine.on_mail()  # 芸芸看得见：激动几秒（不弹文字，还没经过 AI）
+            pet.on_new_mail()      # 芸芸被挡住：小红点单独去任务栏时钟上方
+
+    def on_message_ready(address, message, description):
+        if not pet.deck_accepting:
+            return  # 用户中途收起了卡片堆：这封不放进去，也不算处理过，下次点小红点再看
+        if description is None:  # 处理时出了意外：用兜底文字
+            description = ai.Description(ai.fallback_bubble(message), "failed")
+        if description.status != "ok":  # AI 没用上：在卡片堆底部说明原因
+            pet.set_mail_note(i18n.tr("ai_not_configured" if description.status == "not_configured" else "ai_failed"))
+        pet.add_mail_card(MailCard(
+            bubble=description.bubble,
+            subject=message.subject,
+            sender=message.sender,
+            date=message.date,
+            attachments=message.attachments,
+        ))
+        mail.mark_handled(address, message.uid)  # 放进卡片堆了，才算处理过
+
+    def on_fetch_started():
+        pet.begin_mail_batch()           # 清空卡片堆，接收这一轮的结果
+        machine.start_thinking()         # 芸芸进入思考状态
+        pet.set_mail_processing(True)    # 小红点变成转圈
+
+    def on_fetch_finished():
+        machine.stop_thinking()          # 回到工作 / 待机
+        pet.set_mail_processing(False)   # 小红点恢复成数字（没有剩余邮件就消失）
+
+    def on_pet_clicked():
+        # 单击芸芸：没有待处理的新邮件就说一声（还没添加邮箱时不说，免得误会）
+        if mail.has_accounts and mail.pending_count == 0:
+            pet.tell_no_new_mail()
+
+    mail.fetch_started.connect(on_fetch_started)
+    mail.fetch_finished.connect(on_fetch_finished)
+    mail.pending_changed.connect(on_pending_changed)
+    mail.message_ready.connect(on_message_ready)
+    mail.auth_failed.connect(lambda address: pet.say(i18n.tr("mail_auth_expired", address)))
+    pet.clicked.connect(on_pet_clicked)
+    pet.mail_badge_clicked.connect(mail.fetch_pending)        # 点小红点 → 才去读邮件
+    pet.dismiss_mail_requested.connect(mail.dismiss_all)      # 拖走小红点 → 这批不处理
+    pet.mail_accounts_changed.connect(mail.reload_accounts)   # 增删邮箱 → 马上重新检查
 
 
 def has_mail_account():

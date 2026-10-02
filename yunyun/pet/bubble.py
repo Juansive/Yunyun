@@ -281,48 +281,61 @@ class BubbleStack(QObject):
 
     def _place_group(self, bw, bh):
         """给一块 bw × bh 的区域找位置，返回它左上角的屏幕坐标 (x, y)。"""
-        a = self._anchor
-        screen = QGuiApplication.screenAt(a.center()) or QGuiApplication.primaryScreen()
-        area = screen.availableGeometry()  # 屏幕可用区域，不含任务栏
-
-        # 注意：QRect.right() 等于 left + width - 1（历史原因），所以这里自己算右/下边界
-        s_left, s_top = area.x(), area.y()
-        s_right, s_bottom = area.x() + area.width(), area.y() + area.height()
-        a_left, a_top = a.x(), a.y()
-        a_right, a_bottom = a.x() + a.width(), a.y() + a.height()
-        cx, cy = a.center().x(), a.center().y()
-
-        d = self.GAP + Bubble.TAIL  # 主体到芸芸的距离（中间是尾巴）
-
-        # 四个候选：左上角坐标 (x, y)，以及该方向剩余的空间（>= 0 表示放得下）
-        candidates = {
-            "above": (cx - bw / 2, a_top - d - bh, a_top - d - bh - s_top),
-            "below": (cx - bw / 2, a_bottom + d, s_bottom - (a_bottom + d + bh)),
-            "right": (a_right + d, cy - bh / 2, s_right - (a_right + d + bw)),
-            "left":  (a_left - d - bw, cy - bh / 2, a_left - d - bw - s_left),
-        }
-        room = {name: c[2] for name, c in candidates.items()}
-
-        # 左右两侧：如果已经在某一侧，就优先留在那一侧（避免在屏幕中线附近左右乱跳）；
-        # 否则选空间更大的那一侧
-        sides = ["right", "left"]
-        if self._placement in sides:
-            sides.sort(key=lambda name: name != self._placement)
-        else:
-            sides.sort(key=lambda name: room[name], reverse=True)
-        order = ["above", *sides, "below"]
-
-        # 按优先级挑第一个放得下的。不是当前方向的，需要多出 HYSTERESIS 的空间才换过去
-        chosen = max(room, key=room.get)  # 兜底：都放不下时，选空间最大的
-        for name in order:
-            need = 0 if self._placement in (None, name) else self.HYSTERESIS
-            if room[name] >= need:
-                chosen = name
-                break
-        self._placement = chosen
-
-        # 最后再夹一次，保证整组绝不出屏
-        x, y, _ = candidates[chosen]
-        x = max(s_left, min(x, s_right - bw))
-        y = max(s_top, min(y, s_bottom - bh))
+        x, y, self._placement = place_block(
+            self._anchor, bw, bh, gap=self.GAP + Bubble.TAIL,
+            current=self._placement, hysteresis=self.HYSTERESIS,
+        )
         return x, y
+
+
+def place_block(anchor, bw, bh, gap, current=None, hysteresis=24):
+    """在芸芸身体（anchor，屏幕坐标）旁边给一块 bw × bh 的区域找位置（气泡、卡片堆共用）。
+
+    优先放在头顶；头顶放不下就去左/右侧；再不行去下方；最后保证整块绝不出屏。
+    current 是上一次的方向（"above" / "below" / "left" / "right" / None）：
+    不是当前方向的，需要多出 hysteresis 的空间才换过去，防止在临界处来回抖。
+    返回 (x, y, 这次选的方向)。
+    """
+    a = anchor
+    screen = QGuiApplication.screenAt(a.center()) or QGuiApplication.primaryScreen()
+    area = screen.availableGeometry()  # 屏幕可用区域，不含任务栏
+
+    # 注意：QRect.right() 等于 left + width - 1（历史原因），所以这里自己算右/下边界
+    s_left, s_top = area.x(), area.y()
+    s_right, s_bottom = area.x() + area.width(), area.y() + area.height()
+    a_left, a_top = a.x(), a.y()
+    a_right, a_bottom = a.x() + a.width(), a.y() + a.height()
+    cx, cy = a.center().x(), a.center().y()
+    d = gap
+
+    # 四个候选：左上角坐标 (x, y)，以及该方向剩余的空间（>= 0 表示放得下）
+    candidates = {
+        "above": (cx - bw / 2, a_top - d - bh, a_top - d - bh - s_top),
+        "below": (cx - bw / 2, a_bottom + d, s_bottom - (a_bottom + d + bh)),
+        "right": (a_right + d, cy - bh / 2, s_right - (a_right + d + bw)),
+        "left":  (a_left - d - bw, cy - bh / 2, a_left - d - bw - s_left),
+    }
+    room = {name: c[2] for name, c in candidates.items()}
+
+    # 左右两侧：如果已经在某一侧，就优先留在那一侧（避免在屏幕中线附近左右乱跳）；
+    # 否则选空间更大的那一侧
+    sides = ["right", "left"]
+    if current in sides:
+        sides.sort(key=lambda name: name != current)
+    else:
+        sides.sort(key=lambda name: room[name], reverse=True)
+    order = ["above", *sides, "below"]
+
+    # 按优先级挑第一个放得下的。不是当前方向的，需要多出 hysteresis 的空间才换过去
+    chosen = max(room, key=room.get)  # 兜底：都放不下时，选空间最大的
+    for name in order:
+        need = 0 if current in (None, name) else hysteresis
+        if room[name] >= need:
+            chosen = name
+            break
+
+    # 最后再夹一次，保证整块绝不出屏
+    x, y, _ = candidates[chosen]
+    x = max(s_left, min(x, s_right - bw))
+    y = max(s_top, min(y, s_bottom - bh))
+    return x, y, chosen

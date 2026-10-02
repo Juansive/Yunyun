@@ -150,6 +150,15 @@ TEXTS = {
         "ja": "AI が応答しないので、件名で伝えるね～",
     },
 
+    # ---- 卡片堆（放大后显示的原始信息）----
+    "card_subject": {"zh": "标题", "en": "Subject", "ja": "件名"},
+    "card_sender": {"zh": "发件人", "en": "From", "ja": "差出人"},
+    "card_time": {"zh": "时间", "en": "Time", "ja": "日時"},
+    "card_attachments": {"zh": "附件", "en": "Attachments", "ja": "添付"},
+    "card_no_subject": {"zh": "（无标题）", "en": "(No subject)", "ja": "（件名なし）"},
+    "card_detail_line": {"zh": "{}：{}", "en": "{}: {}", "ja": "{}：{}"},   # "标题：xxx"
+    "list_separator": {"zh": "、", "en": ", ", "ja": "、"},                  # 多个附件之间
+
     # ---- AI 设置窗口 ----
     "ai_dialog_title": {"zh": "芸芸 · AI 设置", "en": "Yunyun · AI Settings", "ja": "芸芸 · AI 設定"},
     "ai_provider": {"zh": "服务商", "en": "Provider", "ja": "プロバイダー"},

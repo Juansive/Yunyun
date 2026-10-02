@@ -15,6 +15,7 @@ from yunyun.pet import winapi
 from yunyun.pet.ai_dialog import AISettingsDialog
 from yunyun.pet.badge import Badge
 from yunyun.pet.bubble import BubbleStack
+from yunyun.pet.card_deck import CardDeck
 from yunyun.pet.mail_dialog import MailAccountsDialog
 from yunyun.pet.menu import KeepOpenMenu
 from yunyun.pet.state import PetState
@@ -70,6 +71,11 @@ class PetWindow(QWidget):
             badge.clicked.connect(self._on_badge_clicked)
             badge.dismissed.connect(self._on_badge_dismissed)
             badge.hide_requested.connect(self._hide_badge)
+
+        # ---- 卡片堆：点小红点后，处理好的邮件一张张出现在这里 ----
+        self._deck = CardDeck(self)
+        self._deck.closed.connect(self._on_deck_closed)
+        self._deck_accepting = False  # 这一轮处理的结果还要不要放进卡片堆（用户中途收起就不要了）
 
         # 退出要"快速双击"：第一下启动这个定时器，定时器还在跑时点第二下才真正退出。
         # 间隔用系统的双击间隔（Windows 默认 500 毫秒），和用户平时双击的习惯一致。
@@ -270,9 +276,33 @@ class PetWindow(QWidget):
         return self.geometry().adjusted(m, m, -m, -m)
 
     def moveEvent(self, event):
-        # 窗口每次移动后 Qt 都会调用它：拖动时让气泡和小红点跟着走
+        # 窗口每次移动后 Qt 都会调用它：拖动时让气泡、小红点、卡片堆跟着走
         self._bubbles.follow(self._body_rect())
         self._badge.follow(self._body_rect())
+        self._deck.follow(self._body_rect())
+
+    # ---------- 卡片堆 ----------
+
+    def begin_mail_batch(self):
+        """开始新的一轮处理：清空卡片堆，接收这一轮的结果。"""
+        self._deck.reset()
+        self._deck_accepting = True
+
+    @property
+    def deck_accepting(self):
+        """这一轮的结果还要不要放进卡片堆。用户中途收起了卡片堆，就是 False（剩下的邮件下次再看）。"""
+        return self._deck_accepting
+
+    def add_mail_card(self, card):
+        self._deck.add_card(card, self._body_rect())
+
+    def set_mail_note(self, text):
+        """卡片堆底部的小字提示（比如"还没设置 AI"）。"""
+        self._deck.set_note(text)
+
+    def _on_deck_closed(self):
+        if self._mail_processing:
+            self._deck_accepting = False  # 还在处理就被收起了：后面的结果不放进来，也不算处理过
 
     # ---------- 小红点 ----------
 
@@ -327,6 +357,11 @@ class PetWindow(QWidget):
                 self._badge.show()
 
     def _on_badge_clicked(self):
+        # 卡片堆开着时点小红点 = 收起卡片堆。
+        # （点小红点会让卡片堆先失去焦点、自己收起，所以"刚刚收起"的也算）
+        if self._deck.isVisible() or self._deck.recently_closed():
+            self._deck.close_deck()
+            return
         if self._corner_badge.isVisible():
             self.bring_to_front()  # 在角落点它 = 想看邮件了：先把芸芸叫出来，结果才看得到
         self.mail_badge_clicked.emit()
