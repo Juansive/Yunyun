@@ -1,12 +1,18 @@
-# 芸芸的配置模板（会提交到 Git）。
+# 芸芸的配置示例（会提交到 Git）：说明 config.yaml 长什么样。
 #
-# 使用方法：运行 .\.venv\Scripts\python -m tools.setup_mail 会自动生成 config.yaml；
-# 也可以手动复制本文件为 config.yaml 再修改。config.yaml 不会提交到 Git。
+# 真正的 config.yaml 由芸芸自动生成和维护，不需要手动编辑：
+#   右键芸芸 → 设置 → 邮箱账号… / AI 设置…
+# config.yaml 不会提交到 Git（已写进 .gitignore）。
 #
-# 注意：授权码不要写在这里！它保存在 Windows 凭据管理器中。
+# 注意：授权码、API Key 不在这里，保存在 Windows 凭据管理器中
+#（服务名分别是 yunyun-mail、yunyun-ai）。
 
 mail:
   accounts:
-    - name: QQ邮箱              # 随便起个名字，显示用
+    - name: QQ邮箱              # 显示用的名字
       provider: qq              # qq / 163 / gmail
-      address: 123456@qq.com    # 你的邮箱地址
+      address: 123456@qq.com    # 邮箱地址
+
+ai:
+  provider: zhipu               # zhipu（智谱，默认）/ siliconflow（硅基流动）/ dashscope（通义千问）
+  model: glm-4.7-flash          # 模型名，可在 AI 设置里修改
