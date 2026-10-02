@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from yunyun import shortcut
-from yunyun.config import PROJECT_ROOT
+from yunyun.paths import PROJECT_ROOT
 
 pytestmark = pytest.mark.skipif(sys.platform != "win32", reason="快捷方式只在 Windows 上有")
 

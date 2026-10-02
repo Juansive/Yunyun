@@ -1,7 +1,7 @@
 """创建 Windows 快捷方式（.lnk），让用户双击就能启动芸芸，不用打开终端。
 
 - 用 pythonw.exe（Python 的"无窗口版"）启动，不会弹出黑色的终端窗口；
-- 以后打包成 exe 后（sys.frozen 为 True），快捷方式直接指向 exe；
+- 打包成 exe 后（sys.frozen 为 True），快捷方式直接指向 exe；
 - .lnk 文件是 Windows 的二进制格式，这里借用系统自带的 PowerShell + WScript.Shell 来写，不需要额外装库。
 
 开机自启也用快捷方式：放进当前用户的"启动"文件夹，登录 Windows 时系统会自动打开里面的东西。
@@ -14,7 +14,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QStandardPaths
 
-from yunyun.config import PROJECT_ROOT
+from yunyun.paths import PROJECT_ROOT
 
 SHORTCUT_NAME = "芸芸 Yunyun.lnk"  # 固定的文件名：切换界面语言后再创建，也只会覆盖同一个快捷方式
 

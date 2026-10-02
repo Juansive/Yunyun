@@ -59,7 +59,7 @@ python -m venv .venv
 | 数据 | 存在哪里 |
 |---|---|
 | 邮箱授权码、AI 的 API Key | Windows 凭据管理器（`yunyun-mail`、`yunyun-ai`），由你的 Windows 账户加密保护 |
-| 邮箱地址、AI 服务商 | 项目文件夹里的 `config.yaml` |
+| 邮箱地址、AI 服务商 | `%APPDATA%\Yunyun\Yunyun\config.yaml` |
 | 哪些邮件提醒过 | `%APPDATA%\Yunyun\Yunyun\mail_state.json`（只有邮件编号，没有内容） |
 | 提醒的历史记录 | `%APPDATA%\Yunyun\Yunyun\history.db`（AI 那句话、标题、发件人、时间、附件名，不含正文；保留 7 天） |
 | 日志 | `%APPDATA%\Yunyun\Yunyun\logs\`（不含邮件内容和密钥，邮箱地址已打码） |

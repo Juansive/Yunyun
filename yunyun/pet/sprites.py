@@ -13,11 +13,12 @@
 方括号里的是可选的：想加帧，按编号往后加文件就行，不用改代码。
 """
 from dataclasses import dataclass
-from pathlib import Path
 
 from PySide6.QtGui import QPixmap
 
-ASSET_DIR = Path(__file__).resolve().parents[2] / "assets" / "pet"
+from yunyun.paths import resource_path
+
+ASSET_DIR = resource_path("assets", "pet")   # 开发版在项目文件夹里，打包后在 exe 旁边的 _internal 里
 
 
 @dataclass

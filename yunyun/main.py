@@ -11,7 +11,7 @@ from PySide6.QtCore import QTimer
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QSystemTrayIcon
 
-from yunyun import ai, i18n, logs, single_instance
+from yunyun import ai, config, i18n, logs, single_instance
 from yunyun.activity.keyboard import KeyboardMonitor
 from yunyun.config import ConfigError
 from yunyun.mail import accounts
@@ -38,6 +38,8 @@ def main():
         return 0
     guard = single_instance.InstanceGuard(parent=app)
 
+    if config.migrate_legacy_config():  # 旧版本的配置在项目根目录：复制到 %APPDATA%（只做一次）
+        logging.getLogger(__name__).info("已把旧的 config.yaml 复制到 %s", config.CONFIG_PATH.parent)
     i18n.load_language()               # 恢复上次选择的语言
 
     sprites = load_sprites()      # 必须在 QApplication 之后（QPixmap 需要它）
