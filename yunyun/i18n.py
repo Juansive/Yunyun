@@ -123,6 +123,11 @@ TEXTS = {
         "en": "Got it~ I'll skip those {} for now.",
         "ja": "了解～その {} 通は今回スルーするね",
     },
+    "already_running": {
+        "zh": "我在这儿呢～",
+        "en": "I'm right here~",
+        "ja": "ここにいるよ～",
+    },
     "no_new_mail": {
         "zh": "现在没有新邮件哦～",
         "en": "No new mail right now~",

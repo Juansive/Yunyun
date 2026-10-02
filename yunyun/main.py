@@ -3,13 +3,14 @@
 运行方式（在项目根目录）：
     .\\.venv\\Scripts\\python -m yunyun.main
 """
+import logging
 import sys
 
 from PySide6.QtCore import QTimer
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QSystemTrayIcon
 
-from yunyun import ai, i18n, logs
+from yunyun import ai, i18n, logs, single_instance
 from yunyun.activity.keyboard import KeyboardMonitor
 from yunyun.config import ConfigError
 from yunyun.mail import accounts
@@ -27,12 +28,25 @@ def main():
     app.setOrganizationName("Yunyun")  # QSettings 用这两个名字决定设置存在哪里
     app.setApplicationName("Yunyun")
     logs.setup_logging()               # 出错信息写进日志文件（要在设置好程序名之后，才知道写到哪里）
+
+    # 同时只运行一个芸芸：已经在运行了，就把它叫出来，自己退出
+    if single_instance.notify_running_instance():
+        logging.getLogger(__name__).info("芸芸已经在运行，叫它出来后本次启动退出")
+        return 0
+    guard = single_instance.InstanceGuard(parent=app)
+
     i18n.load_language()               # 恢复上次选择的语言
 
     sprites = load_sprites()      # 必须在 QApplication 之后（QPixmap 需要它）
     machine = StateMachine()
     pet = PetWindow(sprites)
     keyboard = KeyboardMonitor()
+
+    def on_second_launch():       # 用户又启动了一次：把芸芸叫出来，说一声
+        pet.bring_to_front()
+        pet.say(i18n.tr("already_running"))
+
+    guard.show_requested.connect(on_second_launch)
 
     # 用信号把模块连起来：各模块之间互不 import，以后换界面层时只换 PetWindow
     keyboard.key_pressed.connect(machine.on_key)   # 敲键盘 → 状态机
