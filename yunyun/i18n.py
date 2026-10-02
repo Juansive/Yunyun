@@ -83,7 +83,23 @@ TEXTS = {
     "page_general": {"zh": "通用", "en": "General", "ja": "一般"},
     "page_mail": {"zh": "邮箱", "en": "Mail", "ja": "メール"},
     "page_ai": {"zh": "AI", "en": "AI", "ja": "AI"},
+    "page_history": {"zh": "历史", "en": "History", "ja": "履歴"},
     "page_about": {"zh": "关于", "en": "About", "ja": "情報"},
+    "history_note": {
+        "zh": "这里保存最近 7 天芸芸展示过的提醒（不含邮件正文），超过 7 天会自动删除。",
+        "en": "Reminders Yunyun showed you in the last 7 days (without email bodies). Older ones are deleted automatically.",
+        "ja": "芸芸が表示した直近 7 日間の通知です（メール本文は含みません）。7 日を過ぎると自動で削除されます。",
+    },
+    "history_empty": {"zh": "（还没有历史记录）", "en": "(No history yet)", "ja": "（まだ履歴はありません）"},
+    "history_clear": {"zh": "清空历史", "en": "Clear History", "ja": "履歴を消去"},
+    "history_confirm_clear": {
+        "zh": "确定清空所有历史记录吗？",
+        "en": "Clear all history?",
+        "ja": "すべての履歴を消去しますか？",
+    },
+    "date_today": {"zh": "今天", "en": "Today", "ja": "今日"},
+    "date_yesterday": {"zh": "昨天", "en": "Yesterday", "ja": "昨日"},
+    "date_month_day": {"zh": "{}月{}日", "en": "{}/{}", "ja": "{}月{}日"},
     "about_version": {"zh": "版本 {}", "en": "Version {}", "ja": "バージョン {}"},
     "about_privacy_title": {"zh": "隐私", "en": "Privacy", "ja": "プライバシー"},
     "about_privacy_text": {

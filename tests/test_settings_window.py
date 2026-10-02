@@ -31,7 +31,7 @@ def test_open_settings_pages(qapp, pet):
     pet.open_settings()
     w = pet.settings_window
     assert w.isVisible() and w.current_page == "general"
-    assert [w._sidebar.item(i).text() for i in range(w._sidebar.count())] == ["通用", "邮箱", "AI", "关于"]
+    assert [w._sidebar.item(i).text() for i in range(w._sidebar.count())] == ["通用", "邮箱", "AI", "历史", "关于"]
     pet.open_mail_accounts()                       # 已经开着：翻页，不会开第二个窗口
     assert pet.settings_window is w and w.current_page == "mail"
     for page in PAGES:
@@ -79,3 +79,40 @@ def test_closing_destroys_window(qapp, pet):
     pet.settings_window.close()
     qapp.processEvents()
     assert pet.settings_window is None             # 下次打开会重新创建
+
+
+# ---------- 历史页 ----------
+
+def test_history_page_groups_and_details(qapp, pet, tmp_path, monkeypatch):
+    import time
+    from datetime import datetime, timezone
+    from PySide6.QtWidgets import QMessageBox
+    from yunyun.notify.history import HistoryEntry, MailHistory
+
+    history = MailHistory(tmp_path / "h.db")
+    now = time.time()
+    history.add(HistoryEntry("昨天的提醒", "旧标题", "旧发件人", None, [], now - 24 * 3600, "b0"))
+    history.add(HistoryEntry("嘿！你的加油发票来啦！", "电子发票", "中国石化 <e@s.com>",
+                             datetime(2026, 10, 1, 9, 30, tzinfo=timezone.utc), ["发票.pdf"], now, "b1"))
+    pet.set_history(history)
+    pet.open_settings("history")
+    page = pet.settings_window.history_page
+    tree = page._tree
+
+    assert [tree.topLevelItem(i).text(0) for i in range(tree.topLevelItemCount())] == ["今天", "昨天"]
+    today = tree.topLevelItem(0)
+    assert today.childCount() == 1 and today.child(0).text(0).endswith("嘿！你的加油发票来啦！")
+
+    tree.setCurrentItem(today.child(0))            # 单击一条：下方显示详情
+    assert "标题：电子发票" in page._detail.text() and "附件：发票.pdf" in page._detail.text()
+
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.Yes)
+    page._clear_button.click()                     # 清空历史
+    assert history.is_empty() and tree.topLevelItem(0).text(0) == "（还没有历史记录）"
+    assert not page._clear_button.isEnabled()
+
+
+def test_history_page_without_history(qapp, pet):
+    pet.open_settings("history")                   # 没有设置历史对象（比如测试里）：不出错
+    page = pet.settings_window.history_page
+    assert page._tree.topLevelItem(0).text(0) == "（还没有历史记录）"
