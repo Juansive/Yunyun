@@ -42,7 +42,8 @@ def main():
         logging.getLogger(__name__).info("已把旧的 config.yaml 复制到 %s", config.CONFIG_PATH.parent)
     i18n.load_language()               # 恢复上次选择的语言
 
-    sprites = load_sprites()      # 必须在 QApplication 之后（QPixmap 需要它）
+    # 必须在 QApplication 之后（QPixmap 需要它）；加载时就缩小到显示需要的大小，省内存
+    sprites = load_sprites(max_size=PetWindow.sprite_pixels())
     machine = StateMachine()
     pet = PetWindow(sprites)
     keyboard = KeyboardMonitor()

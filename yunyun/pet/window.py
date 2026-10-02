@@ -8,6 +8,7 @@
 - 没开"始终在上"时，被别的窗口挡住会自动暂停，露出来半秒后自动恢复。
 """
 import logging
+import math
 import threading
 
 from PySide6.QtCore import QElapsedTimer, QPoint, QPointF, QRect, QSettings, QSize, Qt, QTimer, QUrl, Signal
@@ -21,7 +22,6 @@ from yunyun.pet.badge import Badge
 from yunyun.pet.bubble import BubbleStack
 from yunyun.pet.card_deck import CardDeck, MailCard
 from yunyun.pet.menu import KeepOpenMenu
-from yunyun.pet.settings_window import SettingsWindow
 from yunyun.pet.state import PetState
 from yunyun.pet.sway import Sway
 
@@ -151,6 +151,15 @@ class PetWindow(QWidget):
 
         self._task_done.connect(self._on_task_done)
         self.set_state(PetState.IDLE)
+
+    @classmethod
+    def sprite_pixels(cls):
+        """图片加载时缩小到多大（物理像素），给 load_sprites(max_size=...) 用。
+
+        要够"缩放比例最高的那块屏幕"用，并且至少按 200% 算——这样以后插上 4K 屏，芸芸也是清晰的。
+        """
+        ratio = max([2.0] + [screen.devicePixelRatio() for screen in QGuiApplication.screens()])
+        return math.ceil(cls.SIZE * ratio)
 
     def _window_flags(self):
         flags = (
@@ -638,6 +647,8 @@ class PetWindow(QWidget):
     def open_settings(self, page="general"):
         """打开设置窗口并翻到某一页；已经打开了就翻页并提到前面。"""
         if self._settings_window is None:
+            # 用到时才导入：设置窗口和它的各个页面要占两三 MB 内存，平时用不着
+            from yunyun.pet.settings_window import SettingsWindow
             # parent 设为芸芸：窗口和芸芸同一层（芸芸置顶时它也在最上面）
             self._settings_window = SettingsWindow(self)
             self._settings_window.accounts_changed.connect(self.mail_accounts_changed)

@@ -13,6 +13,18 @@ def test_resource_path_in_dev_and_frozen(monkeypatch, tmp_path):
     assert paths.resource_path("assets", "pet") == tmp_path / "assets" / "pet"
 
 
+def test_sprites_are_shrunk_when_loaded(qapp):
+    from yunyun.pet.sprites import load_sprites
+    from yunyun.pet.window import PetWindow
+    full = load_sprites()
+    small = load_sprites(max_size=100)
+    assert full.idle[0].width() == 512 and small.idle[0].width() == 100       # 缩小了
+    assert all(p.width() <= 100 and p.height() <= 100
+               for p in small.idle + small.working_down + small.excited + small.lifted + [small.tray])
+    assert load_sprites(max_size=4096).idle[0].width() == 512                  # 不会放大
+    assert PetWindow.sprite_pixels() >= 2 * PetWindow.SIZE                     # 至少够 200% 缩放的屏幕用
+
+
 def test_data_dir_is_under_appdata(monkeypatch, tmp_path):
     monkeypatch.setenv("APPDATA", str(tmp_path))
     assert paths.data_dir() == tmp_path / "Yunyun" / "Yunyun"

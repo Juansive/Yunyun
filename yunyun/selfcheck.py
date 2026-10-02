@@ -24,6 +24,7 @@ def run(report_path):
 
 def _modules():
     import yunyun.main  # noqa: F401  导入芸芸的全部模块：漏打包了哪个，这里就会报错
+    import yunyun.pet.settings_window  # noqa: F401  设置窗口是用到时才导入的，单独检查
     return "芸芸的全部模块都能导入"
 
 

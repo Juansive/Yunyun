@@ -12,10 +12,14 @@
     [tray.png]                                    托盘图标（没有就用 idle_1.png）
 
 方括号里的是可选的：想加帧，按编号往后加文件就行，不用改代码。
+
+内存：一张图解码后占"宽 × 高 × 4"字节（512×512 就是 1 MB，2048×2048 是 16 MB），
+而桌面上芸芸只有 160 个逻辑像素大。所以加载时用 max_size 直接缩小到显示需要的大小，原图不留在内存里。
 """
 from dataclasses import dataclass
 
-from PySide6.QtGui import QPixmap
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QImage, QPixmap
 
 from yunyun.paths import resource_path
 
@@ -34,30 +38,45 @@ class Sprites:
     tray: QPixmap
 
 
-def load_sprites(folder=ASSET_DIR):
-    """读取全部图片。注意：QPixmap 必须在创建 QApplication 之后才能用。"""
-    idle = _load_series(folder, "idle")
+def load_sprites(folder=ASSET_DIR, max_size=None):
+    """读取全部图片。max_size：比它大的图缩小到不超过 max_size × max_size（物理像素），None = 保持原样。
+
+    注意：QPixmap 必须在创建 QApplication 之后才能用。
+    """
+    def load(path):
+        return _load(path, max_size)
+
+    def series(prefix, required=True):
+        return _load_series(folder, prefix, required, max_size)
+
+    idle = series("idle")
     tray_path = folder / "tray.png"
     return Sprites(
         idle=idle,
-        working_up=_load(folder / "working_up.png"),
-        working_down=_load_series(folder, "working_down"),
-        excited=_load_series(folder, "excited"),
-        thinking=_load_series(folder, "thinking"),
-        sleeping=_load_series(folder, "sleeping"),
-        lifted=_load_series(folder, "lifted", required=False),
-        tray=_load(tray_path) if tray_path.exists() else idle[0],
+        working_up=load(folder / "working_up.png"),
+        working_down=series("working_down"),
+        excited=series("excited"),
+        thinking=series("thinking"),
+        sleeping=series("sleeping"),
+        lifted=series("lifted", required=False),
+        tray=load(tray_path) if tray_path.exists() else idle[0],
     )
 
 
-def _load(path):
-    pixmap = QPixmap(str(path))
-    if pixmap.isNull():
+def _load(path, max_size=None):
+    # 用 QImage 读，而不是 QPixmap(路径)：后者会把原图另外存一份在 Qt 的图片缓存（QPixmapCache，最多 10 MB）里，
+    # 缩小了也省不下内存
+    image = QImage(str(path))
+    if image.isNull():
         raise FileNotFoundError(f"无法加载图片：{path}")
-    return pixmap
+    if max_size is not None and (image.width() > max_size or image.height() > max_size):
+        # 等比例平滑缩小；原来的大图没人引用了，Python 会自动释放它的内存
+        image = image.scaled(max_size, max_size, Qt.AspectRatioMode.KeepAspectRatio,
+                             Qt.TransformationMode.SmoothTransformation)
+    return QPixmap.fromImage(image)
 
 
-def _load_series(folder, prefix, required=True):
+def _load_series(folder, prefix, required=True, max_size=None):
     """读取 prefix_1.png、prefix_2.png …，按编号（数字）排序。可选的一组图没有时返回空列表。"""
     def number(path):
         suffix = path.stem[len(prefix) + 1:]  # "idle_12" → "12"
@@ -70,4 +89,4 @@ def _load_series(folder, prefix, required=True):
     )
     if not paths and required:
         raise FileNotFoundError(f"缺少图片：{folder / (prefix + '_1.png')}")
-    return [_load(p) for p in paths]
+    return [_load(p, max_size) for p in paths]   # 一张张解码、马上缩小，内存里不会同时有很多张大图
