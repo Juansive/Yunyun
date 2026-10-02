@@ -3,6 +3,7 @@
 会在后台线程里被调用（它要联网，可能要好几秒）。不管 AI 能不能用，都保证返回一句话：
 AI 没设置或调用失败时，退回"发件人 + 标题"，并在 status 里说明原因。
 """
+import logging
 from dataclasses import dataclass
 
 from yunyun.ai import settings as ai_settings
@@ -10,6 +11,8 @@ from yunyun.ai.client import AIError
 from yunyun.ai.summarizer import fallback_bubble, summarize
 
 __all__ = ["Description", "describe", "fallback_bubble"]
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -26,4 +29,6 @@ def describe(message, language):
     try:
         return Description(summarize(message, language, settings), "ok")
     except AIError as e:
+        # 只记服务商和错误原因，不记邮件内容
+        log.warning("AI 调用失败（%s / %s，%s）：%s", settings.provider, settings.model, e.kind, e.detail or e)
         return Description(fallback_bubble(message), "failed", e)

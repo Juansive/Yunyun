@@ -4,6 +4,7 @@
 - 只有用户点了小红点，才调用 fetch_pending() 真正读取邮件内容；
 - 网络操作都在后台线程里做；对外发出的信号都在主线程里发出，界面可以放心使用。
 """
+import logging
 import threading
 from pathlib import Path
 
@@ -13,6 +14,14 @@ from yunyun.config import ConfigError
 from yunyun.mail import accounts
 from yunyun.mail.imap_client import MailError, check_unseen, fetch_messages
 from yunyun.mail.tracker import MailTracker
+
+log = logging.getLogger(__name__)
+
+
+def mask_address(address):
+    """日志里的邮箱地址打码：me123@qq.com → m***@qq.com（日志可能会发给别人帮忙排查）。"""
+    name, _, domain = address.partition("@")
+    return f"{name[:1]}***@{domain}" if domain else "***"
 
 
 def default_state_path():
@@ -47,6 +56,7 @@ class MailService(QObject):
         self._polling = False
         self._fetching = False
         self._auth_warned = set()
+        self._last_error = {}  # 每个邮箱上一次检查的错误类型（None = 正常），用来只在变化时记日志
 
         self._poll_done.connect(self._on_poll_done)
         self._fetched.connect(self.message_ready)   # 信号连信号：直接转发
@@ -96,6 +106,7 @@ class MailService(QObject):
             except MailError as e:
                 results.append((account, None, e))
             except Exception as e:  # 兜底：意外错误也要送回主线程，不能让 _polling 永远是 True
+                log.exception("检查邮箱 %s 时出现意外错误", mask_address(account.address))
                 results.append((account, None, MailError(str(e), detail=str(e))))
         _safe_emit(self._poll_done, results)
 
@@ -103,6 +114,7 @@ class MailService(QObject):
         self._polling = False
         newly = 0
         for account, status, error in results:
+            self._log_poll_state(account.address, error)
             if error is not None:
                 if error.kind in ("login", "no_password") and account.address not in self._auth_warned:
                     self._auth_warned.add(account.address)
@@ -111,6 +123,17 @@ class MailService(QObject):
             self._auth_warned.discard(account.address)
             newly += len(self._tracker.update(account.address, status.uidvalidity, status.uidnext, status.unseen))
         self.pending_changed.emit(self.pending_count, newly)
+
+    def _log_poll_state(self, address, error):
+        """只在状态变化时记日志（正常 → 出错、出错 → 恢复、错误类型变了），断网时不会每 2 分钟刷一条。"""
+        kind = error.kind if error is not None else None
+        if self._last_error.get(address, None) == kind:
+            return
+        self._last_error[address] = kind
+        if error is None:
+            log.info("邮箱 %s 检查恢复正常", mask_address(address))
+        else:
+            log.warning("检查邮箱 %s 失败（%s）：%s", mask_address(address), kind, error.detail or error)
 
     # ---------- 读取待处理的邮件（用户点了小红点）----------
 
@@ -132,8 +155,11 @@ class MailService(QObject):
             try:
                 for message in fetch_messages(account, uids):  # 读到一封、处理一封、送出一封
                     _safe_emit(self._fetched, account.address, message, self._run_process(message))
+            except MailError as e:
+                # 这个邮箱读失败了：没读到的邮件仍然留在待处理里，下次点击再试
+                log.warning("读取邮箱 %s 的邮件失败（%s）：%s", mask_address(account.address), e.kind, e.detail or e)
             except Exception:
-                pass  # 这个邮箱读失败了：没读到的邮件仍然留在待处理里，下次点击再试
+                log.exception("读取邮箱 %s 的邮件时出现意外错误", mask_address(account.address))
         _safe_emit(self._fetch_done)
 
     def _run_process(self, message):
@@ -142,7 +168,9 @@ class MailService(QObject):
         try:
             return self._process(message)
         except Exception:
-            return None  # 处理出意外：这封照样送出（界面会用兜底文字），不影响后面的邮件
+            # 处理出意外：这封照样送出（界面会用兜底文字），不影响后面的邮件
+            log.exception("处理邮件（UID %s）时出现意外错误", message.uid)
+            return None
 
     def _on_fetch_done(self):
         self._fetching = False

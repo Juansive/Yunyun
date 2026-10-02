@@ -9,9 +9,8 @@ from PySide6.QtCore import QTimer
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QSystemTrayIcon
 
-from yunyun import i18n
+from yunyun import ai, i18n, logs
 from yunyun.activity.keyboard import KeyboardMonitor
-from yunyun import ai
 from yunyun.config import ConfigError
 from yunyun.mail import accounts
 from yunyun.mail.imap_client import MailError
@@ -27,6 +26,7 @@ def main():
     app = QApplication(sys.argv)  # 每个 Qt 程序有且只有一个 QApplication
     app.setOrganizationName("Yunyun")  # QSettings 用这两个名字决定设置存在哪里
     app.setApplicationName("Yunyun")
+    logs.setup_logging()               # 出错信息写进日志文件（要在设置好程序名之后，才知道写到哪里）
     i18n.load_language()               # 恢复上次选择的语言
 
     sprites = load_sprites()      # 必须在 QApplication 之后（QPixmap 需要它）
