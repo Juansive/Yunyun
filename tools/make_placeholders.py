@@ -214,6 +214,34 @@ def thinking(frame):
     return img
 
 
+def sleeping(frame):
+    """睡觉：戴睡帽、闭眼，身体随呼吸微微起伏，Z 一大一小交替（frame = 1/2）"""
+    dy = 0 if frame == 1 else 6                 # 第 2 帧"呼气"，身体低一点
+    img, p = new_canvas()
+    draw_body(p, dy)
+    draw_hand(p, 150, 380 + dy)                 # 双手放松地垂着
+    draw_hand(p, 362, 380 + dy)
+    p.setPen(pen(8))
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    p.drawLine(QPointF(180, 238 + dy), QPointF(220, 238 + dy))   # 闭眼：两条横线
+    p.drawLine(QPointF(292, 238 + dy), QPointF(332, 238 + dy))
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(QColor("#9FB4C8"))
+    p.drawEllipse(QPointF(256, 286 + dy), 9, 7)                   # 小嘴微张
+    # 睡帽：一个歪向右边的三角形 + 白色毛球
+    p.setBrush(QColor("#6C7EE1"))
+    p.drawPolygon(QPolygonF([QPointF(150, 150 + dy), QPointF(330, 118 + dy), QPointF(420, 40 + dy)]))
+    p.setBrush(QColor("#FFFFFF"))
+    p.drawEllipse(QPointF(424, 38 + dy), 18, 18)
+    if frame == 1:
+        draw_z(p, 80, 120, 26)
+    else:
+        draw_z(p, 60, 90, 22)
+        draw_z(p, 30, 40, 36)
+    p.end()
+    return img
+
+
 def main():
     app = QGuiApplication(sys.argv)  # 使用 QPainter 等图形功能前需要先有 QGuiApplication
     OUT.mkdir(parents=True, exist_ok=True)
@@ -227,6 +255,8 @@ def main():
         "thinking_1.png": thinking(1),
         "thinking_2.png": thinking(2),
         "thinking_3.png": thinking(3),
+        "sleeping_1.png": sleeping(1),
+        "sleeping_2.png": sleeping(2),
     }
     for name, img in images.items():
         img.save(str(OUT / name))

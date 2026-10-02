@@ -18,6 +18,7 @@ from yunyun.mail import accounts
 from yunyun.mail.imap_client import MailError
 from yunyun.mail.service import MailService
 from yunyun.notify.history import HistoryEntry, MailHistory, default_path as history_path
+from yunyun.notify.quiet import QuietHours
 from yunyun.pet.card_deck import MailCard
 from yunyun.pet.sprites import load_sprites
 from yunyun.pet.state import StateMachine
@@ -62,7 +63,18 @@ def main():
     mail = MailService(process_message=lambda message: ai.describe(message, i18n.current_language()))
     history = MailHistory(history_path())   # 展示过的卡片存 7 天，可以找回
     pet.set_history(history)
-    connect_mail(mail, pet, machine, history)
+
+    # ---- 免打扰：时段内芸芸睡觉，新邮件只安静地计数 ----
+    quiet = QuietHours()
+    pet.set_quiet_hours(quiet)
+    machine.set_quiet(quiet.active)             # 启动时就在免打扰时段里：直接睡（不说"晚安"）
+
+    def on_quiet_changed(active):
+        machine.set_quiet(active)
+        pet.say(i18n.tr("quiet_start" if active else "quiet_end"))
+
+    quiet.changed.connect(on_quiet_changed)
+    connect_mail(mail, pet, machine, history, quiet)
 
     app.aboutToQuit.connect(keyboard.stop)       # 退出前停止键盘监听
     app.aboutToQuit.connect(pet.save_position)   # 退出前记下芸芸的位置（万一刚拖完还没来得及保存）
@@ -85,13 +97,16 @@ def main():
     sys.exit(app.exec())          # 进入事件循环，直到程序退出
 
 
-def connect_mail(mail, pet, machine, history=None):
-    """用信号把邮件服务和芸芸连起来（单独写成函数，测试里也能直接用）。history：可选，记录展示过的卡片。"""
+def connect_mail(mail, pet, machine, history=None, quiet=None):
+    """用信号把邮件服务和芸芸连起来（单独写成函数，测试里也能直接用）。
+
+    history：可选，记录展示过的卡片；quiet：可选，免打扰时段（期间新邮件只计数）。
+    """
     batch = {"id": ""}  # 当前这一轮处理的编号（用开始时间），历史记录按"批"分组
 
     def on_pending_changed(total, newly):
         pet.set_mail_count(total)
-        if newly:
+        if newly and not (quiet is not None and quiet.active):   # 免打扰：只计数，不激动、不去角落
             if pet.is_visible_to_user():
                 machine.on_mail()  # 芸芸看得见：激动几秒（不弹文字，还没经过 AI）
             pet.on_new_mail()      # 芸芸被挡住：小红点单独去任务栏时钟上方

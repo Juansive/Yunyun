@@ -7,6 +7,7 @@
     working_down_1.png  [working_down_2.png ...]  工作：敲下（每敲一次换下一张）
     excited_1.png  [excited_2.png ...]            激动（多张时循环播放）
     thinking_1.png [thinking_2.png ...]           思考（多张时循环播放）
+    sleeping_1.png [sleeping_2.png ...]           睡觉（免打扰时段，多张时循环播放）
     [tray.png]                                    托盘图标（没有就用 idle_1.png）
 
 方括号里的是可选的：想加帧，按编号往后加文件就行，不用改代码。
@@ -26,6 +27,7 @@ class Sprites:
     working_down: list[QPixmap]
     excited: list[QPixmap]
     thinking: list[QPixmap]
+    sleeping: list[QPixmap]
     tray: QPixmap
 
 
@@ -39,6 +41,7 @@ def load_sprites(folder=ASSET_DIR):
         working_down=_load_series(folder, "working_down"),
         excited=_load_series(folder, "excited"),
         thinking=_load_series(folder, "thinking"),
+        sleeping=_load_series(folder, "sleeping"),
         tray=_load(tray_path) if tray_path.exists() else idle[0],
     )
 

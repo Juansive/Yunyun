@@ -76,6 +76,7 @@ class PetWindow(QWidget):
         self._bubbles = BubbleStack(self)
         self._settings_window = None  # 设置窗口（用到时才创建，关掉就销毁）
         self._history = None          # 邮件提醒的历史记录（main 里设置）
+        self._quiet_hours = None      # 免打扰时段（main 里设置）
 
         # ---- 小红点 ----
         self._mail_count = 0
@@ -167,6 +168,7 @@ class PetWindow(QWidget):
             PetState.IDLE: self._sprites.idle,
             PetState.EXCITED: self._sprites.excited,
             PetState.THINKING: self._sprites.thinking,
+            PetState.SLEEPING: self._sprites.sleeping,
         }[state]
         self._loop_frames = frames
         self._loop_index = 0
@@ -345,6 +347,13 @@ class PetWindow(QWidget):
 
     def set_history(self, history):
         self._history = history
+
+    def set_quiet_hours(self, quiet):
+        self._quiet_hours = quiet
+
+    @property
+    def quiet_hours(self):
+        return self._quiet_hours
 
     @property
     def history(self):

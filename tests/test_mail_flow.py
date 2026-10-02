@@ -124,3 +124,40 @@ def test_history_records_batch_and_recent_mail_reopens_it(qapp, world):
     assert pet._deck.isVisible()
     assert [c.bubble for c in pet._deck._cards] == [e.bubble for e in batch]   # 和当时看到的一样
     assert not pet.deck_accepting                              # 这是回看，不是在处理
+
+
+def test_quiet_hours_only_count_new_mail(qapp, tmp_path, monkeypatch):
+    """免打扰时来了新邮件：芸芸不激动、小红点不去角落，只在身上安静地计数。"""
+    from datetime import time as dtime
+    from PySide6.QtCore import QSettings
+    from yunyun.notify.quiet import QuietHours
+    from yunyun.pet import winapi
+    QSettings.setDefaultFormat(QSettings.Format.IniFormat)
+    QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, str(tmp_path))
+    box = {"uidnext": 10, "unseen": []}
+    monkeypatch.setattr(service_module, "check_unseen", lambda account: MailboxStatus(1, box["uidnext"], list(box["unseen"])))
+    monkeypatch.setattr(service_module.accounts, "load_accounts", lambda: [A])
+    monkeypatch.setattr(winapi, "covered_ratio", lambda *a, **k: 1.0)   # 芸芸被别的窗口挡住了
+    monkeypatch.setattr(winapi, "is_user_busy", lambda: False)
+
+    mail = service_module.MailService(tracker=MailTracker(tmp_path / "s.json"))
+    mail._load_accounts()
+    pet = PetWindow(load_sprites())
+    pet.move(600, 500)
+    pet.show()
+    machine = StateMachine()
+    machine.state_changed.connect(pet.set_state)
+    quiet = QuietHours(clock=lambda: dtime(23, 30))
+    quiet.set_enabled(True)
+    machine.set_quiet(quiet.active)
+    connect_mail(mail, pet, machine, quiet=quiet)
+
+    mail.poll_now()
+    assert wait_until(qapp, lambda: not mail._polling)
+    box.update(uidnext=12, unseen=[10, 11])
+    mail.poll_now()
+    assert wait_until(qapp, lambda: not mail._polling)
+
+    assert machine.state is PetState.SLEEPING           # 继续睡，不激动
+    assert pet._badge._text == "2"                      # 数字照常 +2
+    assert not pet._corner_badge.isVisible()            # 不跳到任务栏角落

@@ -84,6 +84,23 @@ TEXTS = {
     "page_mail": {"zh": "邮箱", "en": "Mail", "ja": "メール"},
     "page_ai": {"zh": "AI", "en": "AI", "ja": "AI"},
     "page_history": {"zh": "历史", "en": "History", "ja": "履歴"},
+    "quiet_label": {"zh": "免打扰", "en": "Do not disturb", "ja": "おやすみモード"},
+    "quiet_to": {"zh": "至", "en": "to", "ja": "〜"},
+    "quiet_hint": {
+        "zh": "免打扰期间芸芸会睡觉；有新邮件时不激动、不跳出来，只在身上安静地计数。你打字时它会醒来陪你。",
+        "en": "During this time Yunyun sleeps. New mail is only counted quietly on its badge—no excitement, no pop-ups. It still wakes up to keep you company when you type.",
+        "ja": "この時間帯は芸芸が眠ります。新着メールは静かにカウントするだけで、はしゃいだり飛び出したりしません。入力するときは起きて付き合います。",
+    },
+    "quiet_start": {
+        "zh": "晚安～免打扰时间到啦，有邮件我会安静地帮你记着",
+        "en": "Good night~ Quiet time has started. I'll quietly keep count of any new mail.",
+        "ja": "おやすみ～おやすみモードの時間だよ。新着メールは静かに数えておくね",
+    },
+    "quiet_end": {
+        "zh": "早上好！免打扰结束啦～",
+        "en": "Good morning! Quiet time is over~",
+        "ja": "おはよう！おやすみモードは終わりだよ～",
+    },
     "page_about": {"zh": "关于", "en": "About", "ja": "情報"},
     "history_note": {
         "zh": "这里保存最近 7 天芸芸展示过的提醒（不含邮件正文），超过 7 天会自动删除。",

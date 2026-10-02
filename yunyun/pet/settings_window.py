@@ -12,11 +12,11 @@
 - 切换语言后，窗口自己也立刻换成新语言（整个窗口内容重建一遍）。
 - 窗口是芸芸的从属窗口：芸芸置顶时它也在最上面。
 """
-from PySide6.QtCore import QEvent, Qt, QUrl, Signal
+from PySide6.QtCore import QEvent, Qt, QTime, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QGuiApplication
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QFormLayout, QHBoxLayout, QLabel, QListWidget, QPushButton,
-    QStackedWidget, QVBoxLayout, QWidget,
+    QStackedWidget, QTimeEdit, QVBoxLayout, QWidget,
 )
 
 from yunyun import __version__, config, i18n, logs, shortcut
@@ -148,6 +148,30 @@ class GeneralPage(QWidget):
         shortcut_row.addWidget(self._shortcut_button)
         shortcut_row.addStretch()  # 按钮保持正常大小，不被拉成整行宽
         form.addRow(tr("setting_shortcut"), shortcut_row)
+
+        # 免打扰：[✓] 免打扰  23:00 至 08:00
+        self._quiet = pet.quiet_hours  # 可能是 None（比如测试里没有设置）
+        self._quiet_check = QCheckBox(tr("quiet_label"))
+        self._quiet_start = QTimeEdit()
+        self._quiet_end = QTimeEdit()
+        for edit in (self._quiet_start, self._quiet_end):
+            edit.setDisplayFormat("HH:mm")
+        quiet_row = QHBoxLayout()
+        quiet_row.addWidget(self._quiet_check)
+        quiet_row.addWidget(self._quiet_start)
+        quiet_row.addWidget(QLabel(tr("quiet_to")))
+        quiet_row.addWidget(self._quiet_end)
+        quiet_row.addStretch()
+        quiet_hint = QLabel(tr("quiet_hint"))
+        quiet_hint.setWordWrap(True)
+        quiet_hint.setStyleSheet("color: #666;")
+        if self._quiet is not None:
+            form.addRow(quiet_row)
+            form.addRow(quiet_hint)
+        else:
+            for widget in (self._quiet_check, self._quiet_start, self._quiet_end, quiet_hint):
+                widget.hide()
+
         layout.addLayout(form)
         layout.addStretch()
 
@@ -157,6 +181,9 @@ class GeneralPage(QWidget):
         self._on_top.toggled.connect(pet.set_always_on_top)
         self._autostart.toggled.connect(pet.set_autostart)
         self._shortcut_button.clicked.connect(pet.create_desktop_shortcut)
+        self._quiet_check.toggled.connect(self._on_quiet_toggled)
+        self._quiet_start.timeChanged.connect(self._on_quiet_range)
+        self._quiet_end.timeChanged.connect(self._on_quiet_range)
         pet.background_task_finished.connect(self.refresh)  # 开机启动设置失败时，勾选状态要恢复
 
     def refresh(self):
@@ -169,6 +196,28 @@ class GeneralPage(QWidget):
             widget.blockSignals(True)   # 程序自己改状态时，不要当作用户在操作
             update()
             widget.blockSignals(False)
+        if self._quiet is not None:
+            for widget, update in (
+                (self._quiet_check, lambda: self._quiet_check.setChecked(self._quiet.enabled)),
+                (self._quiet_start, lambda: self._quiet_start.setTime(QTime(self._quiet.start.hour, self._quiet.start.minute))),
+                (self._quiet_end, lambda: self._quiet_end.setTime(QTime(self._quiet.end.hour, self._quiet.end.minute))),
+            ):
+                widget.blockSignals(True)
+                update()
+                widget.blockSignals(False)
+            self._update_quiet_enabled()
+
+    def _on_quiet_toggled(self, on):
+        self._quiet.set_enabled(on)
+        self._update_quiet_enabled()
+
+    def _on_quiet_range(self):
+        self._quiet.set_range(self._quiet_start.time().toPython(), self._quiet_end.time().toPython())
+
+    def _update_quiet_enabled(self):
+        on = self._quiet_check.isChecked()
+        self._quiet_start.setEnabled(on)   # 没开免打扰时，时间框变灰
+        self._quiet_end.setEnabled(on)
 
     def _on_language(self):
         self._pet.change_language(self._language.currentData())
