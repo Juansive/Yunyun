@@ -242,6 +242,37 @@ def sleeping(frame):
     return img
 
 
+def lifted(frame):
+    """被拎起来：后颈的皮被捏住，身体垂下来变长，手垂着、脚悬空乱蹬，一脸懵（frame = 1/2 脚的位置不同）。
+
+    拖动时会以头顶正中为支点左右摆动，所以身体画得比其他状态窄，左右多留一些透明边。
+    """
+    img, p = new_canvas()
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(BODY)
+    p.drawPolygon(QPolygonF([QPointF(232, 124), QPointF(256, 40), QPointF(280, 124)]))   # 被捏起来的后颈
+    p.drawEllipse(QRectF(146, 100, 220, 300))                                             # 身体：窄一些、长一些
+    draw_hand(p, 158, 300)                      # 手无力地垂在两边
+    draw_hand(p, 354, 300)
+    kick = 0 if frame == 1 else 16              # 两只脚交替蹬一下
+    p.setBrush(HAND)
+    p.drawEllipse(QPointF(214, 412 + kick), 26, 22)
+    p.drawEllipse(QPointF(298, 428 - kick), 26, 22)
+    draw_open_eyes(p, -15)                      # 睁大眼睛
+    p.setPen(pen(6))
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    p.drawEllipse(QPointF(256, 270), 11, 13)    # o 形小嘴：有点懵
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(BLUSH)
+    p.drawEllipse(QPointF(190, 270), 20, 11)
+    p.drawEllipse(QPointF(322, 270), 20, 11)
+    p.setBrush(QColor("#A8D8F8"))               # 一滴汗
+    p.drawPolygon(QPolygonF([QPointF(372, 132), QPointF(362, 156), QPointF(382, 156)]))
+    p.drawEllipse(QPointF(372, 160), 10, 10)
+    p.end()
+    return img
+
+
 def main():
     app = QGuiApplication(sys.argv)  # 使用 QPainter 等图形功能前需要先有 QGuiApplication
     OUT.mkdir(parents=True, exist_ok=True)
@@ -257,6 +288,8 @@ def main():
         "thinking_3.png": thinking(3),
         "sleeping_1.png": sleeping(1),
         "sleeping_2.png": sleeping(2),
+        "lifted_1.png": lifted(1),
+        "lifted_2.png": lifted(2),
     }
     for name, img in images.items():
         img.save(str(OUT / name))

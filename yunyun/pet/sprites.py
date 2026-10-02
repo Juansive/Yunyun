@@ -8,6 +8,7 @@
     excited_1.png  [excited_2.png ...]            激动（多张时循环播放）
     thinking_1.png [thinking_2.png ...]           思考（多张时循环播放）
     sleeping_1.png [sleeping_2.png ...]           睡觉（免打扰时段，多张时循环播放）
+    [lifted_1.png  lifted_2.png ...]              被拎起来（拖动时；没有就保持原来的画面）
     [tray.png]                                    托盘图标（没有就用 idle_1.png）
 
 方括号里的是可选的：想加帧，按编号往后加文件就行，不用改代码。
@@ -29,6 +30,7 @@ class Sprites:
     excited: list[QPixmap]
     thinking: list[QPixmap]
     sleeping: list[QPixmap]
+    lifted: list[QPixmap]   # 可选：可能是空列表
     tray: QPixmap
 
 
@@ -43,6 +45,7 @@ def load_sprites(folder=ASSET_DIR):
         excited=_load_series(folder, "excited"),
         thinking=_load_series(folder, "thinking"),
         sleeping=_load_series(folder, "sleeping"),
+        lifted=_load_series(folder, "lifted", required=False),
         tray=_load(tray_path) if tray_path.exists() else idle[0],
     )
 
@@ -54,8 +57,8 @@ def _load(path):
     return pixmap
 
 
-def _load_series(folder, prefix):
-    """读取 prefix_1.png、prefix_2.png …，按编号（数字）排序。"""
+def _load_series(folder, prefix, required=True):
+    """读取 prefix_1.png、prefix_2.png …，按编号（数字）排序。可选的一组图没有时返回空列表。"""
     def number(path):
         suffix = path.stem[len(prefix) + 1:]  # "idle_12" → "12"
         return int(suffix) if suffix.isdigit() else None
@@ -65,6 +68,6 @@ def _load_series(folder, prefix):
         (p for p in folder.glob(f"{prefix}_*.png") if number(p) is not None),
         key=number,
     )
-    if not paths:
+    if not paths and required:
         raise FileNotFoundError(f"缺少图片：{folder / (prefix + '_1.png')}")
     return [_load(p) for p in paths]

@@ -127,6 +127,9 @@ class PetWindow(QWidget):
         self._loop_index = 0
         self._down_index = 0      # 工作：下一次敲击用第几张"敲下"图
         self._held_keys = 0       # 工作：还按着没松开的键有几个（按住不放时手一直落着）
+        self._dragging = False    # 正在拖动（拖过了系统的拖动阈值才算，手抖一下不算）
+        self._lifted = False      # 正在显示"被拎起来"的画面（拖动中，并且有这组图）
+        self._frame_before_lift = None  # 暂停时被拎起来：放下后要回到原来定格的那一帧
 
         self._loop_timer = QTimer(self)
         self._loop_timer.setInterval(self.LOOP_MS)
@@ -155,8 +158,8 @@ class PetWindow(QWidget):
         """切换到某个状态，显示对应的画面。"""
         self._state = state
         self._held_keys = 0  # 换了状态：之前"按着的键"不再影响手的姿势
-        if self._frozen:
-            return  # 暂停中：只记下最新状态，画面不动
+        if self._frozen or self._lifted:
+            return  # 暂停中 / 被拎着：只记下最新状态，画面不动（恢复 / 放下时再显示）
         self._loop_timer.stop()
         self._tap_timer.stop()
 
@@ -164,21 +167,16 @@ class PetWindow(QWidget):
             self._show(self._sprites.working_up)
             return
 
-        frames = {
+        self._play_loop({
             PetState.IDLE: self._sprites.idle,
             PetState.EXCITED: self._sprites.excited,
             PetState.THINKING: self._sprites.thinking,
             PetState.SLEEPING: self._sprites.sleeping,
-        }[state]
-        self._loop_frames = frames
-        self._loop_index = 0
-        self._show(frames[0])
-        if len(frames) > 1:       # 只有一张图就不用循环
-            self._loop_timer.start()
+        }[state])
 
     def tap(self):
         """按下一个键：显示"敲下"的画面。手至少落下 TAP_MS 毫秒；键还按着就一直落着，松开才抬手。"""
-        if self._frozen or self._state is not PetState.WORKING:
+        if self._frozen or self._lifted or self._state is not PetState.WORKING:
             return
         downs = self._sprites.working_down
         self._show(downs[self._down_index % len(downs)])  # 多张"敲下"图轮流用（比如左右手交替）
@@ -197,8 +195,16 @@ class PetWindow(QWidget):
     def _hands_up(self):
         if self._held_keys > 0:
             return  # 还有键按着不放：手保持落下（就像真的一直按着）
-        if self._state is PetState.WORKING and not self._frozen:
+        if self._state is PetState.WORKING and not self._frozen and not self._lifted:
             self._show(self._sprites.working_up)
+
+    def _play_loop(self, frames):
+        """从第一张开始显示一组图；多于一张就循环播放。"""
+        self._loop_frames = frames
+        self._loop_index = 0
+        self._show(frames[0])
+        if len(frames) > 1:       # 只有一张图就不用循环
+            self._loop_timer.start()
 
     def _next_loop_frame(self):
         self._loop_index = (self._loop_index + 1) % len(self._loop_frames)
@@ -229,6 +235,8 @@ class PetWindow(QWidget):
         if frozen:
             self._loop_timer.stop()   # 定格：停掉所有动画定时器，不再重绘
             self._tap_timer.stop()
+        elif self._lifted:
+            self._play_loop(self._sprites.lifted)  # 拎着的时候恢复了：接着播放"被拎起来"
         else:
             self.set_state(self._state)  # 暂停期间状态可能变过，用最新的状态重新显示
 
@@ -506,6 +514,8 @@ class PetWindow(QWidget):
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
+            if self._dragging:
+                self._end_drag()  # 上次拖动的"松开"消息丢了（比如拖到一半切换了窗口）：先当作已经放下
             # 记下"鼠标点在窗口里的哪个位置"，拖动时保持这个相对位置不变，
             # 否则窗口左上角会突然跳到鼠标下面。
             self._press_pos = event.globalPosition().toPoint()
@@ -515,20 +525,52 @@ class PetWindow(QWidget):
     def mouseMoveEvent(self, event):
         # buttons()（复数）返回"此刻按住了哪些键"；只有按住左键时才拖动
         if event.buttons() & Qt.MouseButton.LeftButton and self._drag_offset is not None:
-            self.move(event.globalPosition().toPoint() - self._drag_offset)
+            pos = event.globalPosition().toPoint()
+            # startDragDistance() 是系统的"拖动阈值"（Windows 上一般约 10 像素），用它可以容忍手抖。
+            # manhattanLength() = |dx| + |dy|，比算直线距离便宜。
+            if not self._dragging and (pos - self._press_pos).manhattanLength() >= QApplication.startDragDistance():
+                self._begin_drag()
+            self.move(pos - self._drag_offset)
 
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton and self._press_pos is not None:
-            # 松开时鼠标离按下位置很近 → 算单击；否则是一次拖动。
-            # startDragDistance() 是系统的"拖动阈值"（Windows 上一般约 10 像素），
-            # 用它可以容忍手抖。manhattanLength() = |dx| + |dy|，比算直线距离便宜。
+            # 没拖过阈值、松开时离按下的位置也很近 → 算单击；否则是一次拖动
             moved = (event.globalPosition().toPoint() - self._press_pos).manhattanLength()
-            if moved < QApplication.startDragDistance():
+            if not self._dragging and moved < QApplication.startDragDistance():
                 self.clicked.emit()
+            if self._dragging:
+                self._end_drag()
 
             self._drag_offset = None
             self._press_pos = None
             self.setCursor(Qt.CursorShape.OpenHandCursor)
+
+    def _begin_drag(self):
+        """开始拖动：有"被拎起来"的图就换上（像拎小猫的后颈），没有就保持原来的画面。"""
+        self._dragging = True
+        if not self._sprites.lifted:
+            return
+        self._lifted = True
+        self._frame_before_lift = self._current
+        self._loop_timer.stop()
+        self._tap_timer.stop()
+        if self._frozen:
+            self._show(self._sprites.lifted[0])   # 暂停中：换成拎起来的画面，但不播放动画
+        else:
+            self._play_loop(self._sprites.lifted)
+
+    def _end_drag(self):
+        """放下：回到当前的状态（拖动期间状态可能变过，比如来了新邮件）。"""
+        self._dragging = False
+        if not self._lifted:
+            return
+        self._lifted = False
+        self._loop_timer.stop()
+        if self._frozen:
+            self._show(self._frame_before_lift)    # 暂停中：回到原来定格的那一帧
+        else:
+            self.set_state(self._state)
+        self._frame_before_lift = None
 
     # ---------- 右键菜单 ----------
 
