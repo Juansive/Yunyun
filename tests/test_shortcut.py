@@ -48,3 +48,53 @@ def test_pythonw_can_import_yunyun_from_project_root(tmp_path):
     code = f"import yunyun.main; open(r'{marker}', 'w').write('ok')"
     subprocess.run([str(target), "-c", code], cwd=workdir, timeout=60)
     assert marker.read_text() == "ok"
+
+
+# ---------- 开机自启 ----------
+
+def test_autostart_toggle(qapp, tmp_path, monkeypatch):
+    from yunyun.pet.sprites import load_sprites
+    monkeypatch.setattr(shortcut, "STARTUP_FOLDER", tmp_path / "Startup")   # 不动真实的启动文件夹
+    assert not shortcut.is_autostart_enabled()
+
+    shortcut.set_autostart(True, load_sprites().tray, "测试")
+    assert shortcut.is_autostart_enabled()
+    target, args, workdir = read_shortcut(tmp_path / "Startup" / shortcut.SHORTCUT_NAME)[:3]
+    assert target.lower().endswith("pythonw.exe") and args == "-m yunyun.main" and Path(workdir) == PROJECT_ROOT
+
+    shortcut.set_autostart(False)
+    assert not shortcut.is_autostart_enabled()
+    shortcut.set_autostart(False)          # 已经关了再关一次也不报错
+
+
+def test_real_startup_folder_location():
+    folder = shortcut.startup_folder()
+    assert folder.parts[-3:] == ("Start Menu", "Programs", "Startup") and folder.exists()
+
+
+def test_menu_shows_autostart_state(qapp, tmp_path, monkeypatch):
+    import time
+    from PySide6.QtCore import QSettings
+    from yunyun import i18n
+    from yunyun.pet.sprites import load_sprites
+    from yunyun.pet.window import PetWindow
+    QSettings.setDefaultFormat(QSettings.Format.IniFormat)
+    QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, str(tmp_path))
+    monkeypatch.setattr(shortcut, "STARTUP_FOLDER", tmp_path / "Startup")
+    i18n._current = "zh"
+    pet = PetWindow(load_sprites())
+    said = []
+    monkeypatch.setattr(pet, "say", lambda text, duration_ms=4000: said.append(text))
+
+    def autostart_action():
+        settings = pet._build_menu().actions()[0].menu()
+        return next(a for a in settings.actions() if a.text() == "开机时启动")
+
+    assert not autostart_action().isChecked()
+    autostart_action().trigger()                           # 勾上
+    end = time.time() + 15
+    while not said and time.time() < end:
+        qapp.processEvents()
+        time.sleep(0.02)
+    assert said == [i18n.tr("autostart_on")]
+    assert autostart_action().isChecked()                  # 再打开菜单：显示已勾选

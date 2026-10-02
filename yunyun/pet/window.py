@@ -45,7 +45,7 @@ class PetWindow(QWidget):
     mail_accounts_changed = Signal()  # 用户添加 / 删除了邮箱账号
     mail_badge_clicked = Signal()     # 用户左键点了小红点：要处理邮件
     dismiss_mail_requested = Signal() # 用户拖走了小红点 / 点了"全部标为已看"：这批邮件不处理
-    _shortcut_done = Signal(object)   # 后台线程 → 主线程：创建快捷方式的结果（None = 成功，否则是错误信息）
+    _task_done = Signal(object, object, object)  # 后台线程 → 主线程：(成功时说的话, 失败时的文字 key, 错误信息或 None)
 
     def __init__(self, sprites):
         super().__init__()
@@ -132,7 +132,7 @@ class PetWindow(QWidget):
         self._tap_timer.setInterval(self.TAP_MS)
         self._tap_timer.timeout.connect(self._hands_up)
 
-        self._shortcut_done.connect(self._on_shortcut_done)
+        self._task_done.connect(self._on_task_done)
         self.set_state(PetState.IDLE)
 
     def _window_flags(self):
@@ -523,8 +523,12 @@ class PetWindow(QWidget):
         settings_menu.addAction(tr("menu_mail_accounts"), self.open_mail_accounts)
         settings_menu.addAction(tr("menu_ai_settings"), self.open_ai_settings)
 
-        # 设置 → 创建桌面快捷方式 / 打开日志文件夹
+        # 设置 → 开机时启动（可勾选）/ 创建桌面快捷方式 / 打开日志文件夹
         settings_menu.addSeparator()
+        autostart = settings_menu.addAction(tr("menu_autostart"))
+        autostart.setCheckable(True)
+        autostart.setChecked(shortcut.is_autostart_enabled())
+        autostart.triggered.connect(self.set_autostart)
         settings_menu.addAction(tr("menu_create_shortcut"), self.create_desktop_shortcut)
         settings_menu.addAction(tr("menu_open_logs"), self.open_log_folder)
 
@@ -553,29 +557,35 @@ class PetWindow(QWidget):
         self._mail_dialog = None
 
     def create_desktop_shortcut(self):
-        """在桌面创建快捷方式。要调用 PowerShell（约 1 秒），放到后台线程，菜单不卡。"""
-        icon = self._sprites.tray
-        description = i18n.tr("shortcut_description")
+        """在桌面创建快捷方式。"""
+        icon, description = self._sprites.tray, i18n.tr("shortcut_description")
+        self._run_in_background(lambda: shortcut.create_desktop_shortcut(icon, description),
+                                i18n.tr("shortcut_created"), "shortcut_failed")
 
+    def set_autostart(self, enabled):
+        """开机时启动：在"启动"文件夹里放 / 删芸芸的快捷方式。"""
+        icon, description = self._sprites.tray, i18n.tr("shortcut_description")
+        self._run_in_background(lambda: shortcut.set_autostart(enabled, icon, description),
+                                i18n.tr("autostart_on" if enabled else "autostart_off"), "autostart_failed")
+
+    def _run_in_background(self, job, ok_text, fail_key):
+        """在后台线程里做一件可能要一两秒的事（比如调用 PowerShell），做完让芸芸说一句。菜单不会卡住。"""
         def worker():
             try:
-                shortcut.create_desktop_shortcut(icon, description)
+                job()
                 error = None
             except Exception as e:  # 包括 ShortcutError、超时、没有 PowerShell 等
-                log.warning("创建桌面快捷方式失败：%s", e)
+                log.warning("%s 失败：%s", fail_key, e)
                 error = str(e)
             try:
-                self._shortcut_done.emit(error)
+                self._task_done.emit(ok_text, fail_key, error)
             except RuntimeError:
                 pass  # 程序正在退出
 
         threading.Thread(target=worker, daemon=True).start()
 
-    def _on_shortcut_done(self, error):
-        if error is None:
-            self.say(i18n.tr("shortcut_created"))
-        else:
-            self.say(i18n.tr("shortcut_failed", error[:60]))
+    def _on_task_done(self, ok_text, fail_key, error):
+        self.say(ok_text if error is None else i18n.tr(fail_key, error[:60]))
 
     def open_log_folder(self):
         folder = logs.log_dir()

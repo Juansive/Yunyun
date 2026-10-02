@@ -3,6 +3,9 @@
 - 用 pythonw.exe（Python 的"无窗口版"）启动，不会弹出黑色的终端窗口；
 - 以后打包成 exe 后（sys.frozen 为 True），快捷方式直接指向 exe；
 - .lnk 文件是 Windows 的二进制格式，这里借用系统自带的 PowerShell + WScript.Shell 来写，不需要额外装库。
+
+开机自启也用快捷方式：放进当前用户的"启动"文件夹，登录 Windows 时系统会自动打开里面的东西。
+（没用注册表的 Run 项：它不能指定工作目录，而 -m yunyun.main 必须在项目根目录下运行。）
 """
 import os
 import subprocess
@@ -67,7 +70,37 @@ def create_shortcut(lnk_path, target, arguments, working_dir, icon=None, descrip
 def create_desktop_shortcut(icon_pixmap, description=""):
     """在桌面创建"芸芸 Yunyun"快捷方式（已有就覆盖）。返回快捷方式路径。"""
     desktop = Path(QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DesktopLocation))
+    return _create_yunyun_shortcut(desktop / SHORTCUT_NAME, icon_pixmap, description)
+
+
+# ---------- 开机自启 ----------
+
+STARTUP_FOLDER = None  # 测试时可以换成临时文件夹
+
+
+def startup_folder():
+    """当前用户的"启动"文件夹：%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup"""
+    if STARTUP_FOLDER is not None:
+        return Path(STARTUP_FOLDER)
+    return Path(os.environ["APPDATA"]) / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup"
+
+
+def is_autostart_enabled():
+    """以"启动文件夹里有没有芸芸的快捷方式"为准，不会出现显示开启、实际没生效的情况。"""
+    return (startup_folder() / SHORTCUT_NAME).exists()
+
+
+def set_autostart(enabled, icon_pixmap=None, description=""):
+    lnk = startup_folder() / SHORTCUT_NAME
+    if enabled:
+        _create_yunyun_shortcut(lnk, icon_pixmap, description)
+    else:
+        lnk.unlink(missing_ok=True)  # 本来就没有也不报错
+
+
+def _create_yunyun_shortcut(lnk, icon_pixmap, description):
+    lnk.parent.mkdir(parents=True, exist_ok=True)
     target, arguments, working_dir = launch_command()
-    lnk = desktop / SHORTCUT_NAME
-    create_shortcut(lnk, target, arguments, working_dir, save_icon(icon_pixmap), description)
+    icon = save_icon(icon_pixmap) if icon_pixmap is not None else None
+    create_shortcut(lnk, target, arguments, working_dir, icon, description)
     return lnk

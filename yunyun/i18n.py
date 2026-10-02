@@ -26,6 +26,22 @@ TEXTS = {
     "menu_ai_settings": {"zh": "AI 设置…", "en": "AI Settings…", "ja": "AI 設定…"},
     "menu_create_shortcut": {"zh": "创建桌面快捷方式", "en": "Create Desktop Shortcut", "ja": "デスクトップにショートカットを作成"},
     "menu_open_logs": {"zh": "打开日志文件夹", "en": "Open Log Folder", "ja": "ログフォルダーを開く"},
+    "menu_autostart": {"zh": "开机时启动", "en": "Start with Windows", "ja": "Windows 起動時に開始"},
+    "autostart_on": {
+        "zh": "好哒，以后开机我就自己出来陪你～",
+        "en": "Got it! I'll show up by myself when you turn on your PC~",
+        "ja": "了解！これからはパソコンを起動したら自分で出てくるね～",
+    },
+    "autostart_off": {
+        "zh": "好的，开机时我就不自己出来啦",
+        "en": "Okay, I won't start automatically anymore.",
+        "ja": "わかった、起動時に自動では出てこないね",
+    },
+    "autostart_failed": {
+        "zh": "开机启动没设置成功……（{}）",
+        "en": "Couldn't change the startup setting… ({})",
+        "ja": "自動起動の設定に失敗しちゃった…（{}）",
+    },
     "shortcut_description": {
         "zh": "芸芸：你的桌面邮件小助手",
         "en": "Yunyun: your desktop mail buddy",
