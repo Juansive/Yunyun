@@ -257,9 +257,9 @@ TEXTS = {
         "ja": "AI が応答しないので、件名で伝えるね～",
     },
     "ai_local_not_running": {
-        "zh": "本地模型没在运行（打开 Ollama 就好），我先用标题告诉你～",
-        "en": "The local model isn't running (just open Ollama), so I'll use the subject~",
-        "ja": "ローカルモデルが動いていないので（Ollama を起動してね）、件名で伝えるね～",
+        "zh": "本地模型没能启动（Ollama 装好了吗？），我先用标题告诉你～",
+        "en": "The local model couldn't start (is Ollama installed?), so I'll use the subject~",
+        "ja": "ローカルモデルを起動できなかったので（Ollama はインストールされてる？）、件名で伝えるね～",
     },
     "ai_local_model_missing": {
         "zh": "本地模型还没下载（右键我 → 设置… → AI），我先用标题告诉你～",
@@ -304,13 +304,15 @@ TEXTS = {
         "ja": "キーの取得：{} にログイン → API-KEY → 作成。新規ユーザーは無料枠あり、超過分は従量課金です。",
     },
     "ai_hint_ollama": {
-        "zh": "用这台电脑上的免费开源模型，不用注册、不用 Key。先下载安装 Ollama：{}（装好后它会在后台运行）。"
-              "模型第一次使用前要先下载（默认的 qwen3:1.7b 约 1.4 GB）。处理邮件时会多占 1～2 GB 内存，处理完 30 秒后自动释放；有独立显卡会快很多。",
-        "en": "Uses a free open model on this PC — no sign-up, no key. First install Ollama: {} (it runs in the background). "
-              "The model must be downloaded before first use (the default qwen3:1.7b is about 1.4 GB). While reading mail it uses "
-              "an extra 1–2 GB of memory, released 30 seconds later; a dedicated graphics card makes it much faster.",
-        "ja": "この PC 上の無料オープンモデルを使います。登録もキーも不要です。まず Ollama をインストール：{}（インストール後はバックグラウンドで動きます）。"
-              "初回はモデルのダウンロードが必要です（既定の qwen3:1.7b は約 1.4 GB）。メール処理中はメモリを 1～2 GB 多く使い、30 秒後に解放されます。専用 GPU があるとずっと速くなります。",
+        "zh": "用这台电脑上的免费开源模型，不用注册、不用 Key。先下载安装 Ollama：{}。芸芸会在处理邮件时自动启动它、用完就关，平时不占内存。"
+              "模型第一次使用前要先下载（默认的 qwen3:1.7b 约 1.4 GB）。处理邮件时会临时多占约 1～2 GB 内存；有独立显卡会快很多。",
+        "en": "Uses a free open model on this PC — no sign-up, no key. First install Ollama: {}. I start it only while reading mail "
+              "and close it afterwards, so it uses no memory the rest of the time. The model must be downloaded before first use "
+              "(the default qwen3:1.7b is about 1.4 GB). While reading mail it temporarily uses 1–2 GB of memory; a dedicated "
+              "graphics card makes it much faster.",
+        "ja": "この PC 上の無料オープンモデルを使います。登録もキーも不要です。まず Ollama をインストール：{}。メールを処理するときだけ私が起動し、"
+              "終わったら閉じるので、普段はメモリを使いません。初回はモデルのダウンロードが必要です（既定の qwen3:1.7b は約 1.4 GB）。"
+              "処理中は一時的にメモリを 1～2 GB 使います。専用 GPU があるとずっと速くなります。",
     },
     "ai_privacy_note_local": {
         "zh": "使用本地模型时，邮件只在这台电脑上处理，不会发送到网上。",
@@ -352,9 +354,9 @@ TEXTS = {
     },
     "ai_error_other": {"zh": "出错了。", "en": "Something went wrong.", "ja": "エラーが発生しました。"},
     "ai_error_not_running": {
-        "zh": "连不上 Ollama：请先安装并打开 Ollama（任务栏右下角能看到它的图标），再试一次。",
-        "en": "Couldn't reach Ollama. Please install and open Ollama (its icon appears in the taskbar corner), then try again.",
-        "ja": "Ollama に接続できません。Ollama をインストールして起動し（タスクバーの隅にアイコンが出ます）、もう一度試してください。",
+        "zh": "没找到 Ollama，或者它没能启动：请先安装 Ollama（装好就行，芸芸会在需要时自动启动它），再试一次。",
+        "en": "Couldn't find or start Ollama. Please install Ollama (that's all — I'll start it when needed), then try again.",
+        "ja": "Ollama が見つからないか、起動できませんでした。Ollama をインストールしてから（起動は私が必要なときにします）、もう一度試してください。",
     },
     "ai_error_model_missing": {
         "zh": "Ollama 里还没有模型 {}，点「下载模型」我来帮你下载～",

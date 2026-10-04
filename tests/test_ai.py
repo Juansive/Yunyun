@@ -243,12 +243,26 @@ def test_describe_ok_not_configured_and_failed(monkeypatch):
     assert d.status == "failed" and d.error.kind == "rate_limit" and "电子发票通知" in d.bubble
 
 
+def test_prepare_warms_up_only_local_models(fake_keyring, monkeypatch):
+    import time
+    loaded = []
+    monkeypatch.setattr(ai, "load_ollama_model", lambda provider, model: loaded.append(model))
+    ai_settings.save_settings(SETTINGS)                                  # 在线服务商：不用提前准备
+    ai.prepare()
+    ai_settings.save_settings(AISettings("ollama", "qwen3:1.7b", ""))   # 本地模型：后台提前加载
+    ai.prepare()
+    end = time.time() + 2
+    while not loaded and time.time() < end:
+        time.sleep(0.01)
+    assert loaded == ["qwen3:1.7b"]
+
+
 def test_card_deck_note_explains_why_ai_was_not_used():
     from yunyun.main import ai_note
     i18n._current = "zh"
     note = lambda status, kind=None: ai_note(ai.Description("…", status, AIError("x", kind=kind) if kind else None))
     assert "还没设置 AI" in note("not_configured")
-    assert "打开 Ollama" in note("failed", "not_running")          # 本地模型：说清楚该做什么
+    assert "Ollama 装好了吗" in note("failed", "not_running")      # 本地模型：说清楚该做什么
     assert "还没下载" in note("failed", "model_missing")
     assert note("failed", "rate_limit") == i18n.tr("ai_failed")
     assert note("failed") == i18n.tr("ai_failed")                 # 处理时出了意外（没有错误对象）
@@ -353,7 +367,7 @@ def test_ai_page_local_model(qapp, fake_keyring, monkeypatch):
     click_and_wait(d)                                                   # 不填 Key 也能测试
     assert "还没有模型 qwen3:1.7b" in d._status.text() and not d._download_button.isHidden()
     click_and_wait(d)
-    assert "连不上 Ollama" in d._status.text() and d._download_button.isHidden()
+    assert "没找到 Ollama" in d._status.text() and d._download_button.isHidden()
     click_and_wait(d)
     assert ai_settings.load_settings() == AISettings("ollama", "qwen3:1.7b", "")
 

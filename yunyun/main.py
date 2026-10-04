@@ -80,6 +80,7 @@ def main():
     connect_mail(mail, pet, machine, history, quiet)
 
     app.aboutToQuit.connect(keyboard.stop)       # 退出前停止键盘监听
+    app.aboutToQuit.connect(ai.shutdown)         # 退出前关掉芸芸按需启动的 Ollama
     app.aboutToQuit.connect(pet.save_position)   # 退出前记下芸芸的位置（万一刚拖完还没来得及保存）
     pet.show()
     keyboard.start()
@@ -134,6 +135,7 @@ def connect_mail(mail, pet, machine, history=None, quiet=None):
                                      message.date, message.attachments, time.time(), batch["id"]))
 
     def on_fetch_started():
+        ai.prepare()                     # 本地模型：趁读邮箱的时候提前启动 Ollama、加载模型
         batch["id"] = f"{time.time():.3f}"
         pet.begin_mail_batch()           # 清空卡片堆，接收这一轮的结果
         machine.start_thinking()         # 芸芸进入思考状态

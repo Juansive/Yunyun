@@ -10,7 +10,9 @@
 
 怎么看结果：
 - "加载"是把模型从硬盘读进内存的时间，只有第一封邮件有；"读邮件"是模型读提示词，"写提醒"是生成那句话；
-- 内存是 Ollama 所有进程加起来的（不含芸芸自己）；"全机 CPU"是整台电脑的 CPU 占用，最能反映"会不会卡"；
+- 内存是 Ollama 所有进程加起来的（不含芸芸自己）。"实际占用（工作集）"是真正放在内存条里的，接近任务管理器显示的数；
+  "申请的（私有）"还包括只预留、没真正用上的部分（用显卡时 CUDA 会预留很多）。
+- "全机 CPU"是整台电脑的 CPU 占用，最能反映"会不会卡"；
 - 最后等 keep_alive（30 秒）过去，确认模型被卸载、内存还回去了。
 """
 import argparse
@@ -145,7 +147,8 @@ class Sampler(threading.Thread):
 
     def __init__(self):
         super().__init__(daemon=True)
-        self.samples = []   # (时间, Ollama 私有内存 MB, Ollama CPU %, 全机 CPU %, 显卡 % 或 None, 显存 MB 或 None)
+        # (时间, Ollama 私有内存 MB, Ollama CPU %, 全机 CPU %, 显卡 % 或 None, 显存 MB 或 None, Ollama 工作集 MB)
+        self.samples = []
         self._halt = threading.Event()   # 不能叫 _stop：threading.Thread 自己有个同名的方法，会被覆盖
 
     def run(self):
@@ -153,13 +156,16 @@ class Sampler(threading.Thread):
         last_t, last_proc, last_sys = time.time(), self._proc_cpu(), system_times()
         while not self._halt.wait(0.5):
             now, proc, sys_t = time.time(), self._proc_cpu(), system_times()
-            private = sum(u[0] for u in map(process_usage, ollama_pids()) if u) / 2**20
+            usages = [u for u in map(process_usage, ollama_pids()) if u]
+            private = sum(u[0] for u in usages) / 2**20
+            working = sum(u[1] for u in usages) / 2**20
             wall = (now - last_t) * 1e7 * cpus
             ollama_cpu = max(0.0, (proc - last_proc) / wall * 100) if wall else 0
             busy, total = (sys_t[1] - last_sys[1]) - (sys_t[0] - last_sys[0]), sys_t[1] - last_sys[1]
             machine_cpu = busy / total * 100 if total else 0
             gpu = gpu_usage()
-            self.samples.append((now, private, ollama_cpu, machine_cpu, gpu[0] if gpu else None, gpu[1] if gpu else None))
+            self.samples.append((now, private, ollama_cpu, machine_cpu, gpu[0] if gpu else None, gpu[1] if gpu else None,
+                                 working))
             last_t, last_proc, last_sys = now, proc, sys_t
 
     @staticmethod
@@ -248,7 +254,8 @@ def main():
             where = "全部在显卡上" if vram >= size * 0.99 else ("全部在内存里（CPU）" if vram < 0.01 else f"显卡 {vram:.1f} GB + 内存 {size - vram:.1f} GB")
             print(f"  模型 {name}：{size:.1f} GB，{where}")
         if busy:
-            print(f"  Ollama 内存：最高 {max(s[1] for s in busy):.0f} MB")
+            print(f"  Ollama 内存：实际占用（工作集）最高 {max(s[6] for s in busy):.0f} MB，"
+                  f"申请的（私有）最高 {max(s[1] for s in busy):.0f} MB")
             print(f"  Ollama CPU：平均 {sum(s[2] for s in busy) / len(busy):.0f}%，最高 {max(s[2] for s in busy):.0f}%（占整台电脑的比例）")
             print(f"  全机 CPU：平均 {sum(s[3] for s in busy) / len(busy):.0f}%，最高 {max(s[3] for s in busy):.0f}%")
             gpus = [s for s in busy if s[4] is not None]

@@ -16,27 +16,15 @@ import socket
 import urllib.error
 import urllib.request
 
-
-class AIError(Exception):
-    """调用大模型失败。
-
-    e.kind 给界面做多语言："auth" Key 不对 / "rate_limit" 调用太频繁或额度用完 /
-    "network" 网络问题 / "bad_response" 返回内容看不懂 / "other" 其他；
-    本地模型还有："not_running" 连不上 Ollama / "model_missing" Ollama 里还没有这个模型。
-    e.detail 是服务器的原话，方便排查；e.status 是 HTTP 状态码（没有就是 None）。
-    """
-
-    def __init__(self, message, kind="other", detail="", status=None):
-        super().__init__(message)
-        self.kind = kind
-        self.detail = detail
-        self.status = status
+from yunyun.ai import ollama_service
+from yunyun.ai.errors import AIError  # noqa: F401  别的模块习惯从这里 import AIError
 
 
 def ask(provider, api_key, model, messages, **kwargs):
     """按服务商的接口格式发一次对话，返回回答的文字（summarizer 和设置页的"测试"都用它）。"""
     if provider.api == "ollama":
-        return chat_ollama(provider.base_url, model, messages, extra=provider.extra, **kwargs)
+        with ollama_service.session(provider.base_url):   # 需要时才启动 Ollama，用完空闲一会儿再关
+            return chat_ollama(provider.base_url, model, messages, extra=provider.extra, **kwargs)
     return chat(provider.base_url, api_key, model, messages, extra=provider.extra, **kwargs)
 
 
@@ -61,6 +49,14 @@ def chat(base_url, api_key, model, messages, extra=None, max_tokens=200, tempera
 # Ollama 默认线程数时每封约 0.6 秒、整台电脑 CPU 约 47%；限制到 4 线程每封约 0.8 秒、CPU 只有约 20%。
 # 慢一点点，换来用户正在做的事不被拖卡。有独立显卡时推理在显卡上，这个设置几乎没影响。
 OLLAMA_THREADS = max(2, (os.cpu_count() or 4) // 4)
+# 每次请求都要带上同样的运行参数：参数一变，Ollama 会把模型卸载再重新加载
+OLLAMA_OPTIONS = {"num_thread": OLLAMA_THREADS}
+
+
+def load_ollama_model(provider, model, timeout=120):
+    """只把模型读进内存、不生成任何内容（POST /api/generate 不带 prompt）。用来提前准备，见 ai.prepare()。"""
+    body = {"model": model, "keep_alive": provider.extra.get("keep_alive"), "options": dict(OLLAMA_OPTIONS)}
+    _post_ollama(provider.base_url.rstrip("/") + "/api/generate", body, timeout)
 
 
 def chat_ollama(base_url, model, messages, extra=None, max_tokens=200, temperature=0.7, timeout=120):
@@ -73,7 +69,7 @@ def chat_ollama(base_url, model, messages, extra=None, max_tokens=200, temperatu
         "model": model,
         "messages": messages,
         "stream": False,              # 一次性返回整个回答（不要一个字一个字地流式返回）
-        "options": {"num_predict": max_tokens, "temperature": temperature, "num_thread": OLLAMA_THREADS},
+        "options": {"num_predict": max_tokens, "temperature": temperature, **OLLAMA_OPTIONS},
         **(extra or {}),
     }
     url = base_url.rstrip("/") + "/api/chat"

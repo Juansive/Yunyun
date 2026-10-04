@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
 )
 
 from yunyun import i18n
+from yunyun.ai import ollama_service
 from yunyun.ai import settings as ai_settings
 from yunyun.ai.client import AIError, ask, pull_ollama
 from yunyun.ai.providers import PROVIDERS
@@ -28,7 +29,8 @@ def test_connection(settings):
 
 def download_model(settings, on_progress):
     """让本机的 Ollama 下载设置里的模型（单独写成函数，测试时可以换成假的）。"""
-    pull_ollama(settings.info.base_url, settings.model, on_progress)
+    with ollama_service.session(settings.info.base_url):   # 下载期间 Ollama 一直开着，下完空闲一会儿再关
+        pull_ollama(settings.info.base_url, settings.model, on_progress)
 
 
 def _size(n):

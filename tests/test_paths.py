@@ -30,7 +30,8 @@ def test_data_dir_is_under_appdata(monkeypatch, tmp_path):
     assert paths.data_dir() == tmp_path / "Yunyun" / "Yunyun"
 
 
-def test_config_lives_in_data_dir():
+def test_config_lives_in_data_dir(monkeypatch):
+    monkeypatch.undo()   # conftest 把 CONFIG_PATH 换成了临时文件；这里要看的是原本的默认位置（只看路径，不读文件）
     assert cfg.CONFIG_PATH.parent == paths.data_dir()
 
 
