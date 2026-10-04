@@ -11,6 +11,7 @@
 """
 import contextlib
 import json
+import os
 import socket
 import urllib.error
 import urllib.request
@@ -56,6 +57,12 @@ def chat(base_url, api_key, model, messages, extra=None, max_tokens=200, tempera
         raise AIError("返回格式不对", kind="bad_response", detail=str(data)[:300]) from e
 
 
+# 本地模型最多用四分之一的 CPU 线程（至少 2 个）。实测（20 线程的笔记本，只用 CPU）：
+# Ollama 默认线程数时每封约 0.6 秒、整台电脑 CPU 约 47%；限制到 4 线程每封约 0.8 秒、CPU 只有约 20%。
+# 慢一点点，换来用户正在做的事不被拖卡。有独立显卡时推理在显卡上，这个设置几乎没影响。
+OLLAMA_THREADS = max(2, (os.cpu_count() or 4) // 4)
+
+
 def chat_ollama(base_url, model, messages, extra=None, max_tokens=200, temperature=0.7, timeout=120):
     """本机 Ollama 的原生接口：发送一次对话，返回模型回答的文字。
 
@@ -66,7 +73,7 @@ def chat_ollama(base_url, model, messages, extra=None, max_tokens=200, temperatu
         "model": model,
         "messages": messages,
         "stream": False,              # 一次性返回整个回答（不要一个字一个字地流式返回）
-        "options": {"num_predict": max_tokens, "temperature": temperature},
+        "options": {"num_predict": max_tokens, "temperature": temperature, "num_thread": OLLAMA_THREADS},
         **(extra or {}),
     }
     url = base_url.rstrip("/") + "/api/chat"

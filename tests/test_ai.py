@@ -144,6 +144,7 @@ def test_ollama_uses_native_api_without_key_or_proxy(monkeypatch, no_system_prox
     body = captured["body"]
     assert body["stream"] is False and body["think"] is False          # 一次返回；关掉思考模式
     assert body["keep_alive"] == "30s" and body["options"]["num_predict"] == 50   # 30 秒后卸载模型
+    assert 2 <= body["options"]["num_thread"] == client.OLLAMA_THREADS             # 少用几个线程，不拖卡电脑
 
 
 def test_ollama_errors_are_easy_to_understand(monkeypatch, no_system_proxy):
@@ -240,6 +241,17 @@ def test_describe_ok_not_configured_and_failed(monkeypatch):
     monkeypatch.setattr(ai, "summarize", broken)
     d = ai.describe(MAIL, "zh")
     assert d.status == "failed" and d.error.kind == "rate_limit" and "电子发票通知" in d.bubble
+
+
+def test_card_deck_note_explains_why_ai_was_not_used():
+    from yunyun.main import ai_note
+    i18n._current = "zh"
+    note = lambda status, kind=None: ai_note(ai.Description("…", status, AIError("x", kind=kind) if kind else None))
+    assert "还没设置 AI" in note("not_configured")
+    assert "打开 Ollama" in note("failed", "not_running")          # 本地模型：说清楚该做什么
+    assert "还没下载" in note("failed", "model_missing")
+    assert note("failed", "rate_limit") == i18n.tr("ai_failed")
+    assert note("failed") == i18n.tr("ai_failed")                 # 处理时出了意外（没有错误对象）
 
 
 # ---------- settings：Key 存凭据管理器，其余存 config.yaml ----------

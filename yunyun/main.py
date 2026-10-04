@@ -120,7 +120,7 @@ def connect_mail(mail, pet, machine, history=None, quiet=None):
         if description is None:  # 处理时出了意外：用兜底文字
             description = ai.Description(ai.fallback_bubble(message), "failed")
         if description.status != "ok":  # AI 没用上：在卡片堆底部说明原因
-            pet.set_mail_note(i18n.tr("ai_not_configured" if description.status == "not_configured" else "ai_failed"))
+            pet.set_mail_note(ai_note(description))
         pet.add_mail_card(MailCard(
             bubble=description.bubble,
             subject=message.subject,
@@ -157,6 +157,16 @@ def connect_mail(mail, pet, machine, history=None, quiet=None):
     pet.mail_badge_clicked.connect(mail.fetch_pending)        # 点小红点 → 才去读邮件
     pet.dismiss_mail_requested.connect(mail.dismiss_all)      # 拖走小红点 → 这批不处理
     pet.mail_accounts_changed.connect(mail.reload_accounts)   # 增删邮箱 → 马上重新检查
+
+
+def ai_note(description):
+    """AI 没用上时，卡片堆底部那行小字：说清楚原因，用户才知道该做什么。"""
+    if description.status == "not_configured":
+        return i18n.tr("ai_not_configured")
+    kind = description.error.kind if description.error is not None else None
+    if kind in ("not_running", "model_missing"):   # 本地模型：Ollama 没打开 / 模型没下载
+        return i18n.tr(f"ai_local_{kind}")
+    return i18n.tr("ai_failed")
 
 
 def has_mail_account():

@@ -6,6 +6,7 @@
     .\\.venv\\Scripts\\python tools\\bench_local_model.py                    # 默认模型 qwen3:1.7b，能用显卡就用显卡
     .\\.venv\\Scripts\\python tools\\bench_local_model.py qwen3:4b           # 换个模型比一比
     .\\.venv\\Scripts\\python tools\\bench_local_model.py --cpu --threads 4  # 模拟没有独显、只有 4 核的电脑
+    .\\.venv\\Scripts\\python tools\\bench_local_model.py --cpu --threads 0  # 不限制线程（Ollama 默认），对比用
 
 怎么看结果：
 - "加载"是把模型从硬盘读进内存的时间，只有第一封邮件有；"读邮件"是模型读提示词，"写提醒"是生成那句话；
@@ -193,7 +194,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("model", nargs="?", default=OLLAMA.default_model)
     parser.add_argument("--cpu", action="store_true", help="不用显卡（模拟没有独显的电脑）")
-    parser.add_argument("--threads", type=int, help="最多用几个 CPU 线程（模拟核少的电脑）")
+    parser.add_argument("--threads", type=int, default=client.OLLAMA_THREADS,
+                        help=f"最多用几个 CPU 线程（默认和芸芸一样：{client.OLLAMA_THREADS}；0 = 让 Ollama 自己决定）")
     args = parser.parse_args()
 
     options = {"num_predict": 200, "temperature": 0.7}
@@ -201,7 +203,8 @@ def main():
         options["num_gpu"] = 0           # 0 层放到显卡上 = 全部用 CPU
     if args.threads:
         options["num_thread"] = args.threads
-    setup = f"{args.model}，{'只用 CPU' if args.cpu else '能用显卡就用显卡'}" + (f"，{args.threads} 线程" if args.threads else "")
+    threads = f"{args.threads} 线程" if args.threads else "Ollama 默认线程数"
+    setup = f"{args.model}，{'只用 CPU' if args.cpu else '能用显卡就用显卡'}，{threads}"
     print(f"== 测试 {setup}\n")
     unload_all()
 

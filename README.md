@@ -46,7 +46,8 @@ python -m venv .venv
    去 [open.bigmodel.cn](https://open.bigmodel.cn) 注册后，在"API Keys"里创建一个 Key 填进去。
    不设置 AI 也能用，芸芸会直接告诉你"谁发来了什么标题"。
    **想让邮件完全不出电脑**：服务商选「本地模型（Ollama）」。先到 [ollama.com/download](https://ollama.com/download) 安装 Ollama，
-   不用注册、不用 Key。处理邮件时会多占 1～2 GB 内存（处理完 30 秒后释放），有独立显卡会快很多。
+   不用注册、不用 Key。处理邮件时会多占 1～2 GB 内存（处理完 30 秒后释放；有独立显卡时放在显存里，又快又不占内存）。
+   注意 Ollama 装好后会开机自启、常驻后台（约 160 MB 内存）。只给芸芸用的话，可以在任务管理器 →「启动应用」里关掉它的开机启动，要用时再打开。
 
 ## 日常使用
 

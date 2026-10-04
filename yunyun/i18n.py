@@ -256,6 +256,16 @@ TEXTS = {
         "en": "The AI isn't responding right now, so I'll use the subject~",
         "ja": "AI が応答しないので、件名で伝えるね～",
     },
+    "ai_local_not_running": {
+        "zh": "本地模型没在运行（打开 Ollama 就好），我先用标题告诉你～",
+        "en": "The local model isn't running (just open Ollama), so I'll use the subject~",
+        "ja": "ローカルモデルが動いていないので（Ollama を起動してね）、件名で伝えるね～",
+    },
+    "ai_local_model_missing": {
+        "zh": "本地模型还没下载（右键我 → 设置… → AI），我先用标题告诉你～",
+        "en": "The local model isn't downloaded yet (right-click me → Settings… → AI), so I'll use the subject~",
+        "ja": "ローカルモデルがまだダウンロードされていないので（右クリック → 設定… → AI）、件名で伝えるね～",
+    },
 
     # ---- 卡片堆（放大后显示的原始信息）----
     "card_subject": {"zh": "标题", "en": "Subject", "ja": "件名"},
