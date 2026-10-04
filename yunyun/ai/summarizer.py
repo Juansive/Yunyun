@@ -34,13 +34,17 @@ SYSTEM_PROMPT = """你是桌面宠物"芸芸"，帮用户留意新邮件。读�
 
 def summarize(message, language, settings):
     """调用大模型，返回芸芸要说的一句话。失败时抛出 AIError。"""
+    answer = ask(settings.info, settings.api_key, settings.model, build_messages(message, language))
+    return parse_bubble(answer)
+
+
+def build_messages(message, language):
+    """发给模型的对话：系统提示词（芸芸的人设和规则）+ 邮件内容。"""
     lang_name, length = LANGUAGE_RULES.get(language, LANGUAGE_RULES["zh"])
-    messages = [
+    return [
         {"role": "system", "content": SYSTEM_PROMPT.format(language=lang_name, length=length)},
         {"role": "user", "content": build_mail_text(message)},
     ]
-    answer = ask(settings.info, settings.api_key, settings.model, messages)
-    return parse_bubble(answer)
 
 
 def fallback_bubble(message):
