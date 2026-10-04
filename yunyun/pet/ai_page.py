@@ -1,6 +1,8 @@
 """设置窗口的"AI"页：选择大模型服务商、填写 API Key，测试通过才保存。不需要打开终端。
 
 本地模型（Ollama）不需要 Key：选它时 Key 那一行藏起来，隐私说明换成"邮件不出电脑"。
+测试时发现 Ollama 里还没有这个模型，就出现"下载模型"按钮：芸芸让 Ollama 下载并显示进度，下载完自动再测试、保存。
+（这样用户不用打开终端敲 ollama pull。）
 """
 import threading
 
@@ -11,7 +13,7 @@ from PySide6.QtWidgets import (
 
 from yunyun import i18n
 from yunyun.ai import settings as ai_settings
-from yunyun.ai.client import AIError, ask
+from yunyun.ai.client import AIError, ask, pull_ollama
 from yunyun.ai.providers import PROVIDERS
 from yunyun.ai.settings import AISettings
 
@@ -24,14 +26,29 @@ def test_connection(settings):
         max_tokens=10, timeout=120 if info.local else 20)
 
 
+def download_model(settings, on_progress):
+    """让本机的 Ollama 下载设置里的模型（单独写成函数，测试时可以换成假的）。"""
+    pull_ollama(settings.info.base_url, settings.model, on_progress)
+
+
+def _size(n):
+    """字节数 → "480 MB" / "1.4 GB"。"""
+    return f"{n / 1e9:.1f} GB" if n >= 1e9 else f"{n / 1e6:.0f} MB"
+
+
 class AISettingsPage(QWidget):
     settings_saved = Signal()
-    _test_finished = Signal(object, object)  # (设置, 错误或 None)：后台线程 → 主线程
+    _test_finished = Signal(object, object)       # (设置, 错误或 None)：后台线程 → 主线程
+    _download_progress = Signal(str, int, str)    # (模型名, 百分比, "480 MB / 1.4 GB")
+    _download_finished = Signal(object, object)   # (设置, 错误或 None)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         tr = i18n.tr
         self._test_finished.connect(self._on_test_finished)
+        self._download_progress.connect(self._on_download_progress)
+        self._download_finished.connect(self._on_download_finished)
+        self._pending_download = None   # 测试时发现缺模型的那组设置：点"下载模型"就下载它
 
         layout = QVBoxLayout(self)
         form = self._form = QFormLayout()
@@ -65,8 +82,12 @@ class AISettingsPage(QWidget):
 
         self._save_button = QPushButton(tr("mail_test_and_save"))
         self._save_button.clicked.connect(self._test_and_save)
+        self._download_button = QPushButton(tr("ai_download_model"))   # 只在"本地还没有这个模型"时出现
+        self._download_button.clicked.connect(self._download)
+        self._download_button.hide()
         row = QHBoxLayout()
         row.addStretch()
+        row.addWidget(self._download_button)
         row.addWidget(self._save_button)
         layout.addLayout(row)
         layout.addStretch()  # 内容靠上，多余的空间留在下面
@@ -77,6 +98,7 @@ class AISettingsPage(QWidget):
         self._model.setText(model)
         self._load_key(provider)
         self._provider.currentIndexChanged.connect(self._on_provider_changed)
+        self._model.textEdited.connect(self._download_button.hide)   # 改了模型名：之前"缺这个模型"的结论不算数了
         self._update_hint()
 
     def _on_provider_changed(self):
@@ -84,6 +106,7 @@ class AISettingsPage(QWidget):
         self._model.setText(PROVIDERS[provider].default_model)   # 换服务商：模型换成这家的默认
         self._load_key(provider)
         self._status.clear()
+        self._download_button.hide()
         self._update_hint()
 
     def _load_key(self, provider):
@@ -111,6 +134,7 @@ class AISettingsPage(QWidget):
             self._show_status(i18n.tr("ai_empty_key"), error=True)
             return
         settings = AISettings(info.code, model, key if info.needs_key else "")
+        self._download_button.hide()
         self._set_busy(True)
         self._show_status(i18n.tr("ai_testing"))
         threading.Thread(target=self._test_worker, args=(settings,), daemon=True).start()
@@ -134,6 +158,8 @@ class AISettingsPage(QWidget):
         if error is not None:
             if error.kind == "model_missing":
                 message = i18n.tr("ai_error_model_missing", settings.model)
+                self._pending_download = settings
+                self._download_button.show()      # 给用户一个"让芸芸帮你下载"的按钮
             else:
                 message = i18n.tr(f"ai_error_{error.kind}")
             if error.detail:
@@ -144,8 +170,54 @@ class AISettingsPage(QWidget):
         self._show_status(i18n.tr("ai_saved"))
         self.settings_saved.emit()
 
+    # ---------- 下载本地模型 ----------
+
+    def _download(self):
+        settings = self._pending_download
+        self._download_button.hide()
+        self._set_busy(True)
+        self._show_status(i18n.tr("ai_download_starting", settings.model))
+        threading.Thread(target=self._download_worker, args=(settings,), daemon=True).start()
+
+    def _download_worker(self, settings):
+        """后台线程：下载可能要好几分钟，只发信号报告进度，不碰界面。"""
+        last = {"percent": -1}
+
+        def progress(completed, total):
+            percent = int(completed * 100 / total)
+            if percent != last["percent"]:   # 进度每变 1% 才通知一次界面，免得刷得太频繁
+                last["percent"] = percent
+                self._download_progress.emit(settings.model, percent, f"{_size(completed)} / {_size(total)}")
+
+        try:
+            download_model(settings, progress)
+            error = None
+        except AIError as e:
+            error = e
+        except Exception as e:  # 兜底：不能让界面一直转圈
+            error = AIError(str(e), detail=str(e))
+        try:
+            self._download_finished.emit(settings, error)
+        except RuntimeError:
+            pass  # 窗口已经关掉了（Ollama 那边会自己接着下载完）
+
+    def _on_download_progress(self, model, percent, sizes):
+        self._show_status(i18n.tr("ai_downloading", model, percent, sizes))
+
+    def _on_download_finished(self, settings, error):
+        self._set_busy(False)
+        if error is not None:
+            message = i18n.tr("ai_error_not_running" if error.kind == "not_running" else "ai_download_failed")
+            if error.detail and error.kind != "not_running":
+                message += "\n" + i18n.tr("mail_error_detail", error.detail)
+            self._show_status(message, error=True)
+            self._download_button.show()      # 可以再试一次
+            return
+        self._show_status(i18n.tr("ai_downloaded"))
+        self._test_and_save()                 # 下载好了：接着测试并保存，用户不用再点一次
+
     def _set_busy(self, busy):
-        for widget in (self._save_button, self._provider, self._model, self._key):
+        for widget in (self._save_button, self._download_button, self._provider, self._model, self._key):
             widget.setEnabled(not busy)
 
     def _show_status(self, text, error=False):

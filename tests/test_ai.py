@@ -176,6 +176,52 @@ def test_ollama_retries_without_think_for_models_that_cannot_think(monkeypatch, 
     assert "think" in bodies[0] and "think" not in bodies[1]           # 第二次去掉了 think
 
 
+def ndjson(*items):
+    """Ollama 下载时的返回：每行一个 JSON。"""
+    return FakeResponse(b"".join(json.dumps(item).encode() + b"\n" for item in items))
+
+
+def test_pull_reports_total_progress_across_layers(monkeypatch, no_system_proxy):
+    captured = {}
+    stream = ndjson(
+        {"status": "pulling manifest"},
+        {"status": "pulling aaa", "digest": "sha256:aaa", "total": 1000, "completed": 0},
+        {"status": "pulling aaa", "digest": "sha256:aaa", "total": 1000, "completed": 500},
+        {"status": "pulling bbb", "digest": "sha256:bbb", "total": 100, "completed": 100},   # 第二层（小文件）
+        {"status": "pulling aaa", "digest": "sha256:aaa", "total": 1000, "completed": 1000},
+        {"status": "verifying sha256 digest"},
+        {"status": "success"},
+    )
+
+    def fake_open(request, timeout=None):
+        captured.update(url=request.full_url, body=json.loads(request.data))
+        return stream
+    monkeypatch.setattr(client._NO_PROXY, "open", fake_open)
+
+    progress = []
+    client.pull_ollama("http://127.0.0.1:11434", "qwen3:1.7b", lambda done, total: progress.append((done, total)))
+    assert captured == {"url": "http://127.0.0.1:11434/api/pull", "body": {"model": "qwen3:1.7b", "stream": True}}
+    assert progress == [(0, 1000), (500, 1000), (600, 1100), (1100, 1100)]   # 各层加起来算总进度
+
+
+def test_pull_errors(monkeypatch, no_system_proxy):
+    bad = ndjson({"status": "pulling manifest"}, {"error": "pull model manifest: file does not exist"})
+    monkeypatch.setattr(client._NO_PROXY, "open", lambda request, timeout=None: bad)
+    with pytest.raises(AIError) as info:
+        client.pull_ollama("http://127.0.0.1:11434", "qwen9:99b")              # 模型名写错了
+    assert "file does not exist" in info.value.detail
+
+    cut = ndjson({"status": "pulling aaa", "digest": "sha256:aaa", "total": 1000, "completed": 10})
+    monkeypatch.setattr(client._NO_PROXY, "open", lambda request, timeout=None: cut)
+    with pytest.raises(AIError):
+        client.pull_ollama("http://127.0.0.1:11434", "qwen3:1.7b")             # 没等到 success 就断了
+
+    monkeypatch.setattr(client._NO_PROXY, "open", fake_urlopen(network_error=urllib.error.URLError("refused")))
+    with pytest.raises(AIError) as info:
+        client.pull_ollama("http://127.0.0.1:11434", "qwen3:1.7b")
+    assert info.value.kind == "not_running"
+
+
 # ---------- describe：保证总有一句话 ----------
 
 def test_describe_ok_not_configured_and_failed(monkeypatch):
@@ -293,8 +339,53 @@ def test_ai_page_local_model(qapp, fake_keyring, monkeypatch):
     assert d._model.text() == "qwen3:1.7b" and "不会发送到网上" in d._privacy.text()
 
     click_and_wait(d)                                                   # 不填 Key 也能测试
-    assert "还没有模型 qwen3:1.7b" in d._status.text()
+    assert "还没有模型 qwen3:1.7b" in d._status.text() and not d._download_button.isHidden()
     click_and_wait(d)
-    assert "连不上 Ollama" in d._status.text()
+    assert "连不上 Ollama" in d._status.text() and d._download_button.isHidden()
     click_and_wait(d)
     assert ai_settings.load_settings() == AISettings("ollama", "qwen3:1.7b", "")
+
+
+def test_ai_page_downloads_missing_model_then_saves(qapp, fake_keyring, monkeypatch):
+    import time
+    from yunyun.pet import ai_page
+    i18n._current = "zh"
+    tests = iter([AIError("x", kind="model_missing", status=404), None])
+
+    def fake_test(settings):
+        error = next(tests)
+        if error:
+            raise error
+
+    downloads = iter([AIError("x", kind="other", detail="pull model manifest: file does not exist"), None])
+    progress_seen = []
+
+    def fake_download(settings, on_progress):
+        error = next(downloads)
+        if error:
+            raise error
+        on_progress(500_000_000, 1_400_000_000)
+        on_progress(1_400_000_000, 1_400_000_000)
+    monkeypatch.setattr(ai_page, "test_connection", fake_test)
+    monkeypatch.setattr(ai_page, "download_model", fake_download)
+
+    def wait_until(condition):
+        end = time.time() + 3
+        while not condition() and time.time() < end:
+            qapp.processEvents()
+            time.sleep(0.01)
+
+    d = ai_page.AISettingsPage()
+    d._download_progress.connect(lambda model, percent, sizes: progress_seen.append((percent, sizes)))
+    d._provider.setCurrentIndex(d._provider.findData("ollama"))
+    d._save_button.click()
+    wait_until(lambda: not d._download_button.isHidden())               # 缺模型：出现"下载模型"
+
+    d._download_button.click()                                          # 第一次下载失败
+    wait_until(lambda: "没下载成功" in d._status.text())
+    assert "file does not exist" in d._status.text() and not d._download_button.isHidden()   # 可以再试
+
+    d._download_button.click()                                          # 再试：成功，自动测试并保存
+    wait_until(lambda: ai_settings.load_settings() is not None)
+    assert ai_settings.load_settings() == AISettings("ollama", "qwen3:1.7b", "")
+    assert progress_seen == [(35, "500 MB / 1.4 GB"), (100, "1.4 GB / 1.4 GB")]

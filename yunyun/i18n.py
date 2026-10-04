@@ -347,9 +347,30 @@ TEXTS = {
         "ja": "Ollama に接続できません。Ollama をインストールして起動し（タスクバーの隅にアイコンが出ます）、もう一度試してください。",
     },
     "ai_error_model_missing": {
-        "zh": "Ollama 里还没有模型 {}，需要先下载。",
-        "en": "Ollama doesn't have the model {} yet. It needs to be downloaded first.",
-        "ja": "Ollama にモデル {} がまだありません。先にダウンロードが必要です。",
+        "zh": "Ollama 里还没有模型 {}，点「下载模型」我来帮你下载～",
+        "en": "Ollama doesn't have the model {} yet. Click “Download model” and I'll fetch it for you~",
+        "ja": "Ollama にモデル {} がまだありません。「モデルをダウンロード」を押せば私がダウンロードするよ～",
+    },
+    "ai_download_model": {"zh": "下载模型", "en": "Download model", "ja": "モデルをダウンロード"},
+    "ai_download_starting": {
+        "zh": "正在让 Ollama 下载 {}……",
+        "en": "Asking Ollama to download {}…",
+        "ja": "Ollama で {} をダウンロードしています…",
+    },
+    "ai_downloading": {
+        "zh": "正在下载 {}：{}%（{}）。关掉这个窗口也会在后台接着下载，下载完回来点「测试并保存」就行。",
+        "en": "Downloading {}: {}% ({}). Closing this window won't stop it; when it's done, come back and click “Test and Save”.",
+        "ja": "{} をダウンロード中：{}%（{}）。ウィンドウを閉じても裏で続きます。終わったら戻って「テストして保存」を押してね。",
+    },
+    "ai_downloaded": {
+        "zh": "模型下载好了，正在测试……",
+        "en": "Model downloaded. Testing…",
+        "ja": "モデルのダウンロード完了。テスト中…",
+    },
+    "ai_download_failed": {
+        "zh": "模型没下载成功，可以检查网络或模型名后再试一次。",
+        "en": "The model couldn't be downloaded. Check your network or the model name and try again.",
+        "ja": "モデルをダウンロードできませんでした。ネットワークかモデル名を確認して、もう一度試してください。",
     },
 }
 
