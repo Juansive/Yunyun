@@ -7,7 +7,7 @@ import json
 import re
 
 from yunyun import i18n
-from yunyun.ai.client import AIError, chat
+from yunyun.ai.client import AIError, ask
 
 BODY_LIMIT = 1500   # 正文最多发给模型多少个字：判断"来了什么邮件"不需要全文，也更省、更快
 BUBBLE_LIMIT = 60   # 模型话太多时，最多保留多少个字
@@ -39,8 +39,7 @@ def summarize(message, language, settings):
         {"role": "system", "content": SYSTEM_PROMPT.format(language=lang_name, length=length)},
         {"role": "user", "content": build_mail_text(message)},
     ]
-    info = settings.info
-    answer = chat(info.base_url, settings.api_key, settings.model, messages, extra=info.extra)
+    answer = ask(settings.info, settings.api_key, settings.model, messages)
     return parse_bubble(answer)
 
 

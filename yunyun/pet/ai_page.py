@@ -1,4 +1,7 @@
-"""设置窗口的"AI"页：选择大模型服务商、填写 API Key，测试通过才保存。不需要打开终端。"""
+"""设置窗口的"AI"页：选择大模型服务商、填写 API Key，测试通过才保存。不需要打开终端。
+
+本地模型（Ollama）不需要 Key：选它时 Key 那一行藏起来，隐私说明换成"邮件不出电脑"。
+"""
 import threading
 
 from PySide6.QtCore import Qt, Signal
@@ -8,7 +11,7 @@ from PySide6.QtWidgets import (
 
 from yunyun import i18n
 from yunyun.ai import settings as ai_settings
-from yunyun.ai.client import AIError, chat
+from yunyun.ai.client import AIError, ask
 from yunyun.ai.providers import PROVIDERS
 from yunyun.ai.settings import AISettings
 
@@ -16,8 +19,9 @@ from yunyun.ai.settings import AISettings
 def test_connection(settings):
     """发一句最简单的话，确认 Key、模型、网络都没问题。失败时抛出 AIError。"""
     info = settings.info
-    chat(info.base_url, settings.api_key, settings.model,
-         [{"role": "user", "content": "你好，请只回复 OK"}], extra=info.extra, max_tokens=10, timeout=20)
+    # 本地模型第一次要先把模型读进内存，没有显卡时也慢，多等一会儿
+    ask(info, settings.api_key, settings.model, [{"role": "user", "content": "你好，请只回复 OK"}],
+        max_tokens=10, timeout=120 if info.local else 20)
 
 
 class AISettingsPage(QWidget):
@@ -30,7 +34,7 @@ class AISettingsPage(QWidget):
         self._test_finished.connect(self._on_test_finished)
 
         layout = QVBoxLayout(self)
-        form = QFormLayout()
+        form = self._form = QFormLayout()
         self._provider = QComboBox()
         for code in PROVIDERS:
             self._provider.addItem(tr(f"provider_{code}"), code)
@@ -49,10 +53,10 @@ class AISettingsPage(QWidget):
         self._hint.setStyleSheet("color: #666;")
         layout.addWidget(self._hint)
 
-        privacy = QLabel("ℹ️ " + tr("ai_privacy_note"))
-        privacy.setWordWrap(True)
-        privacy.setStyleSheet("color: #B26A00;")  # 橙色：重要提示
-        layout.addWidget(privacy)
+        self._privacy = QLabel()   # 文字跟着服务商变（在线 / 本地），见 _update_hint
+        self._privacy.setWordWrap(True)
+        self._privacy.setStyleSheet("color: #B26A00;")  # 橙色：重要提示
+        layout.addWidget(self._privacy)
 
         self._status = QLabel()
         self._status.setWordWrap(True)
@@ -71,34 +75,42 @@ class AISettingsPage(QWidget):
         provider, model = ai_settings.saved_choice()
         self._provider.setCurrentIndex(self._provider.findData(provider))
         self._model.setText(model)
-        self._key.setText(ai_settings.get_api_key(provider) or "")
+        self._load_key(provider)
         self._provider.currentIndexChanged.connect(self._on_provider_changed)
         self._update_hint()
 
     def _on_provider_changed(self):
         provider = self._provider.currentData()
         self._model.setText(PROVIDERS[provider].default_model)   # 换服务商：模型换成这家的默认
-        self._key.setText(ai_settings.get_api_key(provider) or "")
+        self._load_key(provider)
         self._status.clear()
         self._update_hint()
+
+    def _load_key(self, provider):
+        """填上这家保存过的 Key；不需要 Key 的（本地模型）就清空，不去查凭据管理器。"""
+        needs_key = PROVIDERS[provider].needs_key
+        self._key.setText((ai_settings.get_api_key(provider) or "") if needs_key else "")
 
     def _update_hint(self):
         info = PROVIDERS[self._provider.currentData()]
         link = f'<a href="{info.key_url}">{info.key_url}</a>'
         self._hint.setText(i18n.tr(f"ai_hint_{info.code}", link))
+        self._form.setRowVisible(self._key, info.needs_key)   # 本地模型没有 Key：整行藏起来
+        self._privacy.setText("ℹ️ " + i18n.tr("ai_privacy_note_local" if info.local else "ai_privacy_note"))
 
     def _test_and_save(self):
         if not self._save_button.isEnabled():
             return
+        info = PROVIDERS[self._provider.currentData()]
         key = self._key.text().strip()
         model = self._model.text().strip()
         if not model:
             self._show_status(i18n.tr("ai_empty_model"), error=True)
             return
-        if not key:
+        if info.needs_key and not key:
             self._show_status(i18n.tr("ai_empty_key"), error=True)
             return
-        settings = AISettings(self._provider.currentData(), model, key)
+        settings = AISettings(info.code, model, key if info.needs_key else "")
         self._set_busy(True)
         self._show_status(i18n.tr("ai_testing"))
         threading.Thread(target=self._test_worker, args=(settings,), daemon=True).start()
@@ -120,7 +132,10 @@ class AISettingsPage(QWidget):
     def _on_test_finished(self, settings, error):
         self._set_busy(False)
         if error is not None:
-            message = i18n.tr(f"ai_error_{error.kind}")
+            if error.kind == "model_missing":
+                message = i18n.tr("ai_error_model_missing", settings.model)
+            else:
+                message = i18n.tr(f"ai_error_{error.kind}")
             if error.detail:
                 message += "\n" + i18n.tr("mail_error_detail", error.detail)
             self._show_status(message, error=True)

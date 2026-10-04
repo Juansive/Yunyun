@@ -273,6 +273,11 @@ TEXTS = {
     "provider_zhipu": {"zh": "智谱 GLM（推荐，免费）", "en": "Zhipu GLM (recommended, free)", "ja": "Zhipu GLM（おすすめ・無料）"},
     "provider_siliconflow": {"zh": "硅基流动", "en": "SiliconFlow", "ja": "SiliconFlow"},
     "provider_dashscope": {"zh": "通义千问（阿里云百炼）", "en": "Qwen (Alibaba Cloud)", "ja": "Qwen（Alibaba Cloud）"},
+    "provider_ollama": {
+        "zh": "本地模型（Ollama，邮件不出电脑）",
+        "en": "Local model (Ollama, mail stays on this PC)",
+        "ja": "ローカルモデル（Ollama・メールは PC の外に出ません）",
+    },
     "ai_hint_zhipu": {
         "zh": "Key 怎么拿：打开 {} 注册并登录 → 右上角头像 → API Keys → 添加新的 API Key，复制到这里。",
         "en": "How to get a key: open {} and sign in → avatar (top right) → API Keys → add a new API key, then paste it here.",
@@ -287,6 +292,20 @@ TEXTS = {
         "zh": "Key 怎么拿：打开 {} 登录阿里云 → API-KEY → 创建。新用户有免费额度，用完后会按量收费。",
         "en": "How to get a key: open {} and sign in → API-KEY → create. New users get free quota; usage is billed after that.",
         "ja": "キーの取得：{} にログイン → API-KEY → 作成。新規ユーザーは無料枠あり、超過分は従量課金です。",
+    },
+    "ai_hint_ollama": {
+        "zh": "用这台电脑上的免费开源模型，不用注册、不用 Key。先下载安装 Ollama：{}（装好后它会在后台运行）。"
+              "模型第一次使用前要先下载（默认的 qwen3:1.7b 约 1.4 GB）。处理邮件时会多占 1～2 GB 内存，处理完 30 秒后自动释放；有独立显卡会快很多。",
+        "en": "Uses a free open model on this PC — no sign-up, no key. First install Ollama: {} (it runs in the background). "
+              "The model must be downloaded before first use (the default qwen3:1.7b is about 1.4 GB). While reading mail it uses "
+              "an extra 1–2 GB of memory, released 30 seconds later; a dedicated graphics card makes it much faster.",
+        "ja": "この PC 上の無料オープンモデルを使います。登録もキーも不要です。まず Ollama をインストール：{}（インストール後はバックグラウンドで動きます）。"
+              "初回はモデルのダウンロードが必要です（既定の qwen3:1.7b は約 1.4 GB）。メール処理中はメモリを 1～2 GB 多く使い、30 秒後に解放されます。専用 GPU があるとずっと速くなります。",
+    },
+    "ai_privacy_note_local": {
+        "zh": "使用本地模型时，邮件只在这台电脑上处理，不会发送到网上。",
+        "en": "With a local model, your mail is processed only on this PC and never sent over the internet.",
+        "ja": "ローカルモデルでは、メールはこの PC の中だけで処理され、インターネットには送信されません。",
     },
     "ai_privacy_note": {
         "zh": "使用 AI 时，邮件的发件人、标题和正文开头（最多 1500 字）会发送给所选的服务商，用来生成提醒。API Key 只保存在这台电脑的 Windows 凭据管理器里。",
@@ -322,6 +341,16 @@ TEXTS = {
         "ja": "プロバイダーの応答を解釈できません。別のモデルを試してください。",
     },
     "ai_error_other": {"zh": "出错了。", "en": "Something went wrong.", "ja": "エラーが発生しました。"},
+    "ai_error_not_running": {
+        "zh": "连不上 Ollama：请先安装并打开 Ollama（任务栏右下角能看到它的图标），再试一次。",
+        "en": "Couldn't reach Ollama. Please install and open Ollama (its icon appears in the taskbar corner), then try again.",
+        "ja": "Ollama に接続できません。Ollama をインストールして起動し（タスクバーの隅にアイコンが出ます）、もう一度試してください。",
+    },
+    "ai_error_model_missing": {
+        "zh": "Ollama 里还没有模型 {}，需要先下载。",
+        "en": "Ollama doesn't have the model {} yet. It needs to be downloaded first.",
+        "ja": "Ollama にモデル {} がまだありません。先にダウンロードが必要です。",
+    },
 }
 
 _current = DEFAULT_LANGUAGE  # 模块级变量：整个程序共享"当前语言"

@@ -1,4 +1,6 @@
-"""AI 设置的读写：服务商和模型名存在 config.yaml，API Key 存在 Windows 凭据管理器。"""
+"""AI 设置的读写：服务商和模型名存在 config.yaml，API Key 存在 Windows 凭据管理器。
+本地模型（Ollama）不需要 Key，api_key 是空字符串。
+"""
 from dataclasses import dataclass
 
 import keyring
@@ -30,10 +32,11 @@ def load_settings():
     provider = ai.get("provider")
     if provider not in PROVIDERS:
         return None
-    api_key = get_api_key(provider)
-    if not api_key:
+    info = PROVIDERS[provider]
+    api_key = get_api_key(provider) if info.needs_key else ""
+    if info.needs_key and not api_key:
         return None
-    return AISettings(provider, str(ai.get("model") or PROVIDERS[provider].default_model), api_key)
+    return AISettings(provider, str(ai.get("model") or info.default_model), api_key)
 
 
 def saved_choice():
@@ -47,7 +50,8 @@ def saved_choice():
 
 
 def save_settings(settings):
-    keyring.set_password(KEYRING_SERVICE, settings.provider, settings.api_key)
+    if settings.info.needs_key:
+        keyring.set_password(KEYRING_SERVICE, settings.provider, settings.api_key)
     config = cfg.load_config_or_empty()
     config["ai"] = {"provider": settings.provider, "model": settings.model}
     cfg.save_config(config)

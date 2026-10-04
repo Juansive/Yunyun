@@ -8,6 +8,7 @@ import pytest
 from yunyun import ai, i18n
 from yunyun.ai import client, settings as ai_settings, summarizer
 from yunyun.ai.client import AIError
+from yunyun.ai.providers import PROVIDERS
 from yunyun.ai.settings import AISettings
 from yunyun.mail.message import MailMessage
 
@@ -105,18 +106,74 @@ def test_clean_body_removes_history_signature_and_truncates():
 def test_prompt_contains_mail_and_language(monkeypatch):
     captured = {}
 
-    def fake_chat(base_url, api_key, model, messages, extra=None, **kwargs):
-        captured.update(base_url=base_url, model=model, messages=messages, extra=extra)
+    def fake_ask(provider, api_key, model, messages, **kwargs):
+        captured.update(provider=provider, model=model, messages=messages)
         return '{"bubble": "Hey! Your fuel invoice is here!"}'
 
-    monkeypatch.setattr(summarizer, "chat", fake_chat)
+    monkeypatch.setattr(summarizer, "ask", fake_ask)
     assert summarizer.summarize(MAIL, "en", SETTINGS) == "Hey! Your fuel invoice is here!"
     system, user = captured["messages"][0]["content"], captured["messages"][1]["content"]
     assert "English" in system and "验证码" in system        # 用英文回答；不要写敏感信息
     assert "电子发票通知" in user and "发票.pdf" in user        # 标题、附件名发给了模型
     assert "中国石化客服" not in user                           # 签名被去掉了
-    assert captured["base_url"] == "https://open.bigmodel.cn/api/paas/v4"
-    assert captured["extra"] == {"thinking": {"type": "disabled"}}
+    assert captured["provider"].base_url == "https://open.bigmodel.cn/api/paas/v4"
+    assert captured["provider"].extra == {"thinking": {"type": "disabled"}}
+
+
+# ---------- 本地模型（Ollama）：用假的 HTTP，不需要真的装 Ollama ----------
+
+OLLAMA = PROVIDERS["ollama"]
+
+
+@pytest.fixture
+def no_system_proxy(monkeypatch):
+    """连本机的 Ollama 不能走系统代理：走了 urllib.request.urlopen（会用代理）就算失败。"""
+    def forbidden(*args, **kwargs):
+        raise AssertionError("连本机 Ollama 时不应该用系统代理")
+    monkeypatch.setattr(client.urllib.request, "urlopen", forbidden)
+
+
+def test_ollama_uses_native_api_without_key_or_proxy(monkeypatch, no_system_proxy):
+    captured = {}
+    reply = {"message": {"role": "assistant", "content": '{"bubble": "嘿！发票来啦！"}'}, "done": True}
+    monkeypatch.setattr(client._NO_PROXY, "open", fake_urlopen(reply, captured=captured))
+    answer = client.ask(OLLAMA, "", "qwen3:1.7b", [{"role": "user", "content": "hi"}], max_tokens=50)
+    assert answer == '{"bubble": "嘿！发票来啦！"}'
+    assert captured["url"] == "http://127.0.0.1:11434/api/chat"
+    assert "Authorization" not in captured["headers"]                 # 不需要 Key
+    body = captured["body"]
+    assert body["stream"] is False and body["think"] is False          # 一次返回；关掉思考模式
+    assert body["keep_alive"] == "30s" and body["options"]["num_predict"] == 50   # 30 秒后卸载模型
+
+
+def test_ollama_errors_are_easy_to_understand(monkeypatch, no_system_proxy):
+    monkeypatch.setattr(client._NO_PROXY, "open",
+                        fake_urlopen(network_error=urllib.error.URLError(ConnectionRefusedError(10061, "refused"))))
+    with pytest.raises(AIError) as info:
+        client.ask(OLLAMA, "", "qwen3:1.7b", [])
+    assert info.value.kind == "not_running"                             # 没装 / 没打开 Ollama
+
+    payload = {"error": 'model "qwen3:1.7b" not found, try pulling it first'}
+    monkeypatch.setattr(client._NO_PROXY, "open", fake_urlopen(http_error=(404, payload)))
+    with pytest.raises(AIError) as info:
+        client.ask(OLLAMA, "", "qwen3:1.7b", [])
+    assert info.value.kind == "model_missing" and "not found" in info.value.detail
+
+
+def test_ollama_retries_without_think_for_models_that_cannot_think(monkeypatch, no_system_proxy):
+    bodies = []
+    replies = iter([
+        fake_urlopen(http_error=(400, {"error": '"gemma3:1b" does not support thinking'})),
+        fake_urlopen({"message": {"content": "OK"}}),
+    ])
+
+    def fake_open(request, timeout=None):
+        bodies.append(json.loads(request.data))
+        return next(replies)(request, timeout)
+
+    monkeypatch.setattr(client._NO_PROXY, "open", fake_open)
+    assert client.ask(OLLAMA, "", "gemma3:1b", []) == "OK"
+    assert "think" in bodies[0] and "think" not in bodies[1]           # 第二次去掉了 think
 
 
 # ---------- describe：保证总有一句话 ----------
@@ -161,6 +218,12 @@ def test_settings_roundtrip(fake_keyring):
     assert fake_keyring[("yunyun-ai", "siliconflow")] == "sk-secret"
 
 
+def test_local_model_needs_no_key(fake_keyring):
+    ai_settings.save_settings(AISettings("ollama", "qwen3:1.7b", ""))
+    assert ai_settings.load_settings() == AISettings("ollama", "qwen3:1.7b", "")   # 没有 Key 也算设置好了
+    assert fake_keyring == {}                                                        # 凭据管理器里什么都没存
+
+
 def test_settings_keep_mail_accounts(fake_keyring):
     from yunyun.mail import accounts
     from yunyun.mail.imap_client import MailAccount
@@ -202,3 +265,36 @@ def test_ai_page_saves_only_after_successful_test(qapp, fake_keyring, monkeypatc
 
     d._provider.setCurrentIndex(d._provider.findData("siliconflow"))   # 换服务商：模型跟着换
     assert d._model.text() == "Qwen/Qwen3-8B" and d._key.text() == ""
+
+
+def test_ai_page_local_model(qapp, fake_keyring, monkeypatch):
+    import time
+    from yunyun.pet import ai_page
+    i18n._current = "zh"
+    results = iter([AIError("x", kind="model_missing", detail="not found", status=404),
+                    AIError("x", kind="not_running"), None])
+
+    def fake_test(settings):
+        error = next(results)
+        if error:
+            raise error
+    monkeypatch.setattr(ai_page, "test_connection", fake_test)
+
+    def click_and_wait(page):
+        page._save_button.click()
+        end = time.time() + 3
+        while not page._save_button.isEnabled() and time.time() < end:
+            qapp.processEvents()
+
+    d = ai_page.AISettingsPage()
+    assert d._form.isRowVisible(d._key)                                 # 在线服务商：要填 Key
+    d._provider.setCurrentIndex(d._provider.findData("ollama"))
+    assert not d._form.isRowVisible(d._key)                             # 本地模型：Key 那一行藏起来
+    assert d._model.text() == "qwen3:1.7b" and "不会发送到网上" in d._privacy.text()
+
+    click_and_wait(d)                                                   # 不填 Key 也能测试
+    assert "还没有模型 qwen3:1.7b" in d._status.text()
+    click_and_wait(d)
+    assert "连不上 Ollama" in d._status.text()
+    click_and_wait(d)
+    assert ai_settings.load_settings() == AISettings("ollama", "qwen3:1.7b", "")
