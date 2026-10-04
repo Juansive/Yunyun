@@ -106,6 +106,7 @@ python -m venv .venv
 
 打包结果在 `dist\`：`dist\芸芸\芸芸.exe` 和发给别人用的 `dist\Yunyun-<版本>-windows.zip`。
 构建脚本最后会在"没有 Python"的环境里运行 exe 的自检，看到 6 行 `OK` 才算成功。
+zip 里会附上 [docs/使用说明.txt](docs/使用说明.txt)（自动填上版本号）。发给别人前记得在 `yunyun/__init__.py` 里把版本号加一。
 
 - 架构、设计决定和开发约定见 [CLAUDE.md](CLAUDE.md)。
 - 给画师的形象素材要求见 [assets/pet/README.md](assets/pet/README.md)。

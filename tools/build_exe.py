@@ -7,9 +7,10 @@
 
 结果：
     dist\\芸芸\\芸芸.exe                 双击运行。整个"芸芸"文件夹要放在一起（exe 要用的文件在旁边的 _internal 里）
+    dist\\芸芸\\使用说明.txt             给拿到 zip 的人看的说明（来自 docs\\使用说明.txt，版本号会自动填上）
     dist\\Yunyun-<版本>-windows.zip      把上面的文件夹压缩好，方便发给别人；解压后双击里面的 芸芸.exe
 
-步骤：生成图标和版本信息 → PyInstaller 打包 → 在"没装 Python"的环境里运行 exe 的自检 → 压缩成 zip。
+步骤：生成图标和版本信息 → PyInstaller 打包 → 在"没装 Python"的环境里运行 exe 的自检 → 放进使用说明 → 压缩成 zip。
 
 为什么用 onedir（一个文件夹）而不是 onefile（单个 exe）：onefile 每次启动都要先把几十 MB 的文件
 解压到临时文件夹，启动慢，也更容易被杀毒软件误报。
@@ -28,6 +29,7 @@ from yunyun import __version__  # noqa: E402
 
 APP_NAME = "芸芸"
 ASSETS = ROOT / "assets" / "pet"
+GUIDE = ROOT / "docs" / "使用说明.txt"
 BUILD = ROOT / "build"   # 中间文件，可以随时删掉
 DIST = ROOT / "dist"     # 打包结果
 
@@ -70,7 +72,10 @@ def main():
     print("== 3/4 在没有 Python 的环境里运行自检")
     self_check(app_dir / f"{APP_NAME}.exe")
 
-    print("== 4/4 压缩成 zip")
+    print("== 4/4 放进使用说明，压缩成 zip")
+    write_guide(app_dir / GUIDE.name)
+    for old in DIST.glob("Yunyun-*-windows.zip"):   # 删掉旧版本的压缩包，免得发错
+        old.unlink()
     archive = Path(shutil.make_archive(str(DIST / f"Yunyun-{__version__}-windows"), "zip",
                                        root_dir=DIST, base_dir=APP_NAME))
 
@@ -139,6 +144,16 @@ VSVersionInfo(
 )
 """, encoding="utf-8")   # 0x0804 = 简体中文，1200 = Unicode
     return path
+
+
+def write_guide(path):
+    """把使用说明放进程序文件夹，填上版本号。
+
+    存成"带 BOM 的 UTF-8 + Windows 换行（CRLF）"：这样不管对方的 Windows 是新是旧，
+    用记事本打开都不会乱码、不会挤成一行。
+    """
+    text = GUIDE.read_text(encoding="utf-8").replace("{version}", __version__)
+    path.write_text(text, encoding="utf-8-sig", newline="\r\n")
 
 
 def run_pyinstaller(icon, version_file):
