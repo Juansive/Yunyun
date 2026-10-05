@@ -26,6 +26,7 @@ class FakeIMAPServer(socketserver.ThreadingTCPServer):
     def __init__(self, idle_supported=True):
         super().__init__(("127.0.0.1", 0), _Handler)
         self.idle_supported = idle_supported
+        self.like_qq = False   # True：像 QQ 邮箱一样，IDLE 时不推送，而且每个连接只看得到打开收件箱那一刻的"快照"
         self.uidnext = 10
         self.unseen = [3, 5]
         self.lock = threading.RLock()     # 数据和"往连接里写"都用它保护（推送来自测试线程）
@@ -44,8 +45,9 @@ class FakeIMAPServer(socketserver.ThreadingTCPServer):
             uid = self.uidnext
             self.uidnext += 1
             self.unseen.append(uid)
-            for handler in list(self.idlers):
-                handler.send(f"* {len(self.unseen)} EXISTS")
+            if not self.like_qq:
+                for handler in list(self.idlers):
+                    handler.send(f"* {len(self.unseen)} EXISTS")
         return uid
 
     def kick_all(self):
@@ -67,6 +69,7 @@ class _Handler(socketserver.StreamRequestHandler):
         srv = self.server
         srv.connections.add(self.request)
         idling_tag = None
+        snapshot = None   # like_qq 时：打开收件箱那一刻的未读列表
         try:
             self.send("* OK fake IMAP ready")
             for raw in self.rfile:
@@ -90,12 +93,13 @@ class _Handler(socketserver.StreamRequestHandler):
                 elif command in ("SELECT", "EXAMINE"):
                     with srv.lock:
                         count, uidnext = len(srv.unseen), srv.uidnext
+                        snapshot = list(srv.unseen) if srv.like_qq else None
                     for text in (f"* {count} EXISTS", "* OK [UIDVALIDITY 1] ok", f"* OK [UIDNEXT {uidnext}] ok",
                                  f"{tag} OK [READ-ONLY] done"):
                         self.send(text)
                 elif command == "UID" and args.upper().startswith("SEARCH"):
                     with srv.lock:
-                        uids = " ".join(map(str, srv.unseen))
+                        uids = " ".join(map(str, snapshot if snapshot is not None else srv.unseen))
                     self.send(f"* SEARCH {uids}".rstrip())
                     self.send(f"{tag} OK done")
                 elif command == "IDLE" and srv.idle_supported:
@@ -167,13 +171,44 @@ def test_new_mail_is_noticed_within_a_second(server):
 
 
 def test_renews_idle_and_rechecks_without_push(server, monkeypatch):
-    monkeypatch.setattr(idle, "RENEW_S", 0.2)                              # 很快就"续"一次
+    monkeypatch.setattr(idle, "FAST_RENEW_S", 0.2)                         # 很快就"续"一次
     watcher, statuses = start_watcher()
     try:
         assert wait_until(lambda: len(statuses) >= 4)                      # 没有推送也会定期查一次
         server.unseen.remove(3)                                            # 在手机上读掉了一封（服务器没推送）
         assert wait_until(lambda: statuses[-1].unseen == [5])              # 下次续的时候就发现了
         assert server.logins == 1                                          # 一直是同一个连接，没有反复登录
+    finally:
+        watcher.stop()
+
+
+def test_server_that_never_pushes_like_qq(server, monkeypatch):
+    """QQ 邮箱：IDLE 时不推送，连接只看得到快照。靠经常重新打开收件箱，新邮件也能很快发现。"""
+    server.like_qq = True
+    monkeypatch.setattr(idle, "FAST_RENEW_S", 0.3)
+    watcher, statuses = start_watcher()
+    try:
+        assert wait_until(lambda: watcher.healthy)
+        uid = server.new_mail()                                            # 服务器不会推送这封
+        sent_at = time.time()
+        assert wait_until(lambda: uid in statuses[-1].unseen)
+        assert time.time() - sent_at < 1.5                                 # 下次重新打开收件箱时就看见了
+        assert server.logins == 1                                          # 不需要重新登录
+    finally:
+        watcher.stop()
+
+
+def test_server_that_pushes_is_checked_less_often(server, monkeypatch):
+    monkeypatch.setattr(idle, "FAST_RENEW_S", 0.2)
+    monkeypatch.setattr(idle, "RENEW_S", 60)
+    watcher, statuses = start_watcher()
+    try:
+        assert wait_until(lambda: watcher.healthy)
+        uid = server.new_mail()                                            # 服务器推送了：说明它会推送
+        assert wait_until(lambda: uid in statuses[-1].unseen)
+        count = len(statuses)
+        time.sleep(1.0)                                                    # 远超过 FAST_RENEW_S
+        assert len(statuses) == count                                      # 已经改成很久才看一次，不再频繁检查
     finally:
         watcher.stop()
 

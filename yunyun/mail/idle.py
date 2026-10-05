@@ -11,8 +11,12 @@
 收到通知后，芸芸在同一个连接上重新只读打开收件箱、查一下"有哪些未读"（和定时检查一样，只查编号、
 不下载内容），再接着 IDLE。
 
-- 每隔 RENEW_S 秒，即使没有通知也结束一次、查一次再重新 IDLE：RFC 建议最长 29 分钟，
-  路由器 / 服务器可能更早悄悄断开空闲连接；顺便能发现服务器没推送的变化（比如在手机上读了邮件）。
+但服务器不一定推送。实测（2026-10-05）QQ 邮箱的连接看到的是"快照"：打开收件箱以后来的新邮件，
+在这个连接上既不推送（IDLE），问也问不出来（NOOP），必须重新打开收件箱才能看见。所以：
+- 刚连上时先当作服务器不推送：每 FAST_RENEW_S 秒结束一次 IDLE、重新打开收件箱看一眼
+  （同一个连接，不用重新登录，很便宜）。QQ 邮箱的新邮件最慢 15 秒就能发现。
+- 一旦收到过服务器的推送（比如 Gmail），说明它会推送，就改成每 RENEW_S 秒才看一次：
+  RFC 建议最长 29 分钟，路由器 / 服务器可能更早悄悄断开空闲连接；顺便能发现服务器没推送的变化（比如在手机上读了邮件）。
 - 服务器不支持 IDLE（登录后也没声明）：这个邮箱继续用定时检查。
 - 断网等错误：等一会儿重连（等待时间逐渐加长，最长 RETRY_MAX_S）；连不上的期间由定时检查兜底。
 - 授权码不对：不重试（免得反复登录失败），交给定时检查去提醒用户。
@@ -30,7 +34,8 @@ from yunyun.mail.imap_client import TIMEOUT, MailError, _connect, _password_for,
 
 log = logging.getLogger(__name__)
 
-RENEW_S = 5 * 60        # 多久"续"一次 IDLE（顺便查一次未读）
+FAST_RENEW_S = 15       # 服务器不推送时（比如 QQ 邮箱）：多久重新打开收件箱看一眼
+RENEW_S = 5 * 60        # 服务器会推送时：多久"续"一次 IDLE（顺便查一次未读）
 RETRY_MIN_S = 15        # 断开后第一次等多久重连……
 RETRY_MAX_S = 5 * 60    # ……之后每次翻倍，最长等这么久
 
@@ -103,20 +108,24 @@ class IdleWatcher:
         self._on_status(self.account, status)
 
 
-def watch(account, on_status, stop_event, on_connected=None, renew_s=None):
+def watch(account, on_status, stop_event, on_connected=None):
     """连着邮箱等推送，直到 stop_event 被设置（正常返回）或出错（抛 MailError）。"""
-    renew_s = RENEW_S if renew_s is None else renew_s
     with _connect(account, _password_for(account)) as imap:
         if on_connected is not None:
             on_connected(imap)
         if "IDLE" not in _capabilities(imap):
             raise MailError("这个邮箱服务器不支持 IDLE", kind="no_idle")
         on_status(mailbox_status(imap))
+        renew_s = FAST_RENEW_S   # 先当作服务器不会推送：经常重新打开收件箱看一眼
         while not stop_event.is_set():
-            idle(imap, renew_s)
+            pushed = idle(imap, renew_s)
             if stop_event.is_set():
                 return
-            imap.select("INBOX", readonly=True)   # 重新只读打开：服务器会告诉我们最新的 UIDNEXT
+            if pushed and renew_s != RENEW_S:
+                log.info("邮箱 %s 的服务器会主动推送，改为每 %d 秒检查一次", mask_address(account.address), RENEW_S)
+                renew_s = RENEW_S
+            # 重新只读打开收件箱：服务器会告诉我们最新的 UIDNEXT（QQ 邮箱只有这样才看得见新邮件）
+            imap.select("INBOX", readonly=True)
             on_status(mailbox_status(imap))
 
 
