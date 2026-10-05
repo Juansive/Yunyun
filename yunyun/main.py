@@ -81,6 +81,7 @@ def main():
 
     app.aboutToQuit.connect(keyboard.stop)       # 退出前停止键盘监听
     app.aboutToQuit.connect(ai.shutdown)         # 退出前关掉芸芸按需启动的 Ollama
+    app.aboutToQuit.connect(mail.stop)           # 退出前断开实时接收邮件的连接
     app.aboutToQuit.connect(pet.save_position)   # 退出前记下芸芸的位置（万一刚拖完还没来得及保存）
     pet.show()
     keyboard.start()

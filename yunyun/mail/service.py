@@ -1,6 +1,7 @@
-"""邮件服务：定时检查邮箱、读取待处理的邮件，通过 Qt 信号告诉界面。
+"""邮件服务：留意新邮件、读取待处理的邮件，通过 Qt 信号告诉界面。
 
-- 每 2 分钟检查一次（只查有哪些未读，不下载内容）；
+- 支持 IMAP IDLE 的邮箱（QQ、Gmail）实时接收：服务器一推送就查一次，小红点几秒内出现（见 idle.py）；
+- 不支持的、或者实时连接暂时断开的邮箱，每 2 分钟检查一次（都只查有哪些未读，不下载内容）；
 - 只有用户点了小红点，才调用 fetch_pending() 真正读取邮件内容；
 - 网络操作都在后台线程里做；对外发出的信号都在主线程里发出，界面可以放心使用。
 """
@@ -12,16 +13,13 @@ from PySide6.QtCore import QObject, QStandardPaths, QTimer, Signal
 
 from yunyun.config import ConfigError
 from yunyun.mail import accounts
-from yunyun.mail.imap_client import MailError, check_unseen, fetch_messages
+from yunyun.mail.idle import IdleWatcher
+from yunyun.mail.imap_client import MailError, check_unseen, fetch_messages, mask_address
 from yunyun.mail.tracker import MailTracker
 
 log = logging.getLogger(__name__)
 
-
-def mask_address(address):
-    """日志里的邮箱地址打码：me123@qq.com → m***@qq.com（日志可能会发给别人帮忙排查）。"""
-    name, _, domain = address.partition("@")
-    return f"{name[:1]}***@{domain}" if domain else "***"
+IDLE_ENABLED = True   # 测试时关掉（tests/conftest.py），免得真的去连邮箱
 
 
 def default_state_path():
@@ -43,6 +41,7 @@ class MailService(QObject):
 
     # ---- 内部信号：后台线程 → 主线程 ----
     _poll_done = Signal(object)
+    _idle_status = Signal(object, object)   # (邮箱账号, MailboxStatus)：实时接收的连接查到的结果
     _fetched = Signal(str, object, object)
     _fetch_done = Signal()
 
@@ -57,8 +56,10 @@ class MailService(QObject):
         self._fetching = False
         self._auth_warned = set()
         self._last_error = {}  # 每个邮箱上一次检查的错误类型（None = 正常），用来只在变化时记日志
+        self._watchers = {}    # {邮箱地址: IdleWatcher}：实时接收
 
         self._poll_done.connect(self._on_poll_done)
+        self._idle_status.connect(self._on_idle_status)
         self._fetched.connect(self.message_ready)   # 信号连信号：直接转发
         self._fetch_done.connect(self._on_fetch_done)
 
@@ -80,22 +81,57 @@ class MailService(QObject):
 
     def start(self):
         self._load_accounts()
+        self._start_watchers()
         self._timer.start()
         QTimer.singleShot(self.FIRST_POLL_DELAY_MS, self.poll_now)
 
+    def stop(self):
+        """芸芸退出时调用：断开实时接收的连接。"""
+        self._timer.stop()
+        self._stop_watchers()
+
     def reload_accounts(self):
         """用户添加 / 删除了邮箱：重新读取账号列表，并马上检查一次。"""
+        self._stop_watchers()
         self._load_accounts()
+        self._start_watchers()
         self.pending_changed.emit(self.pending_count, 0)
         self.poll_now()
+
+    # ---------- 实时接收（IMAP IDLE）----------
+
+    def _start_watchers(self):
+        if not IDLE_ENABLED:
+            return
+        for account in self._accounts:
+            # on_status 在后台线程里被调用：发信号，Qt 会把它排队送到主线程处理
+            watcher = IdleWatcher(account, lambda acc, status: _safe_emit(self._idle_status, acc, status))
+            self._watchers[account.address] = watcher
+            watcher.start()
+
+    def _stop_watchers(self):
+        for watcher in self._watchers.values():
+            watcher.stop()
+        self._watchers.clear()
+
+    def _watched(self, account):
+        """这个邮箱此刻是不是正在实时接收（是的话定时检查就跳过它）。"""
+        watcher = self._watchers.get(account.address)
+        return watcher is not None and watcher.healthy
+
+    def _on_idle_status(self, account, status):
+        if account.address not in self._watchers:
+            return  # 邮箱已经被删掉了（这是旧连接最后送来的结果）
+        self._apply_results([(account, status, None)])
 
     # ---------- 定时检查 ----------
 
     def poll_now(self):
-        if self._polling or not self._accounts:
-            return  # 上一次还没查完，或者还没有邮箱
+        targets = [a for a in self._accounts if not self._watched(a)]   # 正在实时接收的邮箱不用再查
+        if self._polling or not targets:
+            return  # 上一次还没查完，或者没有需要检查的邮箱
         self._polling = True
-        threading.Thread(target=self._poll_worker, args=(list(self._accounts),), daemon=True).start()
+        threading.Thread(target=self._poll_worker, args=(targets,), daemon=True).start()
 
     def _poll_worker(self, account_list):
         """后台线程：逐个邮箱检查未读。一个邮箱出错不影响其他邮箱。"""
@@ -112,6 +148,10 @@ class MailService(QObject):
 
     def _on_poll_done(self, results):
         self._polling = False
+        self._apply_results(results)
+
+    def _apply_results(self, results):
+        """定时检查和实时接收的结果都走这里：更新计数，告诉界面。"""
         newly = 0
         for account, status, error in results:
             self._log_poll_state(account.address, error)

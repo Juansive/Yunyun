@@ -22,8 +22,10 @@ def isolate_user_data(tmp_path, monkeypatch):
     """
     from yunyun import config as cfg
     from yunyun.ai import ollama_service
+    from yunyun.mail import service
     monkeypatch.setattr(cfg, "CONFIG_PATH", tmp_path / "config.yaml")
     monkeypatch.setattr(ollama_service, "ENABLED", False)
+    monkeypatch.setattr(service, "IDLE_ENABLED", False)   # 也不许真的去连邮箱做实时接收
 
 
 @pytest.fixture(autouse=True)

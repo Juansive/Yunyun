@@ -83,9 +83,20 @@ def fetch_unread(account, limit=5):
 def check_unseen(account):
     """只查"有哪些未读邮件"（UID 列表），不下载内容。很轻量，适合定时检查。"""
     with _connect(account, _password_for(account)) as imap:
-        uidvalidity = _untagged_int(imap, "UIDVALIDITY") or 0
-        uidnext = _untagged_int(imap, "UIDNEXT") or _last_uid(imap) + 1
-        return MailboxStatus(uidvalidity=uidvalidity, uidnext=uidnext, unseen=_search_unseen(imap))
+        return mailbox_status(imap)
+
+
+def mailbox_status(imap):
+    """刚只读打开收件箱之后调用：收件箱的概况（UIDVALIDITY、UIDNEXT、未读邮件的 UID），不含邮件内容。"""
+    uidvalidity = _untagged_int(imap, "UIDVALIDITY") or 0
+    uidnext = _untagged_int(imap, "UIDNEXT") or _last_uid(imap) + 1
+    return MailboxStatus(uidvalidity=uidvalidity, uidnext=uidnext, unseen=_search_unseen(imap))
+
+
+def mask_address(address):
+    """日志里的邮箱地址打码：me123@qq.com → m***@qq.com（日志可能会发给别人帮忙排查）。"""
+    name, _, domain = address.partition("@")
+    return f"{name[:1]}***@{domain}" if domain else "***"
 
 
 def fetch_messages(account, uids):
