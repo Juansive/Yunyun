@@ -10,6 +10,7 @@
     dist\\芸芸\\使用说明.txt             给拿到 zip 的人看的说明（来自 docs\\使用说明.txt，版本号会自动填上）
     dist\\芸芸\\更新日志.txt             每一版更新了什么（来自 docs\\更新日志.txt）
     dist\\Yunyun-<版本>-windows.zip      把上面的文件夹压缩好，方便发给别人；解压后双击里面的 芸芸.exe
+    releases\\Yunyun-<旧版本>-windows.zip 以前各版本的压缩包（打新版时自动从 dist\\ 挪过来，不删）
 
 步骤：生成图标和版本信息 → PyInstaller 打包 → 在"没装 Python"的环境里运行 exe 的自检 → 放进使用说明 → 压缩成 zip。
 
@@ -21,6 +22,7 @@ import shutil
 import struct
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -32,8 +34,9 @@ APP_NAME = "芸芸"
 ASSETS = ROOT / "assets" / "pet"
 GUIDE = ROOT / "docs" / "使用说明.txt"
 CHANGELOG = ROOT / "docs" / "更新日志.txt"
-BUILD = ROOT / "build"   # 中间文件，可以随时删掉
-DIST = ROOT / "dist"     # 打包结果
+BUILD = ROOT / "build"          # 中间文件，可以随时删掉
+DIST = ROOT / "dist"            # 打包结果（最新的一版）
+RELEASES = ROOT / "releases"    # 以前各版本的压缩包，留着溯源（太大，不提交到 Git）
 
 # 运行时才决定加载的模块：PyInstaller 分析 import 语句时看不到，要明确告诉它
 HIDDEN_IMPORTS = [
@@ -79,8 +82,8 @@ def main():
         write_doc(doc, app_dir / doc.name)
     if "还没打包" in CHANGELOG.read_text(encoding="utf-8"):
         print("提醒：更新日志里还有\"下一版（还没打包）\"，记得改成这一版的版本号和日期。")
-    for old in DIST.glob("Yunyun-*-windows.zip"):   # 删掉旧版本的压缩包，免得发错
-        old.unlink()
+    for old in DIST.glob("Yunyun-*-windows.zip"):   # 上一版的压缩包挪到 releases\ 保存：dist\ 里只留最新的，免得发错
+        archive_old_zip(old)
     archive = Path(shutil.make_archive(str(DIST / f"Yunyun-{__version__}-windows"), "zip",
                                        root_dir=DIST, base_dir=APP_NAME))
 
@@ -149,6 +152,16 @@ VSVersionInfo(
 )
 """, encoding="utf-8")   # 0x0804 = 简体中文，1200 = Unicode
     return path
+
+
+def archive_old_zip(path):
+    RELEASES.mkdir(exist_ok=True)
+    target = RELEASES / path.name
+    if target.exists():   # 同一个版本打了两次：旧的那份名字后面加上打包时间，两份都留着
+        stamp = time.strftime("%Y%m%d-%H%M%S", time.localtime(path.stat().st_mtime))
+        target = RELEASES / f"{path.stem}-{stamp}{path.suffix}"
+    shutil.move(str(path), str(target))
+    print(f"上一版的压缩包移到了 {target}")
 
 
 def write_doc(source, path):

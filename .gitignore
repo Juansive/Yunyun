@@ -5,5 +5,6 @@ config.yaml
 *.db
 build/
 dist/
+releases/
 .idea/
 .vscode/
