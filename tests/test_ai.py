@@ -1,6 +1,7 @@
 """AI 模块的测试：不联网、不需要 API Key（网络请求和凭据管理器都用假的代替）。"""
 import io
 import json
+import re
 import urllib.error
 
 import pytest
@@ -89,6 +90,36 @@ def test_parse_bubble(answer, expected):
     assert summarizer.parse_bubble(answer) == expected
 
 
+@pytest.mark.parametrize("bubble, expected", [
+    # 实测本地小模型真的写出过的句子（2026-10-05）
+    ("招商银行发来10月账单，应还款3256元，最后还款日25号", "招商银行发来10月账单，最后还款日25号"),
+    ("您的包裹已到菜鸟驿站，取件码6-3-2048，3天内取件", "您的包裹已到菜鸟驿站，3天内取件"),
+    ("Steam发来游戏购买凭证，金额为98元", "Steam发来游戏购买凭证"),
+    ("京东发来双11预售的广告，iPhone 立减 800 元", "京东发来双11预售的广告"),
+    ("某银行发来登录验证码384920", "某银行发来登录验证码"),                 # 第一句只删那个数
+    ("你的快递到了，运单号 7300123456789，记得去取", "你的快递到了，记得去取"),
+    ("Your receipt is here, total $9.99", "Your receipt is here"),
+    ("Credit card bill is out, due amount 3,256.00 by Oct 25", "Credit card bill is out"),   # 没写单位的金额
+    ("JD sent an ad for Double 11—iPhone 16 discount 800 yuan", "JD sent an ad for Double 11"),   # 破折号断句
+    ("Bank sent a verification code—384920, valid for 5 minutes", "Bank sent a verification code—valid for 5 minutes"),
+    ("请联系 zhang@example.com，网址 https://a.example/x", "请联系"),
+    # 正常的句子不受影响
+    ("王老师说第三章要补充对比实验，下周一前发他", "王老师说第三章要补充对比实验，下周一前发他"),
+    ("字节跳动邀请你10月9日14:00线上面试", "字节跳动邀请你10月9日14:00线上面试"),
+    ("Alice asked for a code review", "Alice asked for a code review"),
+    ("京东双11预售来了啦！", "京东双11预售来了啦！"),
+])
+def test_sensitive_info_never_reaches_the_bubble(bubble, expected):
+    assert summarizer.scrub_sensitive(bubble) == expected
+    assert summarizer.parse_bubble(json.dumps({"bubble": bubble}, ensure_ascii=False)) == expected
+
+
+def test_fallback_hides_codes_in_subject():
+    i18n._current = "zh"
+    mail = MailMessage(1, "【某银行】登录验证码 384920", "某银行", "a@b.com", None, "", [])
+    assert summarizer.fallback_bubble(mail) == "某银行 发来了「【某银行】登录验证码」"
+
+
 def test_parse_bubble_rejects_empty_and_trims_long():
     with pytest.raises(AIError):
         summarizer.parse_bubble('{"bubble": ""}')
@@ -107,15 +138,20 @@ def test_prompt_contains_mail_and_language(monkeypatch):
     captured = {}
 
     def fake_ask(provider, api_key, model, messages, **kwargs):
-        captured.update(provider=provider, model=model, messages=messages)
+        captured.update(provider=provider, model=model, messages=messages, temperature=kwargs.get("temperature"))
         return '{"bubble": "Hey! Your fuel invoice is here!"}'
 
     monkeypatch.setattr(summarizer, "ask", fake_ask)
     assert summarizer.summarize(MAIL, "en", SETTINGS) == "Hey! Your fuel invoice is here!"
-    system, user = captured["messages"][0]["content"], captured["messages"][1]["content"]
+    messages = captured["messages"]
+    system, user = messages[0]["content"], messages[-1]["content"]   # 中间是示范对话，最后一条才是这封邮件
     assert "English" in system and "验证码" in system        # 用英文回答；不要写敏感信息
     assert "电子发票通知" in user and "发票.pdf" in user        # 标题、附件名发给了模型
     assert "中国石化客服" not in user                           # 签名被去掉了
+    examples = [m for m in messages[1:-1] if m["role"] == "assistant"]
+    chinese = re.compile(r"[一-鿿]")
+    assert examples and not any(chinese.search(json.loads(m["content"])["bubble"]) for m in examples)   # 示范的回答也是英文
+    assert captured["temperature"] == summarizer.TEMPERATURE
     assert captured["provider"].base_url == "https://open.bigmodel.cn/api/paas/v4"
     assert captured["provider"].extra == {"thinking": {"type": "disabled"}}
 
