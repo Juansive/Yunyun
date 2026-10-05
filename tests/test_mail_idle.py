@@ -147,6 +147,12 @@ def wait_until(condition, timeout=5.0, qapp=None):
     return False
 
 
+def wait_idling(server):
+    """等到芸芸真的进入 IDLE 再"来新邮件"。假服务器只给正在 IDLE 的连接推送（真的服务器会把这期间的变化
+    留到进入 IDLE 时再说，代码里也处理了），不等的话，电脑忙的时候推送会落空，测试偶尔失败。"""
+    assert wait_until(lambda: server.idlers)
+
+
 def start_watcher():
     statuses = []
     watcher = idle.IdleWatcher(A, lambda account, status: statuses.append(status))
@@ -159,6 +165,7 @@ def test_new_mail_is_noticed_within_a_second(server):
     try:
         assert wait_until(lambda: statuses and watcher.healthy)           # 连上就先报一次当前情况
         assert statuses[0].unseen == [3, 5]
+        wait_idling(server)
         uid = server.new_mail()
         pushed_at = time.time()
         assert wait_until(lambda: uid in statuses[-1].unseen)
@@ -204,6 +211,7 @@ def test_server_that_pushes_is_checked_less_often(server, monkeypatch):
     watcher, statuses = start_watcher()
     try:
         assert wait_until(lambda: watcher.healthy)
+        wait_idling(server)
         uid = server.new_mail()                                            # 服务器推送了：说明它会推送
         assert wait_until(lambda: uid in statuses[-1].unseen)
         count = len(statuses)
@@ -219,6 +227,7 @@ def test_reconnects_after_the_connection_drops(server):
         assert wait_until(lambda: watcher.healthy)
         server.kick_all()                                                  # 断网 / 服务器断开
         assert wait_until(lambda: server.logins == 2 and watcher.healthy)  # 很快自动重连
+        wait_idling(server)
         uid = server.new_mail()
         assert wait_until(lambda: uid in statuses[-1].unseen)              # 重连后照样实时收到
     finally:
@@ -246,6 +255,7 @@ def test_service_uses_idle_but_keeps_polling(qapp, server, tmp_path, monkeypatch
     s._start_watchers()
     try:
         assert wait_until(lambda: s._watchers[A.address].healthy and events, qapp=qapp)   # 实时接收已经连上
+        wait_idling(server)
         server.new_mail()
         assert wait_until(lambda: events[-1] == (1, 1), qapp=qapp)         # 推送了：新邮件马上让小红点 +1
 
