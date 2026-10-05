@@ -3,8 +3,14 @@
 
 想加新的服务商，在 PROVIDERS 里加一项（再在 i18n.py 里加上显示名和获取 Key 的说明）就行。
 免费模型经常换代：模型名在"AI 设置"窗口里可以直接改，不用改代码。
+
+"自定义"（custom）：用户自己填接口地址，接入任何兼容 OpenAI 接口的模型——
+在线的（DeepSeek、OpenAI……）或自己的本地模型（LM Studio、llama.cpp、vLLM、Ollama 的 /v1）。
+地址是本机 / 局域网时（is_local_url），不走系统代理，隐私说明也换成"不会发到网上"。
 """
-from dataclasses import dataclass, field
+import ipaddress
+from dataclasses import dataclass, field, replace
+from urllib.parse import urlparse
 
 
 @dataclass(frozen=True)  # frozen：创建后不能修改，防止被不小心改掉
@@ -15,8 +21,10 @@ class Provider:
     key_url: str                                 # 去哪里申请 API Key（本地模型：去哪里下载 Ollama）
     extra: dict = field(default_factory=dict)    # 这家需要额外传的参数
     api: str = "openai"                          # 接口格式："openai"（在线服务商）/ "ollama"（本机的 Ollama）
-    needs_key: bool = True                       # 要不要 API Key
-    local: bool = False                          # 在这台电脑上运行：邮件不会发到网上
+    needs_key: bool = True                       # 必须填 API Key
+    local: bool = False                          # 在这台电脑（或局域网）上运行：邮件不会发到网上
+    custom: bool = False                         # 用户自己填接口地址；Key 可填可不填
+    max_tokens: int = 200                        # 回答最多多少 token（提醒只要一句话）
 
 
 PROVIDERS = {
@@ -54,6 +62,43 @@ PROVIDERS = {
             needs_key=False,
             local=True,
         ),
+        Provider(
+            code="custom",
+            base_url="",                         # 用户自己填（这里只是模板，见 custom_provider）
+            default_model="",
+            key_url="",
+            needs_key=False,                     # 本地模型一般不需要 Key
+            custom=True,
+            max_tokens=1000,                     # 有的模型会先"思考"一大段再回答，给足长度，免得没答完就被截断
+        ),
     ]
 }
 DEFAULT_PROVIDER = "zhipu"
+CUSTOM = "custom"
+
+
+def custom_provider(base_url):
+    """用户自己的模型：用他填的地址，并按地址判断是不是本地的。"""
+    url = normalize_base_url(base_url)
+    return replace(PROVIDERS[CUSTOM], base_url=url, local=is_local_url(url))
+
+
+def normalize_base_url(url):
+    """整理用户填的地址：去掉首尾空格和末尾的 /；把完整的 .../chat/completions 粘进来也认得。"""
+    url = url.strip().rstrip("/")
+    suffix = "/chat/completions"
+    if url.lower().endswith(suffix):
+        url = url[: -len(suffix)].rstrip("/")
+    return url
+
+
+def is_local_url(url):
+    """地址是不是本机或局域网（localhost、127.x、192.168.x、10.x、没有点的主机名……）。"""
+    host = urlparse(url.strip()).hostname or ""
+    if not host:
+        return False
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:   # 不是 IP，是主机名
+        return host == "localhost" or host.endswith((".localhost", ".local", ".lan")) or "." not in host
+    return ip.is_loopback or ip.is_private or ip.is_link_local

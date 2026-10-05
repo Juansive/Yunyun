@@ -25,20 +25,23 @@ def ask(provider, api_key, model, messages, **kwargs):
     if provider.api == "ollama":
         with ollama_service.session(provider.base_url):   # 需要时才启动 Ollama，用完空闲一会儿再关
             return chat_ollama(provider.base_url, model, messages, extra=provider.extra, **kwargs)
-    return chat(provider.base_url, api_key, model, messages, extra=provider.extra, **kwargs)
+    kwargs.setdefault("max_tokens", provider.max_tokens)
+    kwargs.setdefault("timeout", 120 if provider.local else 30)   # 本地模型第一次要先读进内存，多等一会儿
+    return chat(provider.base_url, api_key, model, messages, extra=provider.extra,
+                use_proxy=not provider.local, **kwargs)              # 本机 / 局域网的模型不走系统代理
 
 
-def chat(base_url, api_key, model, messages, extra=None, max_tokens=200, temperature=0.7, timeout=30):
-    """OpenAI 兼容格式：发送一次对话，返回模型回答的文字。"""
+def chat(base_url, api_key, model, messages, extra=None, max_tokens=200, temperature=0.7, timeout=30, use_proxy=True):
+    """OpenAI 兼容格式：发送一次对话，返回模型回答的文字。api_key 为空时不发 Key（本地模型一般不需要）。"""
     body = {
         "model": model,
         "messages": messages,
         "max_tokens": max_tokens,
-        "temperature": temperature,   # 越高越有创意、越低越稳定；提醒语气活泼一点，0.7 正好
+        "temperature": temperature,   # 越高越有创意、越低越稳定
         **(extra or {}),              # ** 把字典展开合并进来
     }
-    data = _post_json(base_url.rstrip("/") + "/chat/completions", body, timeout,
-                      headers={"Authorization": f"Bearer {api_key}"})
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+    data = _post_json(base_url.rstrip("/") + "/chat/completions", body, timeout, headers=headers, use_proxy=use_proxy)
     try:
         return data["choices"][0]["message"]["content"] or ""
     except (KeyError, IndexError, TypeError) as e:
@@ -156,7 +159,7 @@ def _translate_errors():
         yield
     except urllib.error.HTTPError as e:  # 服务器回了，但状态码不是 2xx（HTTPError 是 URLError 的子类，要先捕获）
         detail = _error_detail(e)
-        kind = {401: "auth", 403: "auth", 429: "rate_limit"}.get(e.code, "other")
+        kind = {401: "auth", 403: "auth", 404: "not_found", 429: "rate_limit"}.get(e.code, "other")
         raise AIError(f"HTTP {e.code}: {detail}", kind=kind, detail=detail, status=e.code) from e
     except (urllib.error.URLError, socket.timeout, TimeoutError, ConnectionError) as e:
         raise AIError(f"网络错误：{e}", kind="network", detail=str(e)) from e

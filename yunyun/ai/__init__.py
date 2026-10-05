@@ -42,7 +42,7 @@ def prepare():
     """要开始处理邮件了（芸芸正在读邮箱）。用的是本地模型的话，在后台提前启动 Ollama、把模型读进内存，
     和读邮箱同时进行，等第一封邮件读好时模型基本也准备好了。不等结果、不会报错（真正处理时会再试）。"""
     settings = ai_settings.load_settings()
-    if settings is not None and settings.info.local:
+    if settings is not None and settings.info.api == "ollama":   # 只有 Ollama 是芸芸按需启动的（自定义的本地模型不是）
         threading.Thread(target=_warm_up, args=(settings,), daemon=True).start()
 
 

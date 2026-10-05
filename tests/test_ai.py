@@ -9,7 +9,7 @@ import pytest
 from yunyun import ai, i18n
 from yunyun.ai import client, settings as ai_settings, summarizer
 from yunyun.ai.client import AIError
-from yunyun.ai.providers import PROVIDERS
+from yunyun.ai.providers import PROVIDERS, custom_provider, is_local_url
 from yunyun.ai.settings import AISettings
 from yunyun.mail.message import MailMessage
 
@@ -213,6 +213,56 @@ def test_ollama_retries_without_think_for_models_that_cannot_think(monkeypatch, 
     assert "think" in bodies[0] and "think" not in bodies[1]           # 第二次去掉了 think
 
 
+# ---------- 自定义：用户自己的模型 / 接口 ----------
+
+@pytest.mark.parametrize("url, local", [
+    ("http://localhost:1234/v1", True), ("http://127.0.0.1:8080/v1", True), ("http://[::1]:8000/v1", True),
+    ("http://192.168.1.20:11434/v1", True), ("http://10.0.0.5/v1", True), ("http://mypc:1234/v1", True),
+    ("https://api.deepseek.com/v1", False), ("https://8.8.8.8/v1", False), ("http://[2001:4860::8888]/v1", False),
+    ("not a url", False),
+])
+def test_is_local_url(url, local):
+    assert is_local_url(url) is local
+
+
+def test_custom_provider_tidies_the_url():
+    p = custom_provider("  https://api.deepseek.com/v1/chat/completions/ ")   # 把完整地址粘进来也行
+    assert p.base_url == "https://api.deepseek.com/v1" and not p.local and p.custom
+    assert custom_provider("http://localhost:1234/v1/").local
+
+
+def test_custom_online_api_sends_key_through_the_usual_route(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(client.urllib.request, "urlopen",
+                        fake_urlopen({"choices": [{"message": {"content": "OK"}}]}, captured=captured))
+    assert client.ask(custom_provider("https://api.example.com/v1"), "sk-1", "m", []) == "OK"
+    assert captured["url"] == "https://api.example.com/v1/chat/completions"
+    assert captured["headers"]["Authorization"] == "Bearer sk-1"
+    assert captured["body"]["max_tokens"] == 1000          # 给"会思考"的模型留够长度
+
+
+def test_custom_local_model_needs_no_key_and_skips_proxy(monkeypatch, no_system_proxy):
+    captured = {}
+    monkeypatch.setattr(client._NO_PROXY, "open",
+                        fake_urlopen({"choices": [{"message": {"content": "OK"}}]}, captured=captured))
+    assert client.ask(custom_provider("http://localhost:1234/v1"), "", "qwen", []) == "OK"
+    assert "Authorization" not in captured["headers"]       # 没填 Key 就不发
+
+
+def test_wrong_url_or_model_is_not_found(monkeypatch):
+    monkeypatch.setattr(client.urllib.request, "urlopen", fake_urlopen(http_error=(404, {"error": "no such model"})))
+    with pytest.raises(AIError) as info:
+        client.chat("https://x/v1", "k", "m", [])
+    assert info.value.kind == "not_found"
+
+
+def test_parse_bubble_skips_thinking():
+    answer = '<think>用户要一句话。{"草稿": 1}……</think>\n{"category": "work", "bubble": "王老师让你周一前交报告"}'
+    assert summarizer.parse_bubble(answer) == "王老师让你周一前交报告"
+    with pytest.raises(AIError):
+        summarizer.parse_bubble("<think>想了很多，还没想完就被截断了")
+
+
 def ndjson(*items):
     """Ollama 下载时的返回：每行一个 JSON。"""
     return FakeResponse(b"".join(json.dumps(item).encode() + b"\n" for item in items))
@@ -285,6 +335,8 @@ def test_prepare_warms_up_only_local_models(fake_keyring, monkeypatch):
     monkeypatch.setattr(ai, "load_ollama_model", lambda provider, model: loaded.append(model))
     ai_settings.save_settings(SETTINGS)                                  # 在线服务商：不用提前准备
     ai.prepare()
+    ai_settings.save_settings(AISettings("custom", "qwen", "", "http://localhost:1234/v1"))
+    ai.prepare()                                                         # 自定义的本地模型不是 Ollama：不能去启动 Ollama
     ai_settings.save_settings(AISettings("ollama", "qwen3:1.7b", ""))   # 本地模型：后台提前加载
     ai.prepare()
     end = time.time() + 2
@@ -311,7 +363,24 @@ def fake_keyring(monkeypatch, fake_store):
     keys = {}
     monkeypatch.setattr(ai_settings.keyring, "get_password", lambda service, user: keys.get((service, user)))
     monkeypatch.setattr(ai_settings.keyring, "set_password", lambda service, user, pw: keys.__setitem__((service, user), pw))
+    monkeypatch.setattr(ai_settings.keyring, "delete_password", lambda service, user: keys.pop((service, user), None))
     return keys
+
+
+def test_custom_settings_roundtrip(fake_keyring):
+    local = AISettings("custom", "qwen2.5-7b", "", "http://localhost:1234/v1")
+    ai_settings.save_settings(local)
+    assert ai_settings.load_settings() == local                                   # 没有 Key 也算设置好了
+    assert ai_settings.load_settings().info.local
+
+    online = AISettings("custom", "deepseek-chat", "sk-x", "https://api.deepseek.com/v1")
+    ai_settings.save_settings(online)
+    assert ai_settings.load_settings() == online and fake_keyring[("yunyun-ai", "custom")] == "sk-x"
+    ai_settings.save_settings(AISettings("custom", "deepseek-chat", "", "https://api.deepseek.com/v1"))
+    assert ("yunyun-ai", "custom") not in fake_keyring                            # 这次没填 Key：旧的删掉
+
+    ai_settings.save_settings(SETTINGS)                                           # 换成智谱……
+    assert ai_settings.saved_custom() == ("https://api.deepseek.com/v1", "deepseek-chat")   # ……自定义的地址还记着
 
 
 def test_settings_roundtrip(fake_keyring):
@@ -406,6 +475,49 @@ def test_ai_page_local_model(qapp, fake_keyring, monkeypatch):
     assert "没找到 Ollama" in d._status.text() and d._download_button.isHidden()
     click_and_wait(d)
     assert ai_settings.load_settings() == AISettings("ollama", "qwen3:1.7b", "")
+
+
+def test_ai_page_custom_provider(qapp, fake_keyring, monkeypatch):
+    import time
+    from yunyun.pet import ai_page
+    i18n._current = "zh"
+    tested = []
+    monkeypatch.setattr(ai_page, "test_connection", lambda settings: tested.append(settings))
+
+    def click_and_wait(page):
+        page._save_button.click()
+        end = time.time() + 3
+        while not page._save_button.isEnabled() and time.time() < end:
+            qapp.processEvents()
+
+    d = ai_page.AISettingsPage()
+    assert not d._form.isRowVisible(d._base_url)                       # 其他服务商没有"接口地址"
+    d._provider.setCurrentIndex(d._provider.findData("custom"))
+    assert d._form.isRowVisible(d._base_url) and d._form.isRowVisible(d._key)   # Key 那一行也在（可以不填）
+    assert d._key.placeholderText() == "没有就留空"
+
+    d._base_url.setText("https://api.example.com/v1")
+    assert "请确认你信任这个服务" in d._privacy.text()                  # 网上的地址：提醒信任问题
+    d._base_url.setText("http://localhost:1234/v1")
+    assert "不会发到网上" in d._privacy.text()                          # 本机的地址
+
+    d._base_url.setText("")
+    click_and_wait(d)
+    assert "请填写接口地址" in d._status.text()
+    d._base_url.setText("localhost:1234/v1")
+    click_and_wait(d)
+    assert "http://" in d._status.text()                               # 少了 http://
+    d._base_url.setText("http://localhost:1234/v1/")
+    d._model.setText("qwen2.5-7b-instruct")
+    click_and_wait(d)                                                  # 不填 Key 也能测试、保存
+    expected = AISettings("custom", "qwen2.5-7b-instruct", "", "http://localhost:1234/v1")
+    assert tested == [expected] and ai_settings.load_settings() == expected
+
+    again = ai_page.AISettingsPage()                                   # 重新打开设置：都还在
+    assert again._provider.currentData() == "custom" and again._base_url.text() == "http://localhost:1234/v1"
+    again._provider.setCurrentIndex(again._provider.findData("zhipu"))
+    again._provider.setCurrentIndex(again._provider.findData("custom"))
+    assert again._model.text() == "qwen2.5-7b-instruct"                # 切走再切回来，不用重填
 
 
 def test_ai_page_downloads_missing_model_then_saves(qapp, fake_keyring, monkeypatch):

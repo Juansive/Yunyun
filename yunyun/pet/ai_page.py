@@ -3,6 +3,9 @@
 本地模型（Ollama）不需要 Key：选它时 Key 那一行藏起来，隐私说明换成"邮件不出电脑"。
 测试时发现 Ollama 里还没有这个模型，就出现"下载模型"按钮：芸芸让 Ollama 下载并显示进度，下载完自动再测试、保存。
 （这样用户不用打开终端敲 ollama pull。）
+
+"自定义"：多出"接口地址"一行，Key 可以不填。隐私说明跟着地址变：本机 / 局域网的地址说"不会发到网上"，
+网上的地址提醒"邮件会发到你填的地址，请确认你信任它"。
 """
 import threading
 
@@ -15,7 +18,7 @@ from yunyun import i18n
 from yunyun.ai import ollama_service
 from yunyun.ai import settings as ai_settings
 from yunyun.ai.client import AIError, ask, pull_ollama
-from yunyun.ai.providers import PROVIDERS
+from yunyun.ai.providers import PROVIDERS, is_local_url, normalize_base_url
 from yunyun.ai.settings import AISettings
 
 
@@ -57,11 +60,15 @@ class AISettingsPage(QWidget):
         self._provider = QComboBox()
         for code in PROVIDERS:
             self._provider.addItem(tr(f"provider_{code}"), code)
+        self._base_url = QLineEdit()   # 只有"自定义"才显示
+        self._base_url.setPlaceholderText("https://api.deepseek.com/v1")
+        self._base_url.textChanged.connect(self._update_privacy)   # 本地 / 网上的地址，隐私说明不一样
         self._model = QLineEdit()
         self._key = QLineEdit()
         self._key.setEchoMode(QLineEdit.EchoMode.Password)
         self._key.returnPressed.connect(self._test_and_save)
         form.addRow(tr("ai_provider"), self._provider)
+        form.addRow(tr("ai_base_url"), self._base_url)
         form.addRow(tr("ai_model"), self._model)
         form.addRow(tr("ai_key"), self._key)
         layout.addLayout(form)
@@ -98,30 +105,51 @@ class AISettingsPage(QWidget):
         provider, model = ai_settings.saved_choice()
         self._provider.setCurrentIndex(self._provider.findData(provider))
         self._model.setText(model)
+        self._base_url.setText(ai_settings.saved_custom()[0])
         self._load_key(provider)
         self._provider.currentIndexChanged.connect(self._on_provider_changed)
         self._model.textEdited.connect(self._download_button.hide)   # 改了模型名：之前"缺这个模型"的结论不算数了
         self._update_hint()
 
     def _on_provider_changed(self):
-        provider = self._provider.currentData()
-        self._model.setText(PROVIDERS[provider].default_model)   # 换服务商：模型换成这家的默认
-        self._load_key(provider)
+        info = PROVIDERS[self._provider.currentData()]
+        if info.custom:   # 切到"自定义"：填上以前填过的地址和模型
+            base_url, model = ai_settings.saved_custom()
+            self._base_url.setText(base_url)
+            self._model.setText(model)
+        else:
+            self._model.setText(info.default_model)   # 换服务商：模型换成这家的默认
+        self._load_key(info.code)
         self._status.clear()
         self._download_button.hide()
         self._update_hint()
 
     def _load_key(self, provider):
-        """填上这家保存过的 Key；不需要 Key 的（本地模型）就清空，不去查凭据管理器。"""
-        needs_key = PROVIDERS[provider].needs_key
-        self._key.setText((ai_settings.get_api_key(provider) or "") if needs_key else "")
+        """填上这家保存过的 Key；不用 Key 的（本地模型）就清空，不去查凭据管理器。"""
+        info = PROVIDERS[provider]
+        uses_key = info.needs_key or info.custom
+        self._key.setText((ai_settings.get_api_key(provider) or "") if uses_key else "")
 
     def _update_hint(self):
         info = PROVIDERS[self._provider.currentData()]
-        link = f'<a href="{info.key_url}">{info.key_url}</a>'
-        self._hint.setText(i18n.tr(f"ai_hint_{info.code}", link))
-        self._form.setRowVisible(self._key, info.needs_key)   # 本地模型没有 Key：整行藏起来
-        self._privacy.setText("ℹ️ " + i18n.tr("ai_privacy_note_local" if info.local else "ai_privacy_note"))
+        if info.custom:
+            self._hint.setText(i18n.tr("ai_hint_custom"))
+        else:
+            link = f'<a href="{info.key_url}">{info.key_url}</a>'
+            self._hint.setText(i18n.tr(f"ai_hint_{info.code}", link))
+        self._form.setRowVisible(self._base_url, info.custom)
+        self._form.setRowVisible(self._key, info.needs_key or info.custom)   # Ollama 没有 Key：整行藏起来
+        self._key.setPlaceholderText(i18n.tr("ai_key_optional") if info.custom else "")
+        self._update_privacy()
+
+    def _update_privacy(self):
+        info = PROVIDERS[self._provider.currentData()]
+        if info.custom:
+            url = self._base_url.text()
+            key = "ai_privacy_note_custom_local" if url.strip() and is_local_url(url) else "ai_privacy_note_custom"
+        else:
+            key = "ai_privacy_note_local" if info.local else "ai_privacy_note"
+        self._privacy.setText("ℹ️ " + i18n.tr(key))
 
     def _test_and_save(self):
         if not self._save_button.isEnabled():
@@ -129,13 +157,20 @@ class AISettingsPage(QWidget):
         info = PROVIDERS[self._provider.currentData()]
         key = self._key.text().strip()
         model = self._model.text().strip()
+        base_url = normalize_base_url(self._base_url.text()) if info.custom else ""
+        if info.custom and not base_url:
+            self._show_status(i18n.tr("ai_empty_base_url"), error=True)
+            return
+        if info.custom and not base_url.lower().startswith(("http://", "https://")):
+            self._show_status(i18n.tr("ai_bad_base_url"), error=True)
+            return
         if not model:
             self._show_status(i18n.tr("ai_empty_model"), error=True)
             return
         if info.needs_key and not key:
             self._show_status(i18n.tr("ai_empty_key"), error=True)
             return
-        settings = AISettings(info.code, model, key if info.needs_key else "")
+        settings = AISettings(info.code, model, key if (info.needs_key or info.custom) else "", base_url)
         self._download_button.hide()
         self._set_busy(True)
         self._show_status(i18n.tr("ai_testing"))
@@ -162,6 +197,8 @@ class AISettingsPage(QWidget):
                 message = i18n.tr("ai_error_model_missing", settings.model)
                 self._pending_download = settings
                 self._download_button.show()      # 给用户一个"让芸芸帮你下载"的按钮
+            elif error.kind == "network" and settings.info.custom:
+                message = i18n.tr("ai_error_custom_network")   # 自定义地址连不上：多半是地址填错或服务没开
             else:
                 message = i18n.tr(f"ai_error_{error.kind}")
             if error.detail:
@@ -219,7 +256,7 @@ class AISettingsPage(QWidget):
         self._test_and_save()                 # 下载好了：接着测试并保存，用户不用再点一次
 
     def _set_busy(self, busy):
-        for widget in (self._save_button, self._download_button, self._provider, self._model, self._key):
+        for widget in (self._save_button, self._download_button, self._provider, self._base_url, self._model, self._key):
             widget.setEnabled(not busy)
 
     def _show_status(self, text, error=False):

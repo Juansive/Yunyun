@@ -280,6 +280,24 @@ TEXTS = {
     "ai_provider": {"zh": "服务商", "en": "Provider", "ja": "プロバイダー"},
     "ai_model": {"zh": "模型", "en": "Model", "ja": "モデル"},
     "ai_key": {"zh": "API Key", "en": "API Key", "ja": "API キー"},
+    "ai_base_url": {"zh": "接口地址", "en": "API URL", "ja": "API の URL"},
+    "ai_key_optional": {"zh": "没有就留空", "en": "Leave empty if not needed", "ja": "不要なら空欄"},
+    "provider_custom": {
+        "zh": "自定义（自己的模型 / 接口）",
+        "en": "Custom (your own model / API)",
+        "ja": "カスタム（自分のモデル / API）",
+    },
+    "ai_hint_custom": {
+        "zh": "填写任何兼容 OpenAI 接口的地址（一般以 /v1 结尾），在线的、自己电脑上的都可以，例如："
+              "DeepSeek https://api.deepseek.com/v1 · LM Studio http://localhost:1234/v1。"
+              "模型名按服务商的说明填；自己电脑上的模型一般不需要 Key。用 Ollama 的话，直接选上面的「本地模型（Ollama）」更快。",
+        "en": "Enter any OpenAI-compatible API URL (usually ending in /v1), online or on your own PC, e.g. "
+              "DeepSeek https://api.deepseek.com/v1 · LM Studio http://localhost:1234/v1. Use the model name from your "
+              "provider; local models usually need no key. For Ollama, the \"Local model (Ollama)\" option above is faster.",
+        "ja": "OpenAI 互換の API の URL（ふつうは /v1 で終わる）を入力。オンラインでも自分の PC 上でも使えます。例："
+              "DeepSeek https://api.deepseek.com/v1 · LM Studio http://localhost:1234/v1。モデル名は提供元の説明どおりに。"
+              "ローカルのモデルはふつうキー不要です。Ollama なら上の「ローカルモデル（Ollama）」のほうが速いです。",
+    },
     "provider_zhipu": {"zh": "智谱 GLM（推荐，免费）", "en": "Zhipu GLM (recommended, free)", "ja": "Zhipu GLM（おすすめ・無料）"},
     "provider_siliconflow": {"zh": "硅基流动", "en": "SiliconFlow", "ja": "SiliconFlow"},
     "provider_dashscope": {"zh": "通义千问（阿里云百炼）", "en": "Qwen (Alibaba Cloud)", "ja": "Qwen（Alibaba Cloud）"},
@@ -314,6 +332,18 @@ TEXTS = {
               "終わったら閉じるので、普段はメモリを使いません。初回はモデルのダウンロードが必要です（既定の qwen3:1.7b は約 1.4 GB）。"
               "処理中は一時的にメモリを 1～2 GB 使います。専用 GPU があるとずっと速くなります。",
     },
+    "ai_privacy_note_custom": {
+        "zh": "使用自定义接口时，邮件的发件人、标题和正文开头（最多 1500 字）会发送到你填写的地址。请确认你信任这个服务。",
+        "en": "With a custom API, each email's sender, subject and the beginning of its body (up to 1,500 characters) "
+              "are sent to the URL you entered. Make sure you trust that service.",
+        "ja": "カスタム API では、メールの差出人・件名・本文の冒頭（最大 1,500 文字）が入力した URL に送信されます。"
+              "信頼できるサービスか確認してください。",
+    },
+    "ai_privacy_note_custom_local": {
+        "zh": "你填的是本机或局域网里的地址：邮件只交给你自己网络里的这个模型，不会发到网上。",
+        "en": "This URL is on your PC or local network: your mail only goes to that model and never over the internet.",
+        "ja": "この PC かローカルネットワーク内の URL です。メールはそのモデルにだけ渡され、インターネットには送信されません。",
+    },
     "ai_privacy_note_local": {
         "zh": "使用本地模型时，邮件只在这台电脑上处理，不会发送到网上。",
         "en": "With a local model, your mail is processed only on this PC and never sent over the internet.",
@@ -332,6 +362,22 @@ TEXTS = {
     },
     "ai_empty_key": {"zh": "请填写 API Key。", "en": "Please enter the API key.", "ja": "API キーを入力してください。"},
     "ai_empty_model": {"zh": "请填写模型名。", "en": "Please enter the model name.", "ja": "モデル名を入力してください。"},
+    "ai_empty_base_url": {"zh": "请填写接口地址。", "en": "Please enter the API URL.", "ja": "API の URL を入力してください。"},
+    "ai_bad_base_url": {
+        "zh": "接口地址要以 http:// 或 https:// 开头。",
+        "en": "The API URL must start with http:// or https://.",
+        "ja": "API の URL は http:// か https:// で始めてください。",
+    },
+    "ai_error_not_found": {
+        "zh": "找不到这个接口或模型：请检查接口地址（一般以 /v1 结尾）和模型名。",
+        "en": "The API or model wasn't found. Check the API URL (usually ending in /v1) and the model name.",
+        "ja": "API かモデルが見つかりません。URL（ふつうは /v1 で終わる）とモデル名を確認してください。",
+    },
+    "ai_error_custom_network": {
+        "zh": "连不上你填写的地址：请检查地址是否正确；如果是自己电脑上的模型，确认它已经打开。",
+        "en": "Couldn't reach that URL. Check that it's correct; if it's a model on your PC, make sure it's running.",
+        "ja": "その URL に接続できません。URL が正しいか、自分の PC のモデルなら起動しているか確認してください。",
+    },
     "ai_error_auth": {
         "zh": "API Key 不对，或者没有使用这个模型的权限。",
         "en": "The API key is wrong, or it can't use this model.",

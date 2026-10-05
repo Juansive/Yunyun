@@ -129,8 +129,12 @@ def clean_body(body, limit=BODY_LIMIT):
 
 
 def parse_bubble(answer, limit=BUBBLE_LIMIT):
-    """从模型的回答里取出那句话。模型有时会多说话、或者用 ```json 包起来，这里都兼容。"""
-    text = answer.strip()
+    """从模型的回答里取出那句话。模型有时会多说话、或者用 ```json 包起来，这里都兼容。
+
+    有的模型（自定义接入的 Qwen3、DeepSeek-R1 等）会先输出 <think>……</think> 的思考过程，先去掉；
+    思考到一半就被截断（没有 </think>）时，后面也没有答案，按"没给出提醒"处理。
+    """
+    text = re.sub(r"<think>.*?(?:</think>|$)", "", answer, flags=re.DOTALL | re.IGNORECASE).strip()
     match = re.search(r"\{.*\}", text, re.DOTALL)  # 找到第一个 { 到最后一个 }
     if match:
         try:
