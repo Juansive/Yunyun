@@ -8,6 +8,7 @@
 结果：
     dist\\芸芸\\芸芸.exe                 双击运行。整个"芸芸"文件夹要放在一起（exe 要用的文件在旁边的 _internal 里）
     dist\\芸芸\\使用说明.txt             给拿到 zip 的人看的说明（来自 docs\\使用说明.txt，版本号会自动填上）
+    dist\\芸芸\\更新日志.txt             每一版更新了什么（来自 docs\\更新日志.txt）
     dist\\Yunyun-<版本>-windows.zip      把上面的文件夹压缩好，方便发给别人；解压后双击里面的 芸芸.exe
 
 步骤：生成图标和版本信息 → PyInstaller 打包 → 在"没装 Python"的环境里运行 exe 的自检 → 放进使用说明 → 压缩成 zip。
@@ -30,6 +31,7 @@ from yunyun import __version__  # noqa: E402
 APP_NAME = "芸芸"
 ASSETS = ROOT / "assets" / "pet"
 GUIDE = ROOT / "docs" / "使用说明.txt"
+CHANGELOG = ROOT / "docs" / "更新日志.txt"
 BUILD = ROOT / "build"   # 中间文件，可以随时删掉
 DIST = ROOT / "dist"     # 打包结果
 
@@ -72,8 +74,11 @@ def main():
     print("== 3/4 在没有 Python 的环境里运行自检")
     self_check(app_dir / f"{APP_NAME}.exe")
 
-    print("== 4/4 放进使用说明，压缩成 zip")
-    write_guide(app_dir / GUIDE.name)
+    print("== 4/4 放进使用说明和更新日志，压缩成 zip")
+    for doc in (GUIDE, CHANGELOG):
+        write_doc(doc, app_dir / doc.name)
+    if "还没打包" in CHANGELOG.read_text(encoding="utf-8"):
+        print("提醒：更新日志里还有\"下一版（还没打包）\"，记得改成这一版的版本号和日期。")
     for old in DIST.glob("Yunyun-*-windows.zip"):   # 删掉旧版本的压缩包，免得发错
         old.unlink()
     archive = Path(shutil.make_archive(str(DIST / f"Yunyun-{__version__}-windows"), "zip",
@@ -146,13 +151,13 @@ VSVersionInfo(
     return path
 
 
-def write_guide(path):
-    """把使用说明放进程序文件夹，填上版本号。
+def write_doc(source, path):
+    """把说明文档放进程序文件夹，填上版本号。
 
     存成"带 BOM 的 UTF-8 + Windows 换行（CRLF）"：这样不管对方的 Windows 是新是旧，
     用记事本打开都不会乱码、不会挤成一行。
     """
-    text = GUIDE.read_text(encoding="utf-8").replace("{version}", __version__)
+    text = source.read_text(encoding="utf-8").replace("{version}", __version__)
     path.write_text(text, encoding="utf-8-sig", newline="\r\n")
 
 

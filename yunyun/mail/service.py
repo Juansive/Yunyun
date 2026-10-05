@@ -1,7 +1,9 @@
 """邮件服务：留意新邮件、读取待处理的邮件，通过 Qt 信号告诉界面。
 
-- 支持 IMAP IDLE 的邮箱（QQ、Gmail）实时接收：服务器一推送就查一次，小红点几秒内出现（见 idle.py）；
-- 不支持的、或者实时连接暂时断开的邮箱，每 2 分钟检查一次（都只查有哪些未读，不下载内容）；
+- 所有邮箱每 2 分钟检查一次（只查有哪些未读，不下载内容）；
+- 支持 IMAP IDLE 的邮箱另外保持一个实时连接：服务器推送了就马上查，小红点几秒内出现（见 idle.py）。
+  但服务器不一定推送（RFC 2177 明确说客户端不能指望推送；实测 QQ 邮箱在只读方式下就没推送），
+  所以 IDLE 只是"加速"，定时检查照常进行，最慢也就 2 分钟；
 - 只有用户点了小红点，才调用 fetch_pending() 真正读取邮件内容；
 - 网络操作都在后台线程里做；对外发出的信号都在主线程里发出，界面可以放心使用。
 """
@@ -114,11 +116,6 @@ class MailService(QObject):
             watcher.stop()
         self._watchers.clear()
 
-    def _watched(self, account):
-        """这个邮箱此刻是不是正在实时接收（是的话定时检查就跳过它）。"""
-        watcher = self._watchers.get(account.address)
-        return watcher is not None and watcher.healthy
-
     def _on_idle_status(self, account, status):
         if account.address not in self._watchers:
             return  # 邮箱已经被删掉了（这是旧连接最后送来的结果）
@@ -127,11 +124,10 @@ class MailService(QObject):
     # ---------- 定时检查 ----------
 
     def poll_now(self):
-        targets = [a for a in self._accounts if not self._watched(a)]   # 正在实时接收的邮箱不用再查
-        if self._polling or not targets:
-            return  # 上一次还没查完，或者没有需要检查的邮箱
+        if self._polling or not self._accounts:
+            return  # 上一次还没查完，或者还没有邮箱
         self._polling = True
-        threading.Thread(target=self._poll_worker, args=(targets,), daemon=True).start()
+        threading.Thread(target=self._poll_worker, args=(list(self._accounts),), daemon=True).start()
 
     def _poll_worker(self, account_list):
         """后台线程：逐个邮箱检查未读。一个邮箱出错不影响其他邮箱。"""

@@ -201,22 +201,23 @@ def test_server_without_idle_falls_back_to_polling(server):
     assert not watcher.healthy                                             # 这个邮箱交给定时检查
 
 
-def test_service_uses_idle_and_skips_polling_for_watched_accounts(qapp, server, tmp_path, monkeypatch):
+def test_service_uses_idle_but_keeps_polling(qapp, server, tmp_path, monkeypatch):
     monkeypatch.setattr(service_module, "IDLE_ENABLED", True)              # conftest 默认关掉了
     monkeypatch.setattr(service_module.accounts, "load_accounts", lambda: [A])
-    polled = []
-    monkeypatch.setattr(service_module, "check_unseen", lambda account: polled.append(account))
     s = service_module.MailService(tracker=MailTracker(tmp_path / "s.json"))
     events = []
     s.pending_changed.connect(lambda total, newly: events.append((total, newly)))
     s._load_accounts()
     s._start_watchers()
     try:
-        assert wait_until(lambda: s._watched(A) and events, qapp=qapp)    # 实时接收已经连上
-        s.poll_now()
-        assert polled == [] and not s._polling                             # 定时检查跳过了这个邮箱
+        assert wait_until(lambda: s._watchers[A.address].healthy and events, qapp=qapp)   # 实时接收已经连上
         server.new_mail()
-        assert wait_until(lambda: events[-1] == (1, 1), qapp=qapp)         # 新邮件马上让小红点 +1
+        assert wait_until(lambda: events[-1] == (1, 1), qapp=qapp)         # 推送了：新邮件马上让小红点 +1
+
+        s.poll_now()                                                       # 定时检查照常进行（服务器不一定推送）
+        assert s._polling
+        assert wait_until(lambda: not s._polling, qapp=qapp)
+        assert events[-1] == (1, 0)                                        # 同一封邮件不会被算两次
     finally:
         s.stop()
     assert not s._watchers
