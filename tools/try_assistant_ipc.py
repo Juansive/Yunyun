@@ -15,7 +15,7 @@ worker 在 tools/try_assistant_worker.py。
 5. 强行结束芸芸：worker 和 claude.exe 会不会跟着退出。
 
 运行（在项目根目录）：
-    .\\.venv\\Scripts\\pythonw tools\\try_assistant_ipc.py --auto 报告.txt   # 自动跑 1～4（提问两次，花费上限 $0.2）
+    .\\.venv\\Scripts\\pythonw tools\\try_assistant_ipc.py --auto 报告.txt   # 自动跑 1～4（提问两次，用 Haiku 约 $0.01，上限 $0.05）
     .\\.venv\\Scripts\\python tools\\try_assistant_ipc.py --kill-test        # 测 5（不提问，不花钱）
     .\\.venv\\Scripts\\pythonw tools\\try_assistant_ipc.py                   # 手动小窗口：自己打字提问、点允许 / 拒绝
 """

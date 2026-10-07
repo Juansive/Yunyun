@@ -30,8 +30,8 @@ import keyring
 from procutil import clean_inherited_env, own_console   # 同一个文件夹里的 tools/procutil.py
 
 SERVICE, PROVIDER = "yunyun-assistant", "anthropic"   # 和 tools/assistant_key.py 一致
-MODEL = "claude-opus-5-5"
-MAX_BUDGET_USD = 0.2
+MODEL = "claude-haiku-4-5"   # 测试一律用最便宜的模型（用户要求）；Haiku 4.5 不支持 effort 参数，下面不传
+MAX_BUDGET_USD = 0.05
 PERSONA = "你是芸芸，一个住在用户桌面上的桌宠助手。用中文回答，语气亲切、简洁。"
 
 
@@ -102,7 +102,6 @@ async def run(hide_console, emit, stdin):
     (tmp / "claude-config").mkdir()
     options = ClaudeAgentOptions(
         model=MODEL,
-        effort="low",
         tools=[],                                   # 不要任何内置工具（读写文件、命令、网页都没有）
         mcp_servers={"yunyun": create_sdk_mcp_server(name="yunyun", version="0.1.0", tools=[say_hi])},
         permission_mode="default",                  # 没有允许规则的工具都要问 → 走 can_use_tool

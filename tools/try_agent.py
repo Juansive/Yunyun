@@ -8,7 +8,8 @@
 - 花费上限 MAX_BUDGET_USD，超过就自动停。
 
 运行（先用 tools/assistant_key.py 存好 Key）：
-    .\\.venv\\Scripts\\python tools\\try_agent.py            # 问答、查网页、多轮、中途停止
+    .\\.venv\\Scripts\\python tools\\try_agent.py            # 问答、多轮、中途停止（约 $0.01）
+    .\\.venv\\Scripts\\python tools\\try_agent.py --web      # 再加一个查网页的问题（贵：搜索结果很长，用 Opus 时一次约 $0.1）
     .\\.venv\\Scripts\\python tools\\try_agent.py --orphan   # 只测"强行结束 Python 后子进程会不会留下"（不提问，不花钱）
 """
 import argparse
@@ -29,8 +30,8 @@ from claude_agent_sdk import (
 from procutil import clean_inherited_env, descendants, is_alive, kill, memory_mb   # 同一个文件夹里的 tools/procutil.py
 
 SERVICE, PROVIDER = "yunyun-assistant", "anthropic"   # 和 tools/assistant_key.py 一致
-MODEL = "claude-opus-5-5"
-MAX_BUDGET_USD = 0.5
+MODEL = "claude-haiku-4-5"   # 测试一律用最便宜的模型（用户要求）；Haiku 4.5 不支持 effort 参数，下面不传
+MAX_BUDGET_USD = 0.05
 PERSONA = "你是芸芸，一个住在用户桌面上的桌宠助手。用中文回答，语气亲切、简洁。"
 
 QUESTIONS = [   # (说明, 问题, 回答到多少个字时打断；None = 不打断)
@@ -61,7 +62,6 @@ def print_memory(title):
 def make_options(key, work, config_dir, **extra):
     return ClaudeAgentOptions(
         model=MODEL,
-        effort="medium",
         tools=["WebSearch", "WebFetch"],            # 只有这两个工具存在；读写文件、执行命令根本没有
         allowed_tools=["WebSearch", "WebFetch"],
         permission_mode="dontAsk",                  # 白名单以外一律拒绝，不弹确认
@@ -121,7 +121,7 @@ def fmt_s(seconds):
     return "—" if seconds is None else f"{seconds:.1f} 秒"
 
 
-async def run_questions(key):
+async def run_questions(key, web=False):
     removed = clean_inherited_env()
     print(f"清掉了从父进程继承的 {len(removed)} 个 Claude 相关环境变量（只删名字，不显示值）")
     tmp = Path(tempfile.mkdtemp(prefix="yunyun-try-agent-"))
@@ -147,7 +147,8 @@ async def run_questions(key):
 
     previous_cost = 0.0
     try:
-        for i, (label, prompt, interrupt_after) in enumerate(QUESTIONS, 1):
+        questions = [q for q in QUESTIONS if web or q[0] != "查网页"]
+        for i, (label, prompt, interrupt_after) in enumerate(questions, 1):
             r = await ask(client, prompt, interrupt_after)
             res = r["result"]
             print(f"\n[{i}] {label}：{prompt}")
@@ -240,6 +241,7 @@ def main():
     sys.stdout.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(description="助手模式技术摸底")
     parser.add_argument("--orphan", action="store_true", help="测强行结束 Python 后子进程会不会留下")
+    parser.add_argument("--web", action="store_true", help="加上查网页的问题（贵）")
     parser.add_argument("--orphan-child", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
     if args.orphan:
@@ -248,7 +250,7 @@ def main():
     key = keyring.get_password(SERVICE, PROVIDER)
     if not key:
         sys.exit("还没有保存 Key：先运行 .\\.venv\\Scripts\\python tools\\assistant_key.py")
-    asyncio.run(orphan_child(key) if args.orphan_child else run_questions(key))
+    asyncio.run(orphan_child(key) if args.orphan_child else run_questions(key, args.web))
 
 
 if __name__ == "__main__":
