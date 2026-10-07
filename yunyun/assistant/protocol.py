@@ -91,11 +91,13 @@ class Interrupt:
 
 @_message
 class PermissionReply:
-    """用户对确认请求的回答（阶段 2）。reason：拒绝时可以附一句话告诉 Claude 为什么。"""
+    """用户对确认请求的回答。reason：拒绝时可以附一句话告诉 Claude 为什么；
+    remember：选的是"这次对话都允许"（只在请求的 can_remember 为真时有用）。"""
     TYPE: ClassVar[str] = "permission_reply"
     request_id: int
     allow: bool
     reason: str = ""
+    remember: bool = False
 
 
 @_message
@@ -140,11 +142,19 @@ class ToolFinished:
 
 @_message
 class PermissionRequest:
-    """Claude 想用一个需要你同意的工具，等你回答（阶段 2）。"""
+    """Claude 想用一个需要你同意的工具，等你回答（PermissionReply）。
+
+    kind：permissions.KINDS 里的一种（界面按它显示说明）；can_remember：能不能选"这次对话都允许"，
+    scope：那样的话管到哪里（命令开头 / 文件夹）；danger：危险命令 / 敏感文件，要醒目地提醒。
+    """
     TYPE: ClassVar[str] = "permission_request"
     request_id: int
     tool: str
     input: dict
+    kind: str = ""
+    can_remember: bool = False
+    scope: str = ""
+    danger: bool = False
 
 
 @_message

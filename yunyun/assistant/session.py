@@ -25,7 +25,14 @@ from yunyun.assistant import ledger, protocol
 
 log = logging.getLogger(__name__)
 
-_TOOL_TEXT = {"WebSearch": "assistant_tool_web_search", "WebFetch": "assistant_tool_web_fetch"}
+_TOOL_TEXT = {
+    "WebSearch": "assistant_tool_web_search", "WebFetch": "assistant_tool_web_fetch",
+    "Read": "assistant_tool_read", "Glob": "assistant_tool_search_files", "Grep": "assistant_tool_search_files",
+    "Edit": "assistant_tool_edit", "Write": "assistant_tool_write", "NotebookEdit": "assistant_tool_edit",
+    "Bash": "assistant_tool_command", "PowerShell": "assistant_tool_command",
+}
+# 确认卡片（2.4）做好之前：要确认的操作一律拒绝，免得大脑一直等着
+NO_CONFIRM_UI_REASON = "Yunyun's confirmation UI isn't ready yet, so this action can't be approved for now."
 SETTINGS_ERRORS = {"no_key", "auth", "model", "budget", "reply_budget"}   # 这几种错误在设置页能改好（界面可以给个"去设置"）
 
 
@@ -234,8 +241,11 @@ class AssistantSession(QObject):
             turn.input_tokens, turn.output_tokens = event.input_tokens, event.output_tokens
             ledger.record(event.cost_usd)   # 记账：设置页显示今天 / 本月 / 一共花了多少
             self._end_turn(stopped=event.stopped)
+        elif isinstance(event, protocol.PermissionRequest):
+            log.info("确认请求 %d（%s）：确认卡片还没做，先拒绝", event.request_id, event.kind)
+            process.send(protocol.PermissionReply(event.request_id, False, NO_CONFIRM_UI_REASON))
         else:
-            log.info("暂不处理的事件：%s", type(event).__name__)   # PermissionRequest：阶段 2
+            log.info("暂不处理的事件：%s", type(event).__name__)
 
     def _on_process_finished(self, process):
         if process is not self._process:

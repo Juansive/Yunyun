@@ -20,6 +20,7 @@ class FakeProcess(QObject):
         self.started = False
         self.stopped = False
         self.asked = []
+        self.sent = []       # 别的命令（PermissionReply……）
         self.interrupts = 0
 
     def start(self):
@@ -27,6 +28,9 @@ class FakeProcess(QObject):
 
     def is_running(self):
         return self.started and not self.stopped
+
+    def send(self, command):
+        self.sent.append(command)
 
     def ask(self, text):
         self.asked.append(text)

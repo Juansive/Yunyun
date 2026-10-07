@@ -1,4 +1,5 @@
-"""助手的大脑（assistant/claude_brain.py）：启动选项、环境准备、把 SDK 的消息翻译成事件。不启动 Claude Code。"""
+"""助手的大脑（assistant/claude_brain.py）：启动选项、环境准备、把 SDK 的消息翻译成事件、权限。不启动 Claude Code。"""
+import asyncio
 import subprocess
 
 import anyio
@@ -241,11 +242,15 @@ def test_system_proxy_env(environ, proxies, expected):
 
 def test_build_options(monkeypatch):
     monkeypatch.setattr(claude_brain, "system_proxy_env", lambda: {})
+    gate = claude_brain.PermissionGate(claude_brain.WORKSPACE, lambda event: None)
     options = claude_brain.build_options(
-        AssistantSettings(budget_usd=0.1, conversation_budget_usd=0.7), "sk-ant-test", "en")
+        AssistantSettings(budget_usd=0.1, conversation_budget_usd=0.7), "sk-ant-test", "en", gate=gate)
     assert options.model == "claude-haiku-4-5"
-    assert options.tools == options.allowed_tools == ["WebSearch", "WebFetch"]   # 阶段 1：只有网页工具
-    assert options.permission_mode == "dontAsk"
+    assert options.tools == ["WebSearch", "WebFetch"]             # 没选工作文件夹：只有网页工具
+    assert options.allowed_tools == []                            # 一个都不直接放行：全部由 gate 拍板
+    assert options.permission_mode == "default"                   # dontAsk 会把"要问"直接变成拒绝
+    assert options.hooks["PreToolUse"][0].hooks == [gate.pre_tool_use]
+    assert options.can_use_tool == gate.can_use_tool
     assert options.setting_sources == [] and options.strict_mcp_config
     assert options.effort is None                                  # Haiku 4.5 不支持 effort
     assert options.max_budget_usd == 0.7   # Claude Code 按整段对话累计算；每次回答的上限芸芸自己估算
@@ -261,11 +266,139 @@ def test_build_options_uses_the_chosen_work_folder(monkeypatch, tmp_path):
     monkeypatch.setattr(claude_brain, "system_proxy_env", lambda: {})
     options = claude_brain.build_options(AssistantSettings(workspace=str(tmp_path)), "sk-ant-test", "zh")
     assert options.cwd == str(tmp_path)
+    assert options.tools == ["WebSearch", "WebFetch", "Read", "Glob", "Grep", "Edit", "Write", "Bash", "PowerShell"]
+    assert options.system_prompt["append"] == persona("zh", working=True)
+
+
+def test_project_claude_md_is_read_but_not_its_settings(monkeypatch, tmp_path):
+    monkeypatch.setattr(claude_brain, "system_proxy_env", lambda: {})
+    (tmp_path / "CLAUDE.md").write_text("# 规矩\n用中文写注释。", encoding="utf-8")
+    (tmp_path / ".claude").mkdir()
+    (tmp_path / ".claude" / "CLAUDE.md").write_text("测试用 pytest -q", encoding="utf-8")
+    (tmp_path / ".claude" / "settings.json").write_text('{"permissions": {"allow": ["Bash"]}}', encoding="utf-8")
+    options = claude_brain.build_options(AssistantSettings(workspace=str(tmp_path)), "k", "zh")
+    append = options.system_prompt["append"]
+    assert "用中文写注释。" in append and "测试用 pytest -q" in append
+    assert "permissions" not in append and options.setting_sources == []   # .claude/settings.json 不加载
+
+
+def test_long_project_notes_are_cut(monkeypatch, tmp_path):
+    monkeypatch.setattr(claude_brain, "PROJECT_NOTES_MAX_CHARS", 100)
+    (tmp_path / "CLAUDE.md").write_text("很长" * 500, encoding="utf-8")
+    notes = claude_brain.read_project_notes(str(tmp_path))
+    assert notes.startswith("很长") and len(notes) < 130 and notes.endswith("（后面太长，没有读）")
+    assert claude_brain.read_project_notes("") == ""
 
 
 def test_persona_languages():
     assert "芸芸" in persona("zh") and "Yunyun" in persona("en") and "芸芸" in persona("ja")
     assert persona("fr") == persona("zh")                          # 不认识的语言用中文
+    for language in ("zh", "en", "ja"):                            # 选没选工作文件夹，说的能力不一样
+        assert persona(language, working=True) != persona(language)
+        assert persona(language, project_notes="RULES").endswith("RULES")
+
+
+def test_tool_detail_shows_paths_inside_the_work_folder_relatively(tmp_path):
+    inside, outside = str(tmp_path / "src" / "a.py"), "Z:\\other\\b.py"
+    assert claude_brain._tool_detail("Read", {"file_path": inside}, str(tmp_path)) == str(claude_brain.os.path.join("src", "a.py"))
+    assert claude_brain._tool_detail("Read", {"file_path": outside}, str(tmp_path)) == outside
+    assert claude_brain._tool_detail("Bash", {"command": "pytest -q"}, str(tmp_path)) == "pytest -q"
+
+
+# ---------- 权限：PermissionGate ----------
+
+class Gate:
+    """PermissionGate + 它发出的事件。"""
+
+    def __init__(self, workspace):
+        self.events = []
+        self.gate = claude_brain.PermissionGate(workspace, self.events.append)
+
+
+def hook(gate, tool, tool_input):
+    output = anyio.run(gate.pre_tool_use, {"tool_name": tool, "tool_input": tool_input}, "toolu_1", {"signal": None})
+    return output["hookSpecificOutput"]
+
+
+def test_hook_decides_every_tool(tmp_path):
+    gate = Gate(tmp_path).gate
+    assert hook(gate, "Read", {"file_path": str(tmp_path / "a.py")})["permissionDecision"] == "allow"
+    assert hook(gate, "WebSearch", {"query": "x"})["permissionDecision"] == "allow"
+    assert hook(gate, "Bash", {"command": "pytest"})["permissionDecision"] == "ask"   # → can_use_tool
+    denied = hook(gate, "Task", {})
+    assert denied["permissionDecision"] == "deny" and denied["permissionDecisionReason"]
+
+
+def ask_and_answer(gate, tool, tool_input, reply_for):
+    """can_use_tool 发出确认请求后，按 reply_for(请求) 回答；返回 (结果, 收到的请求)。"""
+    async def main():
+        task = asyncio.create_task(gate.gate.can_use_tool(tool, tool_input, None))
+        for _ in range(100):
+            await asyncio.sleep(0)
+            if gate.events:
+                break
+        requests = list(gate.events)
+        for request in requests:
+            gate.gate.reply(reply_for(request))
+        return await asyncio.wait_for(task, 2), requests
+    return asyncio.run(main())
+
+
+def test_allow_once(tmp_path):
+    gate = Gate(tmp_path)
+    result_, requests = ask_and_answer(gate, "Bash", {"command": "pytest -q"},
+                                       lambda r: protocol.PermissionReply(r.request_id, True))
+    assert result_.behavior == "allow"
+    assert requests == [protocol.PermissionRequest(1, "Bash", {"command": "pytest -q"}, "command", True, "pytest", False)]
+    assert gate.gate.grants == set() and gate.gate.waiting == 0
+    assert gate.gate.decide("Bash", {"command": "pytest"}).action == "ask"            # 只允许了这一次
+
+
+def test_allow_for_the_whole_chat(tmp_path):
+    gate = Gate(tmp_path)
+    result_, _ = ask_and_answer(gate, "Bash", {"command": "pytest -q"},
+                                lambda r: protocol.PermissionReply(r.request_id, True, remember=True))
+    assert result_.behavior == "allow" and gate.gate.grants == {("command", "pytest")}
+    assert hook(gate.gate, "Bash", {"command": "pytest tests"})["permissionDecision"] == "allow"   # 不再问
+
+
+def test_remember_is_ignored_when_not_offered(tmp_path):
+    gate = Gate(tmp_path)
+    _, requests = ask_and_answer(gate, "Bash", {"command": "rm -rf build"},
+                                 lambda r: protocol.PermissionReply(r.request_id, True, remember=True))
+    assert requests[0].danger and not requests[0].can_remember
+    assert gate.gate.grants == set()                                                   # 危险命令不会被"都允许"
+
+
+def test_deny_with_a_reason(tmp_path):
+    gate = Gate(tmp_path)
+    result_, _ = ask_and_answer(gate, "Edit", {"file_path": str(tmp_path / "a.py")},
+                                lambda r: protocol.PermissionReply(r.request_id, False, "先别改"))
+    assert result_.behavior == "deny" and "denied" in result_.message and "先别改" in result_.message
+    assert not result_.interrupt                                                       # Claude 接着说话（问你想怎么做）
+
+
+def test_stopping_denies_everything_waiting(tmp_path):
+    gate = Gate(tmp_path)
+
+    async def main():
+        tasks = [asyncio.create_task(gate.gate.can_use_tool("Bash", {"command": c}, None)) for c in ("a", "b")]
+        while gate.gate.waiting < 2:
+            await asyncio.sleep(0)
+        gate.gate.deny_all(claude_brain.PermissionGate.STOPPED)
+        return await asyncio.wait_for(asyncio.gather(*tasks), 2)
+
+    results = asyncio.run(main())
+    assert [r.behavior for r in results] == ["deny", "deny"] and gate.gate.waiting == 0
+    gate.gate.reply(protocol.PermissionReply(1, True))                                 # 迟到的答复：不理，不出错
+
+
+def test_grant_given_while_another_request_waits_applies(tmp_path):
+    """两个同样的命令一起等确认，第一个选了"都允许"，第二个再看一次规则就直接放行。"""
+    gate = Gate(tmp_path)
+    gate.gate.grants.add(("command", "pytest"))
+    result_ = asyncio.run(gate.gate.can_use_tool("Bash", {"command": "pytest -q"}, None))
+    assert result_.behavior == "allow" and gate.events == []
 
 
 def test_stopped_turn_without_reported_cost_uses_the_estimate():

@@ -569,6 +569,11 @@ TEXTS = {
     "assistant_tool_web_search": {"zh": "正在搜索网页……", "en": "Searching the web…", "ja": "ウェブを検索中…"},
     "assistant_tool_web_fetch": {"zh": "正在看网页……", "en": "Reading a web page…", "ja": "ウェブページを読んでいます…"},
     "assistant_tool_other": {"zh": "正在使用 {}……", "en": "Using {}…", "ja": "{} を使用中…"},
+    "assistant_tool_read": {"zh": "正在读……", "en": "Reading…", "ja": "読んでいます…"},
+    "assistant_tool_search_files": {"zh": "正在找文件……", "en": "Searching files…", "ja": "ファイルを検索中…"},
+    "assistant_tool_edit": {"zh": "正在改……", "en": "Editing…", "ja": "編集中…"},
+    "assistant_tool_write": {"zh": "正在写……", "en": "Writing…", "ja": "書いています…"},
+    "assistant_tool_command": {"zh": "正在执行命令……", "en": "Running a command…", "ja": "コマンドを実行中…"},
     "assistant_stopped": {"zh": "（已停止）", "en": "(Stopped)", "ja": "（停止しました）"},
     "assistant_cost": {   # 这一轮花费、这次对话累计（美元）
         "zh": "这一轮 ${:.4f} · 这次对话共 ${:.4f}",

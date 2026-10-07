@@ -36,7 +36,7 @@ class FakeBrain:
         self.args = (settings, api_key, language)
         self.emit = emit
         self.fail_kind = fail_kind
-        self.asked, self.interrupts, self.closed = [], 0, False
+        self.asked, self.interrupts, self.closed, self.replies = [], 0, False, []
         self._interrupted = None
 
     async def start(self):
@@ -55,6 +55,9 @@ class FakeBrain:
             return
         self.emit(protocol.TextDelta("好的"))
         self.emit(protocol.TurnFinished(0.001, 0.001, 5, 1))
+
+    def reply_permission(self, reply):
+        self.replies.append(reply)
 
     async def interrupt(self):
         self.interrupts += 1
@@ -179,6 +182,18 @@ def test_quit_while_answering_cancels_the_turn(key):
     events, brains = run(scenario)
     assert brains[0].closed
     assert not [e for e in events if isinstance(e, protocol.TurnFinished)]   # 这一轮被取消了
+
+
+def test_permission_replies_go_to_the_brain(key):
+    async def scenario(feed, events, brains):
+        assert await until(lambda: events)
+        feed.send(protocol.Ask("slow"))
+        feed.send(protocol.PermissionReply(3, True, remember=True))
+        assert await until(lambda: brains[0].replies)
+        feed.send(protocol.Quit())
+
+    events, brains = run(scenario)
+    assert brains[0].replies == [protocol.PermissionReply(3, True, "", True)]
 
 
 def test_bad_command_lines_are_skipped(key):

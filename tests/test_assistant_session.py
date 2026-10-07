@@ -12,6 +12,7 @@ from shiboken6 import isValid
 from fake_assistant_process import FakeProcess
 from yunyun import i18n
 from yunyun.assistant import protocol
+from yunyun.assistant import session as session_module
 from yunyun.assistant.session import AssistantSession, Turn, error_text
 
 FAKE_WORKER = Path(__file__).with_name("fake_assistant_worker.py")
@@ -132,12 +133,24 @@ def test_tool_progress(session):
     assert session.progress == "正在搜索网页…… 芸芸 天气"
     process.say(protocol.TextDelta("还在查"))
     assert session.progress == "正在搜索网页…… 芸芸 天气"   # 工具还没用完，进度不收起
-    process.say(protocol.ToolStarted("t2", "Read", ""))
-    assert session.progress == "正在使用 Read……"
-    process.say(protocol.ToolFinished("t1"), protocol.ToolFinished("t2"))
+    process.say(protocol.ToolStarted("t2", "Read", "src/a.py"))
+    assert session.progress == "正在读…… src/a.py"
+    process.say(protocol.ToolStarted("t3", "SomethingNew", ""))
+    assert session.progress == "正在使用 SomethingNew……"
+    process.say(protocol.ToolFinished("t1"), protocol.ToolFinished("t2"), protocol.ToolFinished("t3"))
     assert session.progress == i18n.tr("assistant_thinking")
     process.say(protocol.TurnFinished(0.1, 0.1))
     assert session.progress == ""
+
+
+def test_permission_requests_are_denied_until_the_confirm_card_exists(session):
+    """确认卡片（2.4）做好之前：一律拒绝，大脑不会一直等。"""
+    session.ask("改一下")
+    process = session.processes[0]
+    process.say(protocol.Ready("anthropic", "m"),
+                protocol.PermissionRequest(7, "Edit", {"file_path": "a.py"}, "edit", True, "F:\\proj"))
+    assert process.sent == [protocol.PermissionReply(7, False, session_module.NO_CONFIRM_UI_REASON)]
+    assert session.busy                                   # 这一轮还在继续（Claude 会说它没能改）
 
 
 def test_error_during_a_turn(session):

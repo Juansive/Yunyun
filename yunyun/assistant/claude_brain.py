@@ -3,21 +3,25 @@
 **只在助手子进程里 import**（会 import SDK，芸芸进程不能碰）。这里的做法都是阶段 0 实测得出的（见 docs/助手模式计划.md）：
 - 启动 claude.exe 时加 CREATE_NO_WINDOW：不加的话，打包后的芸芸（没有控制台）会弹出 Windows Terminal 窗口；
 - 先清掉继承来的 ANTHROPIC_* / CLAUDE_* 变量：在 Claude 桌面版里开发时，它们会把请求导到桌面版的通道上；
-- 会话数据放芸芸自己的数据目录（CLAUDE_CONFIG_DIR），不读用户自己的 Claude Code 设置和 MCP；
-- 阶段 1 只开"网页搜索、读网页"：用 tools 决定有哪些工具（不在列表里的根本不存在），工作文件夹是个空文件夹。
+- 会话数据放芸芸自己的数据目录（CLAUDE_CONFIG_DIR），不读用户自己的 Claude Code 设置和 MCP（包括工作文件夹里的 .claude/）；
+- 用 tools 决定有哪些工具（不在列表里的根本不存在）：没选工作文件夹时只有网页，选了才有读写文件、执行命令；
+- 每次用工具之前由 PermissionGate 拍板（规则在 permissions.py）：PreToolUse hook 先跑，"要问"的再转给
+  can_use_tool，它发 PermissionRequest 给芸芸，等 PermissionReply。hook 比 Claude Code 自己的"自动允许"更早，
+  所以什么都逃不过这一关（SDK 的说明也这么建议）。
 """
 import asyncio
 import logging
+import os
 import time
 from collections import deque
 from dataclasses import dataclass, field
 
 from claude_agent_sdk import (
-    AssistantMessage, ClaudeAgentOptions, ClaudeSDKClient, CLINotFoundError, ResultMessage, ServerToolUseBlock,
-    StreamEvent, ToolResultBlock, ToolUseBlock, UserMessage,
+    AssistantMessage, ClaudeAgentOptions, ClaudeSDKClient, CLINotFoundError, HookMatcher, PermissionResultAllow,
+    PermissionResultDeny, ResultMessage, ServerToolUseBlock, StreamEvent, ToolResultBlock, ToolUseBlock, UserMessage,
 )
 
-from yunyun.assistant import protocol
+from yunyun.assistant import permissions, protocol
 from yunyun.assistant.environment import (   # noqa: F401（clean_environment、hide_child_consoles 也从这里用）
     clean_environment, hide_child_consoles, prepare_process, system_proxy_env,
 )
@@ -27,7 +31,11 @@ from yunyun.paths import data_dir
 
 log = logging.getLogger(__name__)
 
-WANTED_TOOLS = ["WebSearch", "WebFetch"]          # 阶段 1：只读，只有网页
+WEB_TOOLS = ["WebSearch", "WebFetch"]
+# 选了工作文件夹才开。Windows 上 Claude Code 有 Git Bash 就用 Bash，没有就用 PowerShell，两个都列上
+WORK_TOOLS = ["Read", "Glob", "Grep", "Edit", "Write", "Bash", "PowerShell"]
+PROJECT_NOTES_FILES = ("CLAUDE.md", os.path.join(".claude", "CLAUDE.md"))   # 项目规矩：读，但 .claude/ 里的设置不加载
+PROJECT_NOTES_MAX_CHARS = 20_000   # 太长的只读开头（每一问都要带着它，太长费钱）
 CONFIG_DIR = data_dir() / "assistant" / "claude"   # Claude Code 的会话记录、设置放这里（里面有完整对话内容）
 WORKSPACE = data_dir() / "assistant" / "workspace"  # 用户没选工作文件夹时用的：一个空文件夹（只聊天）
 
@@ -37,30 +45,137 @@ CACHE_WRITE, CACHE_READ, WEB_SEARCH_USD = 1.25, 0.1, 0.01
 
 # ---------- 启动选项 ----------
 
-def build_options(settings, api_key, language, stderr=None):
-    """启动 Claude Code 的全部选项。"""
+def wanted_tools(settings):
+    return WEB_TOOLS + (WORK_TOOLS if settings.workspace else [])
+
+
+def read_project_notes(workspace):
+    """工作文件夹里的 CLAUDE.md（项目规矩）。没有就是空的；读不了记日志、当没有。"""
+    if not workspace:
+        return ""
+    notes = []
+    for name in PROJECT_NOTES_FILES:
+        path = os.path.join(workspace, name)
+        if not os.path.isfile(path):
+            continue
+        try:
+            with open(path, encoding="utf-8", errors="replace") as f:
+                notes.append(f.read(PROJECT_NOTES_MAX_CHARS + 1))
+        except OSError as e:
+            log.warning("读不了项目说明 %s：%s", name, e)
+    text = "\n\n".join(note.strip() for note in notes if note.strip())
+    if len(text) > PROJECT_NOTES_MAX_CHARS:
+        text = text[:PROJECT_NOTES_MAX_CHARS] + "\n…（后面太长，没有读）"
+    return text
+
+
+def build_options(settings, api_key, language, stderr=None, gate=None):
+    """启动 Claude Code 的全部选项。gate：PermissionGate（每次用工具前拍板）；测试里可以不传。"""
     provider = settings.info
-    tools = usable_tools(provider, WANTED_TOOLS)
     env = {
         **launch_env(provider, api_key, settings.effective_model),
         "CLAUDE_CONFIG_DIR": str(CONFIG_DIR),
         "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",   # 不自动更新、不发遥测和错误报告
         **system_proxy_env(),
     }
+    notes = read_project_notes(settings.workspace)
     return ClaudeAgentOptions(
         model=settings.effective_model,   # 注意：Haiku 4.5 不支持 effort 参数，所以不传
-        tools=tools,                      # 只有这些工具存在
-        allowed_tools=tools,              # 而且都不用问
-        permission_mode="dontAsk",        # 别的一律拒绝（阶段 2 才有"问你"）
-        setting_sources=[],               # 不读用户自己的 Claude Code 设置
+        tools=usable_tools(provider, wanted_tools(settings)),   # 只有这些工具存在
+        allowed_tools=[],                 # 一个都不直接放行：全部交给 PermissionGate
+        permission_mode="default",        # "要问"的交给 can_use_tool（dontAsk 会把"要问"直接变成拒绝）
+        hooks={"PreToolUse": [HookMatcher(hooks=[gate.pre_tool_use])]} if gate else None,
+        can_use_tool=gate.can_use_tool if gate else None,
+        setting_sources=[],               # 不读用户自己的 Claude Code 设置，也不读工作文件夹里 .claude/ 的设置
         strict_mcp_config=True,           # 不加载别处配置的 MCP 服务器
-        system_prompt={"type": "preset", "preset": "claude_code", "append": persona(language)},
+        system_prompt={"type": "preset", "preset": "claude_code",
+                       "append": persona(language, bool(settings.workspace), notes)},
         include_partial_messages=True,    # 逐字显示
         max_budget_usd=settings.conversation_budget_usd,   # Claude Code 按整段对话累计算；每次回答的上限由 TurnState 估算
         cwd=settings.workspace or str(WORKSPACE),
         env=env,
         stderr=stderr,
     )
+
+
+# ---------- 权限：每次用工具之前 ----------
+
+class PermissionGate:
+    """每次用工具前拍板（permissions.decide），要问的就发 PermissionRequest 给芸芸，等它的 PermissionReply。
+
+    grants：这次对话里你选过"都允许"的（新对话 = 新的子进程 = 新的 PermissionGate，自然就清空了）。
+    """
+
+    DENIED = "The user denied this action."
+    STOPPED = "The user stopped the current task."
+
+    def __init__(self, workspace, emit):
+        self.workspace = str(workspace)
+        self.grants = set()
+        self._emit = emit
+        self._pending = {}    # request_id → (Future, Decision)
+        self._next_id = 1
+
+    def decide(self, tool, tool_input):
+        return permissions.decide(tool, tool_input, self.workspace, self.grants)
+
+    async def pre_tool_use(self, hook_input, tool_use_id, context):
+        """PreToolUse hook：所有工具调用都先经过这里。"""
+        tool = hook_input.get("tool_name", "")
+        decision = self.decide(tool, hook_input.get("tool_input"))
+        log.info("工具 %s：%s%s", tool, decision.action, f"（{decision.kind}）" if decision.kind else "")
+        output = {"hookEventName": "PreToolUse", "permissionDecision": decision.action}
+        if decision.action == permissions.DENY:
+            output["permissionDecisionReason"] = decision.reason
+        elif decision.action == permissions.ASK:
+            output["permissionDecisionReason"] = f"Yunyun asks the user ({decision.kind})"
+        else:
+            output["permissionDecisionReason"] = "Allowed by Yunyun's rules"
+        return {"hookSpecificOutput": output}
+
+    async def can_use_tool(self, tool, tool_input, context):
+        """hook 说"要问"的工具：问芸芸（界面上的确认卡片），等回答。"""
+        decision = self.decide(tool, tool_input)   # 再看一次：等着的时候你可能刚选了"都允许"
+        if decision.action == permissions.ALLOW:
+            return PermissionResultAllow()
+        if decision.action == permissions.DENY:
+            return PermissionResultDeny(message=decision.reason)
+        request_id, self._next_id = self._next_id, self._next_id + 1
+        future = asyncio.get_running_loop().create_future()
+        self._pending[request_id] = (future, decision)
+        self._emit(protocol.PermissionRequest(
+            request_id, tool, tool_input if isinstance(tool_input, dict) else {}, decision.kind,
+            bool(decision.grant), decision.scope, decision.danger))
+        try:
+            reply = await future
+        finally:
+            self._pending.pop(request_id, None)
+        log.info("确认 %d（%s）：%s%s", request_id, decision.kind, "允许" if reply.allow else "拒绝",
+                 "，这次对话都允许" if reply.allow and reply.remember and decision.grant else "")
+        if not reply.allow:
+            message = self.DENIED + (f" Reason: {reply.reason}" if reply.reason else "")
+            return PermissionResultDeny(message=message)
+        if reply.remember and decision.grant:
+            self.grants.update(decision.grant)
+        return PermissionResultAllow()
+
+    def reply(self, reply):
+        """芸芸发来的 PermissionReply。"""
+        pending = self._pending.get(reply.request_id)
+        if pending is None:
+            log.info("确认 %d 已经不在等了（停下了？），不理", reply.request_id)
+        elif not pending[0].done():
+            pending[0].set_result(reply)
+
+    def deny_all(self, reason=""):
+        """停下 / 关掉时：等着的确认一律按"拒绝"处理，免得卡住。"""
+        for request_id, (future, _) in list(self._pending.items()):
+            if not future.done():
+                future.set_result(protocol.PermissionReply(request_id, False, reason))
+
+    @property
+    def waiting(self):
+        return len(self._pending)
 
 
 # ---------- 把 SDK 的消息翻译成事件 ----------
@@ -80,6 +195,7 @@ class TurnState:
     _message_out: int = 0              # 当前这条模型消息已经算过的输出 token / 网页搜索次数（SDK 报的是累计值）
     _message_searches: int = 0
     unreported: float = 0.0            # 中途停下的几轮里，Claude Code 没算进总花费、芸芸按估算补上的钱
+    workspace: str = ""                # 工作文件夹：进度行里的文件路径显示成相对它的
 
     def new_turn(self):
         self.interrupted = False
@@ -130,13 +246,20 @@ def error_kind(text, sdk_error=None):
     return "other"
 
 
-def _tool_detail(name, tool_input):
-    """给人看的线索：搜索的关键词、读的网址……没有就是空的。"""
-    for key in ("query", "url", "file_path", "path", "pattern", "command"):
+def _tool_detail(name, tool_input, workspace=""):
+    """给人看的线索：搜索的关键词、读的网址、文件（工作文件夹里的显示相对路径）……没有就是空的。"""
+    for key in ("query", "url", "file_path", "notebook_path", "path", "pattern", "command"):
         value = tool_input.get(key) if isinstance(tool_input, dict) else None
         if isinstance(value, str) and value:
+            if key in ("file_path", "notebook_path", "path") and workspace and os.path.isabs(value):
+                relative = os.path.relpath(value, workspace) if _same_drive(value, workspace) else value
+                value = value if relative.startswith("..") else relative
             return value[:120]
     return ""
+
+
+def _same_drive(a, b):
+    return os.path.splitdrive(a)[0].lower() == os.path.splitdrive(b)[0].lower()
 
 
 def _message_text(message):
@@ -162,7 +285,8 @@ def translate(message, state):
         for block in message.content:
             if isinstance(block, (ToolUseBlock, ServerToolUseBlock)) and block.id not in state.seen_tools:
                 state.seen_tools.add(block.id)
-                events.append(protocol.ToolStarted(block.id, block.name, _tool_detail(block.name, block.input)))
+                events.append(protocol.ToolStarted(block.id, block.name,
+                                                   _tool_detail(block.name, block.input, state.workspace)))
     elif isinstance(message, UserMessage) and isinstance(message.content, list):
         for block in message.content:
             if isinstance(block, ToolResultBlock):
@@ -228,7 +352,9 @@ class ClaudeBrain:
             cost_in_usd=settings.info.cost_in_usd,
             prices=settings.info.prices.get(settings.effective_model),   # 自己填的模型名不知道价格：不估算
             reply_budget=settings.budget_usd,
+            workspace=settings.workspace,
         )
+        self.gate = PermissionGate(settings.workspace or WORKSPACE, emit)
         self._stderr = deque(maxlen=30)   # Claude Code 的错误输出：启动失败时看最后几行
 
     async def start(self):
@@ -238,7 +364,8 @@ class ClaudeBrain:
                  "用了工作文件夹" if self._settings.workspace else "没有工作文件夹", len(removed))
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
         WORKSPACE.mkdir(parents=True, exist_ok=True)
-        options = build_options(self._settings, self._api_key, self._language, stderr=self._stderr.append)
+        options = build_options(self._settings, self._api_key, self._language, stderr=self._stderr.append,
+                                gate=self.gate)
         self._client = ClaudeSDKClient(options)
         try:
             await self._client.connect()
@@ -275,12 +402,17 @@ class ClaudeBrain:
             self._emit(protocol.Error(error_kind(str(e)), f"{type(e).__name__}: {e}"[:500]))
             self._emit(protocol.TurnFinished(stopped=self._state.interrupted))
 
+    def reply_permission(self, reply):
+        self.gate.reply(reply)
+
     async def interrupt(self):
+        self.gate.deny_all(PermissionGate.STOPPED)   # 等着确认的先拒绝掉，不然停不下来
         if self._client is not None:
             self._state.interrupted = True
             await self._client.interrupt()
 
     async def close(self):
+        self.gate.deny_all(PermissionGate.STOPPED)
         if self._client is not None:
             client, self._client = self._client, None
             await client.disconnect()

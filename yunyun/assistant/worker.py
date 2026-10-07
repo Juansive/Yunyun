@@ -92,7 +92,8 @@ async def serve(stdin, write, language, make_brain):
             elif isinstance(command, protocol.Interrupt):
                 if turn is not None and not turn.done():
                     await brain.interrupt()
-            # PermissionReply：阶段 2 再处理
+            elif isinstance(command, protocol.PermissionReply):
+                brain.reply_permission(command)   # 大脑那边的 can_use_tool 正等着它
     finally:
         if turn is not None and not turn.done():
             turn.cancel()
