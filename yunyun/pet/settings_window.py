@@ -3,7 +3,8 @@
     ┌─ 芸芸 · 设置 ─────────────────────────┐
     │ ▸ 通用 │ 语言 / 始终在上 / 开机时启动 / 桌面快捷方式 │
     │   邮箱 │ 已添加的邮箱、添加 / 删除                  │
-    │   AI   │ 服务商、模型、API Key                      │
+    │   AI   │ 服务商、模型、API Key（邮件用）            │
+    │   助手 │ 助手模式的服务商、模型、Key、花费上限      │
     │   历史 │ 最近 7 天芸芸展示过的提醒                  │
     │   关于 │ 版本、隐私说明、数据位置、日志             │
     └──────────────────────────────────────┘
@@ -21,10 +22,11 @@ from PySide6.QtWidgets import (
 
 from yunyun import __version__, config, i18n, logs, shortcut
 from yunyun.pet.ai_page import AISettingsPage
+from yunyun.pet.assistant_page import AssistantSettingsPage
 from yunyun.pet.history_page import HistoryPage
 from yunyun.pet.mail_page import MailAccountsPage
 
-PAGES = ["general", "mail", "ai", "history", "about"]  # 页面顺序；open_settings(page) 用这些名字
+PAGES = ["general", "mail", "ai", "assistant", "history", "about"]  # 页面顺序；open_settings(page) 用这些名字
 
 
 class SettingsWindow(QDialog):
@@ -55,6 +57,10 @@ class SettingsWindow(QDialog):
     @property
     def ai_page(self):
         return self._ai_page
+
+    @property
+    def assistant_page(self):
+        return self._assistant_page
 
     @property
     def general_page(self):
@@ -92,13 +98,15 @@ class SettingsWindow(QDialog):
         self._general_page = GeneralPage(self._pet)
         self._mail_page = MailAccountsPage()
         self._ai_page = AISettingsPage()
+        self._assistant_page = AssistantSettingsPage()
         self._history_page = HistoryPage(self._pet.history)
         self._about_page = AboutPage(self._pet)
         self._mail_page.accounts_changed.connect(self.accounts_changed)
         self._mail_page.account_added.connect(self.account_added)
 
-        self._stack = QStackedWidget()  # 一叠页面，同时只显示一页
-        for widget in (self._general_page, self._mail_page, self._ai_page, self._history_page, self._about_page):
+        self._stack = QStackedWidget()  # 一叠页面，同时只显示一页（顺序和 PAGES 一样）
+        for widget in (self._general_page, self._mail_page, self._ai_page, self._assistant_page,
+                       self._history_page, self._about_page):
             self._stack.addWidget(widget)
         self._sidebar.currentRowChanged.connect(self._stack.setCurrentIndex)
         self._sidebar.setCurrentRow(0)

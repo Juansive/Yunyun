@@ -178,6 +178,7 @@ ERROR_KINDS = (
     "budget",        # 这次任务超过了花费上限
     "missing_cli",   # 找不到 Claude Code 程序
     "no_key",        # 还没有填 Key
+    "model",         # 没有这个模型（模型名填错了）
     "worker",        # 助手子进程没启动起来、或者意外退出了
     "other",
 )

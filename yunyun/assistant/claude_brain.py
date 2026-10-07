@@ -7,9 +7,6 @@
 - 阶段 1 只开"网页搜索、读网页"：用 tools 决定有哪些工具（不在列表里的根本不存在），工作文件夹是个空文件夹。
 """
 import logging
-import os
-import subprocess
-import urllib.request
 from collections import deque
 from dataclasses import dataclass, field
 
@@ -19,6 +16,9 @@ from claude_agent_sdk import (
 )
 
 from yunyun.assistant import protocol
+from yunyun.assistant.environment import (   # noqa: F401（clean_environment、hide_child_consoles 也从这里用）
+    clean_environment, hide_child_consoles, prepare_process, system_proxy_env,
+)
 from yunyun.assistant.persona import persona
 from yunyun.assistant.providers import launch_env, usable_tools
 from yunyun.paths import data_dir
@@ -28,64 +28,9 @@ log = logging.getLogger(__name__)
 WANTED_TOOLS = ["WebSearch", "WebFetch"]          # 阶段 1：只读，只有网页
 CONFIG_DIR = data_dir() / "assistant" / "claude"   # Claude Code 的会话记录、设置放这里（里面有完整对话内容）
 WORKSPACE = data_dir() / "assistant" / "workspace"  # 阶段 1 的工作文件夹：空的，阶段 2 改成用户选的文件夹
-_INHERITED_PREFIXES = ("ANTHROPIC_", "CLAUDE_", "MCP_")
 
 
-# ---------- 启动前的准备 ----------
-
-def clean_environment(environ=None):
-    """去掉从父进程继承来的 Claude 相关环境变量，返回删掉的名字（不记值）。"""
-    environ = os.environ if environ is None else environ
-    names = [k for k in environ if k.upper().startswith(_INHERITED_PREFIXES) or k.upper() == "CLAUDECODE"]
-    for name in names:
-        del environ[name]
-    return names
-
-
-def hide_child_consoles():
-    """让 SDK 启动的子进程（claude.exe）不建控制台窗口；claude.exe 再启动的 git.exe 会继承这个看不见的控制台。
-
-    SDK 没给改启动参数的地方，所以把它用的 anyio.open_process 包一层（只影响助手子进程自己）。重复调用没关系。
-    """
-    import anyio
-    if getattr(anyio.open_process, "yunyun_hidden", False):
-        return
-    original = anyio.open_process
-    no_window = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-
-    async def open_process_hidden(*args, **kwargs):
-        kwargs["creationflags"] = kwargs.get("creationflags", 0) | no_window
-        return await original(*args, **kwargs)
-
-    open_process_hidden.yunyun_hidden = True
-    anyio.open_process = open_process_hidden
-
-
-def prepare_process(environ=None):
-    """助手子进程启动 Claude Code 之前调用一次。"""
-    environ = os.environ if environ is None else environ
-    removed = clean_environment(environ)
-    environ["CLAUDE_AGENT_SDK_SKIP_VERSION_CHECK"] = "1"   # SDK 读的是本进程的环境变量；检查版本有时要多花 2～3 秒
-    hide_child_consoles()
-    return removed
-
-
-def system_proxy_env(environ=None, getproxies=urllib.request.getproxies):
-    """用户只开了 Windows 的系统代理时，把它告诉 claude.exe（它不会自己去读系统代理）。
-
-    代理软件用 TUN 模式时（虚拟网卡，所有程序自动走代理），系统代理开关是关的，这里返回空的。
-    """
-    environ = os.environ if environ is None else environ
-    if any(environ.get(name) for name in ("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy")):
-        return {}   # 已经设了，claude.exe 会继承
-    proxies = getproxies()   # Windows 上会读注册表里的系统代理（开关打开时才有）
-    url = proxies.get("https") or proxies.get("http")
-    if not url:
-        return {}
-    if "://" not in url:
-        url = "http://" + url
-    return {"HTTPS_PROXY": url, "NO_PROXY": "localhost,127.0.0.1,::1"}
-
+# ---------- 启动选项 ----------
 
 def build_options(settings, api_key, language, stderr=None):
     """启动 Claude Code 的全部选项。"""

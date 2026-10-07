@@ -83,6 +83,7 @@ TEXTS = {
     "page_general": {"zh": "通用", "en": "General", "ja": "一般"},
     "page_mail": {"zh": "邮箱", "en": "Mail", "ja": "メール"},
     "page_ai": {"zh": "AI", "en": "AI", "ja": "AI"},
+    "page_assistant": {"zh": "助手", "en": "Assistant", "ja": "アシスタント"},
     "page_history": {"zh": "历史", "en": "History", "ja": "履歴"},
     "quiet_label": {"zh": "免打扰", "en": "Do not disturb", "ja": "おやすみモード"},
     "quiet_to": {"zh": "至", "en": "to", "ja": "〜"},
@@ -430,6 +431,99 @@ TEXTS = {
         "en": "The model couldn't be downloaded. Check your network or the model name and try again.",
         "ja": "モデルをダウンロードできませんでした。ネットワークかモデル名を確認して、もう一度試してください。",
     },
+
+    # ---- 设置窗口：助手页（助手模式用的"大脑"，和上面邮件用的 AI 是两套设置）----
+    "assistant_provider": {"zh": "服务商", "en": "Provider", "ja": "プロバイダー"},
+    "assistant_provider_anthropic": {"zh": "Claude（Anthropic 官方）", "en": "Claude (Anthropic)", "ja": "Claude（Anthropic 公式）"},
+    "assistant_model": {"zh": "模型", "en": "Model", "ja": "モデル"},
+    "assistant_model_price": {   # 模型名 · 价格（每百万 token 多少美元）
+        "zh": "{} · 每百万 token：输入 ${} / 输出 ${}",
+        "en": "{} · per million tokens: ${} in / ${} out",
+        "ja": "{} · 100 万トークンあたり：入力 ${} / 出力 ${}",
+    },
+    "assistant_model_custom": {"zh": "自己填写模型名…", "en": "Enter a model name…", "ja": "モデル名を入力…"},
+    "assistant_model_placeholder": {"zh": "比如 claude-haiku-4-5", "en": "e.g. claude-haiku-4-5", "ja": "例：claude-haiku-4-5"},
+    "assistant_key": {"zh": "API Key", "en": "API Key", "ja": "API キー"},
+    "assistant_key_saved": {
+        "zh": "已保存（要换的话，在这里粘贴新的）",
+        "en": "Saved (paste a new one here to replace it)",
+        "ja": "保存済み（変更するときはここに新しいキーを貼り付け）",
+    },
+    "assistant_key_placeholder": {"zh": "粘贴你的 API Key", "en": "Paste your API key", "ja": "API キーを貼り付け"},
+    "assistant_budget": {"zh": "每次最多花", "en": "Max per reply", "ja": "1 回の上限"},
+    "assistant_budget_hint": {
+        "zh": "芸芸每回答你一次（包括期间查网页、读网页）最多花这么多钱，超过就停下来告诉你。用 Haiku 4.5 时，一般一次不到 1 美分。",
+        "en": "The most Yunyun may spend answering you once (including any web searches and page reads). "
+              "If it would go over, she stops and tells you. With Haiku 4.5 a reply usually costs under 1 cent.",
+        "ja": "芸芸が 1 回答えるごと（途中のウェブ検索・閲覧を含む）に使える上限です。超えそうなら止めてお知らせします。"
+              "Haiku 4.5 なら、たいてい 1 回 1 セント未満です。",
+    },
+    "assistant_hint_anthropic": {
+        "zh": "在 {} 申请 API Key（按用量付费，和 Claude 订阅分开计费）。点「测试并保存」只检查 Key 和模型，不会花钱。",
+        "en": "Get an API key at {} (pay-as-you-go, billed separately from a Claude subscription). "
+              "\"Test and Save\" only checks the key and model; it costs nothing.",
+        "ja": "{} で API キーを取得してください（従量課金。Claude のサブスクリプションとは別に請求されます）。"
+              "「テストして保存」はキーとモデルを確認するだけで、料金はかかりません。",
+    },
+    "assistant_privacy_note": {
+        "zh": "助手模式里，你的提问和对话会发送给 {}；芸芸搜索、阅读的网页内容也会经过它。API Key 只保存在这台电脑的 Windows 凭据管理器里。",
+        "en": "In assistant mode, your questions and the conversation are sent to {}; "
+              "web pages Yunyun searches and reads also pass through it. The API key is stored only in Windows Credential Manager on this PC.",
+        "ja": "アシスタントモードでは、あなたの質問と会話が {} に送信されます。"
+              "芸芸が検索・閲覧するウェブページの内容も経由します。API キーはこの PC の Windows 資格情報マネージャーにのみ保存されます。",
+    },
+    "assistant_testing": {"zh": "正在测试连接（不会花钱）……", "en": "Testing the connection (free)…", "ja": "接続をテスト中（無料）…"},
+    "assistant_saved": {"zh": "连接成功，已保存！", "en": "Connected and saved!", "ja": "接続できました。保存しました！"},
+    "assistant_empty_key": {"zh": "请先粘贴 API Key。", "en": "Please paste your API key first.", "ja": "まず API キーを貼り付けてください。"},
+    "assistant_empty_model": {"zh": "请填写模型名。", "en": "Please enter the model name.", "ja": "モデル名を入力してください。"},
+    "assistant_error_detail": {"zh": "（详细信息：{}）", "en": "(Details: {})", "ja": "（詳細：{}）"},
+    # 出错的种类和 yunyun/assistant/protocol.py 的 ERROR_KINDS 一一对应（tests/test_i18n.py 会检查）
+    "assistant_error_network": {
+        "zh": "连不上服务商，检查一下网络或代理。",
+        "en": "Couldn't reach the provider. Check your network or proxy.",
+        "ja": "プロバイダーに接続できません。ネットワークかプロキシを確認してください。",
+    },
+    "assistant_error_auth": {
+        "zh": "API Key 不对，或者已经过期了。",
+        "en": "The API key is wrong or has expired.",
+        "ja": "API キーが正しくないか、期限切れです。",
+    },
+    "assistant_error_billing": {
+        "zh": "账户余额不足，去服务商的网站充值后再试。",
+        "en": "Your account is out of credit. Top it up on the provider's website and try again.",
+        "ja": "アカウントの残高が足りません。プロバイダーのサイトでチャージしてから、もう一度お試しください。",
+    },
+    "assistant_error_rate_limit": {
+        "zh": "请求太频繁，被限流了，等一会儿再试。",
+        "en": "Too many requests right now. Please wait a bit and try again.",
+        "ja": "リクエストが多すぎます。少し待ってからもう一度お試しください。",
+    },
+    "assistant_error_budget": {
+        "zh": "这次花费到了上限，芸芸先停下了。可以在设置里调高上限。",
+        "en": "This reply hit the spending limit, so Yunyun stopped. You can raise the limit in Settings.",
+        "ja": "今回の利用額が上限に達したので止めました。上限は設定で変更できます。",
+    },
+    "assistant_error_missing_cli": {
+        "zh": "找不到 Claude Code 程序，可能需要重新安装芸芸。",
+        "en": "Claude Code couldn't be found. Yunyun may need to be reinstalled.",
+        "ja": "Claude Code が見つかりません。芸芸の再インストールが必要かもしれません。",
+    },
+    "assistant_error_no_key": {
+        "zh": "还没有填 API Key：右键芸芸 → 设置… → 助手。",
+        "en": "No API key yet: right-click Yunyun → Settings… → Assistant.",
+        "ja": "API キーがまだありません：芸芸を右クリック → 設定… → アシスタント。",
+    },
+    "assistant_error_worker": {
+        "zh": "助手没能启动，或者意外退出了。可以再试一次，日志里有详细原因。",
+        "en": "The assistant couldn't start or quit unexpectedly. Try again; the log has details.",
+        "ja": "アシスタントを起動できなかったか、予期せず終了しました。もう一度お試しください。詳細はログにあります。",
+    },
+    "assistant_error_model": {
+        "zh": "服务商那里没有这个模型，检查一下模型名。",
+        "en": "The provider doesn't have this model. Check the model name.",
+        "ja": "プロバイダーにこのモデルがありません。モデル名を確認してください。",
+    },
+    "assistant_error_other": {"zh": "出错了。", "en": "Something went wrong.", "ja": "エラーが発生しました。"},
 }
 
 _current = DEFAULT_LANGUAGE  # 模块级变量：整个程序共享"当前语言"

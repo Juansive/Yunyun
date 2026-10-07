@@ -8,7 +8,7 @@ import pytest
 from yunyun.assistant import process as assistant_process
 from yunyun.assistant import protocol
 from yunyun.assistant.process import AssistantProcess
-from yunyun.assistant.process import worker_command as real_worker_command   # import 时拿到的是真的（conftest 之后才拦截）
+from yunyun.assistant.process import subprocess_command as real_subprocess_command   # import 时拿到的是真的（conftest 之后才拦截）
 
 FAKE_WORKER = Path(__file__).with_name("fake_assistant_worker.py")
 
@@ -138,11 +138,18 @@ def test_tests_never_start_the_real_worker():
         AssistantProcess("zh")
 
 
-def test_real_worker_command_shapes(monkeypatch):
-    """开发版：用当前的 Python 跑 yunyun.assistant.worker；打包后：用芸芸.exe --assistant-worker。只看命令长什么样，不启动。"""
-    program, args, cwd = real_worker_command("ja")
+def test_real_command_shapes(monkeypatch):
+    """开发版：用当前的 Python 跑 yunyun.assistant.<role>；打包后：用芸芸.exe --assistant-<role>。只看命令长什么样，不启动。"""
+    program, args, cwd = real_subprocess_command("worker", "--language", "ja")
     assert program == sys.executable
     assert args == ["-m", "yunyun.assistant.worker", "--language", "ja"] and cwd
+    assert real_subprocess_command("check")[1] == ["-m", "yunyun.assistant.check"]
     monkeypatch.setattr(sys, "frozen", True, raising=False)
-    program, args, cwd = real_worker_command("en")
+    program, args, cwd = real_subprocess_command("worker", "--language", "en")
     assert args == ["--assistant-worker", "--language", "en"] and cwd is None
+    assert real_subprocess_command("check")[1] == ["--assistant-check"]
+
+
+def test_tests_never_start_the_real_check():
+    with pytest.raises(RuntimeError):
+        assistant_process.KeyCheck("anthropic", "claude-haiku-4-5", "sk-ant-test")

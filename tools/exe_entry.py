@@ -15,5 +15,10 @@ if __name__ == "__main__":
         worker.main(sys.argv[2:])
         sys.exit(0)
 
+    if len(sys.argv) >= 2 and sys.argv[1] == "--assistant-check":    # 设置窗口的"测试连接"（见 yunyun/assistant/check.py）
+        from yunyun.assistant import check
+        check.main()
+        sys.exit(0)
+
     from yunyun.main import main
     main()

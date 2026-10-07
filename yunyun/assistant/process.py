@@ -11,7 +11,10 @@
     process.stop()                  # 先请它自己退出，5 秒不走就强制结束
 
 出了问题（启动不了、30 秒还没准备好、意外退出）也变成 Error("worker") 事件，界面统一按事件处理。
+
+KeyCheck：设置窗口"测试并保存"用的小进程（check.py），查一下 Key、模型、网络，不花钱。
 """
+import json
 import logging
 import sys
 from collections import deque
@@ -25,13 +28,21 @@ log = logging.getLogger(__name__)
 
 READY_TIMEOUT_MS = 30_000   # 启动后多久还没"准备好"就算失败（实测 1.5 秒左右就好了）
 QUIT_TIMEOUT_MS = 5_000     # 请它退出后，多久还不走就强制结束
+CHECK_TIMEOUT_MS = 40_000   # 测试连接最多等多久（小进程里自己的网络超时是 20 秒）
+
+
+def subprocess_command(role, *args):
+    """(程序, 参数, 工作目录)。role 是 "worker"（助手子进程）或 "check"（测试连接）。
+
+    开发版用当前的 Python 跑 yunyun.assistant.<role>；打包后用芸芸.exe 自己（tools/exe_entry.py 按 --assistant-<role> 分流）。
+    """
+    if getattr(sys, "frozen", False):
+        return sys.executable, [f"--assistant-{role}", *args], None
+    return sys.executable, ["-m", f"yunyun.assistant.{role}", *args], str(PROJECT_ROOT)
 
 
 def worker_command(language):
-    """(程序, 参数, 工作目录)：开发版用当前的 Python 跑 yunyun.assistant.worker；打包后用芸芸.exe 自己。"""
-    if getattr(sys, "frozen", False):
-        return sys.executable, ["--assistant-worker", "--language", language], None
-    return sys.executable, ["-m", "yunyun.assistant.worker", "--language", language], str(PROJECT_ROOT)
+    return subprocess_command("worker", "--language", language)
 
 
 class AssistantProcess(QObject):
@@ -152,3 +163,73 @@ class AssistantProcess(QObject):
         if not self._done:
             self._done = True
             self.finished.emit()
+
+
+class KeyCheck(QObject):
+    """在小进程（check.py）里测试连接：Key、模型、网络。不问 Claude 任何问题，不花钱。
+
+        check = KeyCheck("anthropic", "claude-haiku-4-5", key)
+        check.done.connect(...)   # None = 没问题；protocol.Error = 哪里不对（kind 是 ERROR_KINDS 里的）
+        check.start()
+    """
+
+    done = Signal(object)
+
+    def __init__(self, provider, model, api_key, parent=None, command=None):
+        """command：(程序, 参数, 工作目录)，测试时换成假的；平时不用传。"""
+        super().__init__(parent)
+        program, args, cwd = command or subprocess_command("check")
+        # Key 走标准输入，不放在命令行参数里（别的程序看得到命令行）
+        self._request = (json.dumps({"provider": provider, "model": model, "key": api_key}) + "\n").encode("utf-8")
+        self._proc = QProcess(self)
+        self._proc.setProgram(program)
+        self._proc.setArguments(args)
+        if cwd:
+            self._proc.setWorkingDirectory(cwd)
+        self._proc.started.connect(self._send_request)
+        self._proc.finished.connect(self._on_finished)
+        self._proc.errorOccurred.connect(self._on_error)
+        self._timer = QTimer(self, singleShot=True, interval=CHECK_TIMEOUT_MS)
+        self._timer.timeout.connect(self._on_timeout)
+        self._reported = False
+
+    def start(self):
+        self._proc.start()
+        self._timer.start()
+
+    def is_running(self):
+        return self._proc.state() != QProcess.ProcessState.NotRunning
+
+    def _send_request(self):
+        self._proc.write(self._request)
+        self._proc.closeWriteChannel()
+        self._request = b""   # 内存里不留 Key
+
+    def _on_finished(self, exit_code, exit_status):
+        lines = [line for line in bytes(self._proc.readAllStandardOutput()).splitlines() if line.strip()]
+        try:
+            result = json.loads(lines[-1])
+        except (IndexError, ValueError):
+            log.warning("测试连接的小进程没有给出结果（退出码 %s）", exit_code)
+            self._report(protocol.Error("worker", f"测试连接没有结果（{exit_code}）"))
+            return
+        if result.get("ok"):
+            self._report(None)
+        else:
+            kind = result.get("kind") if result.get("kind") in protocol.ERROR_KINDS else "other"
+            log.info("测试连接没通过（%s）：%s", kind, result.get("detail", ""))
+            self._report(protocol.Error(kind, str(result.get("detail", ""))))
+
+    def _on_error(self, error):
+        if error == QProcess.ProcessError.FailedToStart:
+            self._report(protocol.Error("worker", f"启动不了：{self._proc.errorString()}"))
+
+    def _on_timeout(self):
+        self._proc.kill()
+        self._report(protocol.Error("network", "测试连接超时"))
+
+    def _report(self, result):
+        if not self._reported:
+            self._reported = True
+            self._timer.stop()
+            self.done.emit(result)

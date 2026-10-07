@@ -18,6 +18,12 @@ def test_placeholders_match_across_languages():
         assert len(set(counts.values())) == 1, (key, counts)
 
 
+def test_every_assistant_error_kind_has_a_message():
+    """助手报的每一种错（protocol.ERROR_KINDS）界面上都要有对应的说明。"""
+    from yunyun.assistant.protocol import ERROR_KINDS
+    assert [kind for kind in ERROR_KINDS if f"assistant_error_{kind}" not in i18n.TEXTS] == []
+
+
 def test_no_ampersand_in_menu_and_button_texts():
     """菜单 / 按钮文字里的 & 会被 Qt 当成快捷键标记吃掉。"""
     bad = [key for key, texts in i18n.TEXTS.items()

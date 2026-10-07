@@ -5,3 +5,5 @@ PyYAML>=6
 # 助手模式（M6）：只在"助手子进程"里 import，芸芸主进程不碰它；自带 Claude Code 程序（约 243 MB）。
 # 限制在 0.2.x：芸芸给它启动子进程的函数包了一层（不弹窗口），大版本变了要重新验证。
 claude-agent-sdk>=0.2.164,<0.3
+# 设置窗口"测试连接"用（Models API，不花钱）；同样只在单独的小进程里 import（yunyun/assistant/check.py）。
+anthropic>=1.11,<2
