@@ -8,6 +8,7 @@
 """
 import asyncio
 import logging
+import time
 from collections import deque
 from dataclasses import dataclass, field
 
@@ -244,15 +245,20 @@ class ClaudeBrain:
 
     async def ask(self, text):
         self._state.new_turn()
+        started, first_text = time.monotonic(), None   # 首字要等多久（只记时间，不记内容）
         try:
             await self._client.query(text)
             async for message in self._client.receive_response():
                 for event in translate(message, self._state):
-                    if isinstance(event, protocol.Error):
+                    if isinstance(event, protocol.TextDelta) and first_text is None:
+                        first_text = time.monotonic() - started
+                    elif isinstance(event, protocol.Error):
                         log.warning("这一轮出错（%s）：%s", event.kind, event.detail)
                     elif isinstance(event, protocol.TurnFinished):
-                        log.info("一轮结束：花费 %s 美元，token 输入 %d / 输出 %d%s", event.cost_usd,
-                                 event.input_tokens, event.output_tokens, "（用户停止）" if event.stopped else "")
+                        log.info("一轮结束：花费 %s 美元，token 输入 %d / 输出 %d，首字 %s 秒，共 %.1f 秒%s", event.cost_usd,
+                                 event.input_tokens, event.output_tokens,
+                                 "—" if first_text is None else f"{first_text:.1f}", time.monotonic() - started,
+                                 "（用户停止）" if event.stopped else "")
                     self._emit(event)
                 if self._state.over_budget and not self._state.interrupted:
                     log.info("这次回答估算花了约 %.4f 美元，到了上限 %s，停下", self._state.estimate, self._settings.budget_usd)

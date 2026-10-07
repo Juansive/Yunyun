@@ -16,6 +16,7 @@ from PySide6.QtGui import QDesktopServices, QGuiApplication, QPainter
 from PySide6.QtWidgets import QApplication, QWidget
 
 from yunyun import i18n, logs, shortcut
+from yunyun.features import assistant_available
 from yunyun.ai import settings as ai_settings
 from yunyun.pet import winapi
 from yunyun.pet.badge import Badge
@@ -644,12 +645,14 @@ class PetWindow(QWidget):
         tr = i18n.tr
         menu = KeepOpenMenu(self)
         # "✦ 助手模式"：第一项、蓝紫渐变的字，要醒目（2026-10-07 用户要求）；开着时下面多一项"退出助手模式"
-        assistant = FancyAction(tr("menu_assistant"), menu)
-        assistant.triggered.connect(self.open_assistant)
-        menu.addAction(assistant)
-        if self._assistant is not None:
-            menu.addAction(tr("menu_assistant_exit"), self.close_assistant)
-        menu.addSeparator()
+        # （这个版本没有助手模式就不显示：打包版要到阶段 9 才带上 Claude Code）
+        if assistant_available():
+            assistant = FancyAction(tr("menu_assistant"), menu)
+            assistant.triggered.connect(self.open_assistant)
+            menu.addAction(assistant)
+            if self._assistant is not None:
+                menu.addAction(tr("menu_assistant_exit"), self.close_assistant)
+            menu.addSeparator()
         # "设置…"：所有设置都在设置窗口里（"…"表示点了会打开一个窗口，这是桌面软件的惯例）
         menu.addAction(tr("menu_settings"), self.open_settings)
         # 刚才的邮件：把最近一批卡片重新展开（没有历史、或正在处理邮件时变灰）

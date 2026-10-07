@@ -423,3 +423,27 @@ def test_reader_losing_focus_collapses_everything(qapp, two_cards):
     mode.reader.dismissed.emit()                     # 焦点去了别的程序
     assert wait_until(qapp, lambda: not mode.input.isVisible() and not mode.reader.isVisible())
     assert pet.assistant is mode                     # 只是收起，助手还开着
+
+
+def test_no_assistant_entry_when_this_build_has_no_sdk(world, monkeypatch):
+    """打包版到阶段 9 才带上 Claude Code：在那之前菜单和设置窗口里都不显示助手。"""
+    from yunyun.pet import settings_window, window
+    pet, _, _ = world
+    monkeypatch.setattr(window, "assistant_available", lambda: False)
+    monkeypatch.setattr(settings_window, "assistant_available", lambda: False)
+    assert "✦ 助手模式" not in menu_texts(pet)
+    assert not any(isinstance(a, FancyAction) for a in pet._build_menu().actions())
+    pet.open_settings()
+    sidebar = pet.settings_window._sidebar
+    hidden = [sidebar.item(i).text() for i in range(sidebar.count()) if sidebar.item(i).isHidden()]
+    assert hidden == ["助手"]
+    pet.open_settings("history")                     # 别的页序号不变
+    assert pet.settings_window.current_page == "history"
+
+
+def test_sdk_check_does_not_import_it():
+    import subprocess
+    code = ("import sys; from yunyun.features import assistant_available; "
+            "print(assistant_available(), 'claude_agent_sdk' in sys.modules)")
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, cwd=Path(__file__).parents[1])
+    assert out.stdout.split() == ["True", "False"]   # 开发版找得到 SDK，但没有载入

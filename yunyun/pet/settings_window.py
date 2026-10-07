@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 )
 
 from yunyun import __version__, config, i18n, logs, shortcut
+from yunyun.features import assistant_available
 from yunyun.pet.ai_page import AISettingsPage
 from yunyun.pet.assistant_page import AssistantSettingsPage
 from yunyun.pet.history_page import HistoryPage
@@ -94,6 +95,8 @@ class SettingsWindow(QDialog):
         )
         for page in PAGES:
             self._sidebar.addItem(tr(f"page_{page}"))
+            # 这个版本没有助手模式（打包版要到阶段 9）：藏起这一项，页面序号不变
+            self._sidebar.item(self._sidebar.count() - 1).setHidden(page == "assistant" and not assistant_available())
 
         self._general_page = GeneralPage(self._pet)
         self._mail_page = MailAccountsPage()
