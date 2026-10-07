@@ -59,6 +59,9 @@ class FakeBrain:
     def reply_permission(self, reply):
         self.replies.append(reply)
 
+    async def rewind(self, checkpoint):
+        self.emit(protocol.Rewound(checkpoint, True))
+
     async def interrupt(self):
         self.interrupts += 1
         if self._interrupted:
@@ -194,6 +197,21 @@ def test_permission_replies_go_to_the_brain(key):
 
     events, brains = run(scenario)
     assert brains[0].replies == [protocol.PermissionReply(3, True, "", True)]
+
+
+def test_rewind_goes_to_the_brain_but_not_while_answering(key):
+    async def scenario(feed, events, brains):
+        assert await until(lambda: events)
+        feed.send(protocol.Rewind("cp-1"))
+        assert await until(lambda: protocol.Rewound("cp-1", True) in events)
+        feed.send(protocol.Ask("slow"))
+        assert await until(lambda: brains[0].asked)
+        feed.send(protocol.Rewind("cp-2"))                 # 回答到一半：不撤销
+        assert await until(lambda: any(isinstance(e, protocol.Rewound) and e.checkpoint == "cp-2" for e in events))
+        feed.send(protocol.Quit())
+
+    events, _ = run(scenario)
+    assert protocol.Rewound("cp-2", False, "busy") in events
 
 
 def test_bad_command_lines_are_skipped(key):

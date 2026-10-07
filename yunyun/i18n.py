@@ -495,11 +495,13 @@ TEXTS = {
               "「テストして保存」はキーとモデルを確認するだけで、料金はかかりません。",
     },
     "assistant_privacy_note": {
-        "zh": "助手模式里，你的提问和对话会发送给 {}；芸芸搜索、阅读的网页内容也会经过它。API Key 只保存在这台电脑的 Windows 凭据管理器里。",
-        "en": "In assistant mode, your questions and the conversation are sent to {}; "
-              "web pages Yunyun searches and reads also pass through it. The API key is stored only in Windows Credential Manager on this PC.",
-        "ja": "アシスタントモードでは、あなたの質問と会話が {} に送信されます。"
-              "芸芸が検索・閲覧するウェブページの内容も経由します。API キーはこの PC の Windows 資格情報マネージャーにのみ保存されます。",
+        "zh": "助手模式里，你的提问和对话会发送给 {}；芸芸搜索、阅读的网页内容，以及选了工作文件夹时她读的文件、"
+              "命令的结果也会经过它。API Key 只保存在这台电脑的 Windows 凭据管理器里。",
+        "en": "In assistant mode, your questions and the conversation are sent to {}; web pages Yunyun searches and reads, "
+              "and — with a work folder — the files she reads and command output, also pass through it. "
+              "The API key is stored only in Windows Credential Manager on this PC.",
+        "ja": "アシスタントモードでは、あなたの質問と会話が {} に送信されます。芸芸が検索・閲覧するウェブページの内容や、"
+              "作業フォルダーを選んだ場合に読むファイル・コマンドの結果も経由します。API キーはこの PC の Windows 資格情報マネージャーにのみ保存されます。",
     },
     "assistant_testing": {"zh": "正在测试连接（不会花钱）……", "en": "Testing the connection (free)…", "ja": "接続をテスト中（無料）…"},
     "assistant_saved": {"zh": "连接成功，已保存！", "en": "Connected and saved!", "ja": "接続できました。保存しました！"},
@@ -692,6 +694,38 @@ TEXTS = {
     "assistant_card_error": {"zh": "出错了", "en": "Error", "ja": "エラー"},
     "assistant_card_empty": {"zh": "（没有回答）", "en": "(No answer)", "ja": "（回答なし）"},
     "assistant_card_tokens": {"zh": "{} / {} token", "en": "{} / {} tokens", "ja": "{} / {} トークン"},
+    "assistant_card_files": {"zh": "改了 {} 个文件", "en": "{} file(s) changed", "ja": "{} 個のファイルを変更"},
+    "assistant_card_undone": {"zh": "已撤销", "en": "Undone", "ja": "取り消し済み"},
+    # 撤销（阅读框底部）
+    "assistant_undo": {"zh": "↶ 撤销这次改动", "en": "↶ Undo these changes", "ja": "↶ この変更を取り消す"},
+    "assistant_undo_confirm": {"zh": "确定撤销？再点一次", "en": "Sure? Click again", "ja": "本当に？もう一度クリック"},
+    "assistant_undo_working": {"zh": "正在撤销……", "en": "Undoing…", "ja": "取り消し中…"},
+    "assistant_undo_done": {"zh": "已撤销", "en": "Undone", "ja": "取り消し済み"},
+    "assistant_undo_tip": {
+        "zh": "把芸芸这一问改的 {} 个文件恢复原样，之后几问的改动也会一起撤销。\n"
+              "用命令改的（比如命令生成、删掉的文件）撤销不了，可以用 git 恢复。",
+        "en": "Restores the {} file(s) Yunyun changed in this reply; changes from later replies are undone too.\n"
+              "Changes made by commands (e.g. files a command created or deleted) can't be undone — use git for those.",
+        "ja": "このやり取りで芸芸が変更した {} 個のファイルを元に戻します。その後のやり取りの変更も一緒に取り消されます。\n"
+              "コマンドによる変更（コマンドで作成・削除したファイルなど）は取り消せません。git で戻してください。",
+    },
+    "assistant_undo_tip_busy": {"zh": "芸芸回答完才能撤销", "en": "You can undo once Yunyun has finished replying",
+                                "ja": "芸芸の回答が終わってから取り消せます"},
+    "assistant_undo_tip_expired": {
+        "zh": "开了新对话（或者助手重新启动过）以后就撤销不了了，可以用 git 恢复",
+        "en": "Can't undo after a new chat (or after the assistant restarted) — use git to restore",
+        "ja": "新しい会話を始めた後（またはアシスタントの再起動後）は取り消せません。git で戻してください",
+    },
+    "assistant_undo_said": {
+        "zh": "撤销好了：{} 个文件恢复了原样～（用命令改的撤销不了哦）",
+        "en": "Undone: {} file(s) are back to how they were (changes made by commands can't be undone)",
+        "ja": "取り消したよ：{} 個のファイルを元に戻しました～（コマンドによる変更は戻せません）",
+    },
+    "assistant_undo_failed": {
+        "zh": "撤销没做成，文件可能没有恢复。可以用 git 恢复。",
+        "en": "Couldn't undo — the files may not be restored. You can use git to restore them.",
+        "ja": "取り消しに失敗しました。ファイルは戻っていないかもしれません。git で戻せます。",
+    },
     "assistant_reader_copy": {"zh": "复制", "en": "Copy", "ja": "コピー"},
     "assistant_reader_copied": {"zh": "已复制 ✓", "en": "Copied ✓", "ja": "コピーしました ✓"},
     "assistant_reader_copy_all": {"zh": "复制回答", "en": "Copy answer", "ja": "回答をコピー"},

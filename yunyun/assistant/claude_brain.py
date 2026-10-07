@@ -79,7 +79,11 @@ def build_options(settings, api_key, language, stderr=None, gate=None):
         **system_proxy_env(),
     }
     notes = read_project_notes(settings.workspace)
+    working = bool(settings.workspace)
     return ClaudeAgentOptions(
+        # 撤销（2.7）：Claude Code 改文件前先备份（放在 CLAUDE_CONFIG_DIR 里），每一问传回一个 uuid，rewind_files 到它
+        enable_file_checkpointing=working,
+        extra_args={"replay-user-messages": None} if working else {},
         model=settings.effective_model,   # 注意：Haiku 4.5 不支持 effort 参数，所以不传
         tools=usable_tools(provider, wanted_tools(settings)),   # 只有这些工具存在
         allowed_tools=[],                 # 一个都不直接放行：全部交给 PermissionGate
@@ -200,12 +204,18 @@ class TurnState:
     _message_searches: int = 0
     unreported: float = 0.0            # 中途停下的几轮里，Claude Code 没算进总花费、芸芸按估算补上的钱
     workspace: str = ""                # 工作文件夹：进度行里的文件路径显示成相对它的
+    checkpoint: str = ""               # 这一问（Claude Code 传回来的那条用户消息）的 uuid：撤销时 rewind 到它
+    files: list = field(default_factory=list)          # 这一轮用 Edit / Write 改成功的文件
+    _editing: dict = field(default_factory=dict)       # 正在改的：工具调用 id → 文件
 
     def new_turn(self):
         self.interrupted = False
         self.errored = False
         self.estimate = 0.0
         self.over_budget = False
+        self.checkpoint = ""
+        self.files = []
+        self._editing = {}
 
     def add_usage(self, usage, new_message):
         """把一次模型调用的用量（流式事件里的 usage）算进这一轮的估算。"""
@@ -291,10 +301,18 @@ def translate(message, state):
                 state.seen_tools.add(block.id)
                 events.append(protocol.ToolStarted(block.id, block.name,
                                                    _tool_detail(block.name, block.input, state.workspace)))
-    elif isinstance(message, UserMessage) and isinstance(message.content, list):
-        for block in message.content:
-            if isinstance(block, ToolResultBlock):
-                events.append(protocol.ToolFinished(block.tool_use_id, ok=not block.is_error))
+                path = (block.input or {}).get("file_path") or (block.input or {}).get("notebook_path")
+                if block.name in permissions.EDIT_TOOLS and isinstance(path, str) and path:
+                    state._editing[block.id] = path
+    elif isinstance(message, UserMessage):
+        results = [b for b in message.content if isinstance(b, ToolResultBlock)] if isinstance(message.content, list) else []
+        if not results and message.uuid and not state.checkpoint:
+            state.checkpoint = message.uuid   # 这一问本身（replay-user-messages 传回来的）：撤销就回到它之前
+        for block in results:
+            events.append(protocol.ToolFinished(block.tool_use_id, ok=not block.is_error))
+            path = state._editing.pop(block.tool_use_id, None)
+            if path and not block.is_error and path not in state.files:
+                state.files.append(path)
     elif isinstance(message, ResultMessage):
         events.extend(_turn_finished(message, state))
     return events
@@ -330,6 +348,8 @@ def _turn_finished(message, state):
                          ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")),
         output_tokens=int(usage.get("output_tokens") or 0),
         stopped=stopped,
+        checkpoint=state.checkpoint if state.files else "",   # 没改文件就没什么可撤销的
+        files=tuple(state.files),
     ))
     return events
 
@@ -409,6 +429,17 @@ class ClaudeBrain:
 
     def reply_permission(self, reply):
         self.gate.reply(reply)
+
+    async def rewind(self, checkpoint):
+        """撤销：用 Edit / Write 改过的文件恢复到 checkpoint 那一问之前（之后几问的改动也一起撤销）。"""
+        try:
+            await self._client.rewind_files(checkpoint)
+        except Exception as e:   # 没有这个检查点、子进程断了……：告诉芸芸没做成
+            log.warning("撤销没做成：%s: %s", type(e).__name__, e)
+            self._emit(protocol.Rewound(checkpoint, False, f"{type(e).__name__}: {e}"[:300]))
+            return
+        log.info("撤销做完了")
+        self._emit(protocol.Rewound(checkpoint, True))
 
     async def interrupt(self):
         self.gate.deny_all(PermissionGate.STOPPED)   # 等着确认的先拒绝掉，不然停不下来

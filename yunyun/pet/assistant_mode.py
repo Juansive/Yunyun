@@ -10,6 +10,8 @@
   分隔卡上写着文件夹名。
 - 确认（改文件、执行命令……）：确认卡片放在阅读框的位置（阅读框先让开），一次一个；等确认时芸芸一直在"思考"。
   收起着的时候来了确认：芸芸用气泡提醒，唤出时卡片再出来。停止 / 新对话 / 退出 = 等着的都算拒绝。
+- 撤销：改了文件的那一问，阅读框里有"撤销这次改动"（点两次）。只有同一个大脑会话里的能撤销（换了对话 / 闲置退出过就不行了），
+  撤销会连之后几问的改动一起恢复；做完芸芸说一句，卡片标上"已撤销"。用命令改的东西撤销不了。
 - 收起（Esc / 点到别的程序）：输入框缩回去、卡片堆淡出，助手还开着；IDLE_EXIT_MS 没再用才真正退出（释放约 300 MB）。
 - 退出（菜单"退出助手模式" / 闲置太久 / 芸芸退出）：关掉子进程，发 closed。卡片留在 cards 里（芸芸退出才清掉，不写硬盘）。
 
@@ -51,6 +53,7 @@ def card_from_turn(turn):
         "turn", datetime.now(), turn.question, turn.answer,
         markdown_to_plain(turn.answer) if turn.answer else "", cost, turn.stopped,
         error_text(turn.error) if turn.error else "",
+        tuple(turn.files), turn.checkpoint, turn.generation, turn.undone,
     )
 
 
@@ -100,6 +103,9 @@ class AssistantMode(QObject):
         self.confirm.answered.connect(self._on_answered)
         self.confirm.dismissed.connect(self._collapse_all)
         self.session.permissions_changed.connect(self._on_permissions_changed)
+        self.reader.undo_state_for = self._undo_state_for
+        self.reader.undo_requested.connect(self._undo)
+        self.session.rewind_finished.connect(self._on_rewound)
         self.session.busy_changed.connect(self._on_busy)
         self.session.answer_changed.connect(self._on_answer_changed)
         self.session.progress_changed.connect(self._on_progress)
@@ -144,6 +150,7 @@ class AssistantMode(QObject):
         elif self.cards:
             self.cards[-1] = self._divider()   # 刚插过分隔卡（比如连着换了两次文件夹）：换成新的
             self.deck.update()
+        self.reader.refresh_undo()   # 换了对话：以前的改动撤销不了了
         self._pet.say(said or i18n.tr("assistant_new_chat_said"), 2500)
 
     def change_workspace(self, path):
@@ -241,6 +248,39 @@ class AssistantMode(QObject):
             self._pet.say(i18n.tr("assistant_confirm_waiting_said"), self.CONFIRM_SAY_MS)   # 收起着：提醒一下
         self._show_confirm()
 
+    # ---------- 撤销 ----------
+
+    def _undo_state_for(self, card):
+        """阅读框里"撤销这次改动"按钮的状态（见 AssistantReader.refresh_undo）。"""
+        session = self.session
+        if not card.files or not card.checkpoint:
+            return "hidden"
+        if card.undone:
+            return "done"
+        if session.rewinding == card.checkpoint:
+            return "working"
+        if card.generation != session.generation or session.process is None:
+            return "expired"
+        return "ready" if session.can_rewind(card.generation, card.checkpoint) else "busy"
+
+    def _undo(self, card):
+        if self.session.rewind(card.generation, card.checkpoint):
+            self.reader.refresh_undo()
+
+    def _on_rewound(self, checkpoint, ok, turns):
+        if ok:
+            undone = {turn.checkpoint for turn in turns}
+            files = set()
+            for card in self.cards:
+                if card.kind == "turn" and card.checkpoint in undone:
+                    card.undone = True
+                    files.update(card.files)
+            self._pet.say(i18n.tr("assistant_undo_said", len(files)), self.DONE_SAY_MS)
+        else:
+            self._pet.say(i18n.tr("assistant_undo_failed"), self.DONE_SAY_MS)
+        self.deck.update()
+        self.reader.refresh_undo()
+
     def _on_answered(self, request_id, allow, reason, remember):
         self.session.answer_permission(request_id, allow, reason, remember)
         self.input.focus()   # 确认卡片拿过焦点：还给输入框（不然会被当成"点到别的程序"而收起）
@@ -253,6 +293,7 @@ class AssistantMode(QObject):
         self.input.set_busy(busy)
         self.input.set_thinking(busy)
         self.busy_changed.emit(busy)
+        self.reader.refresh_undo()   # 回答时不能撤销
         if not busy and not self.input.is_open:
             self._idle_timer.start()
 

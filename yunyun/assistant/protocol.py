@@ -101,6 +101,13 @@ class PermissionReply:
 
 
 @_message
+class Rewind:
+    """撤销改动：用 Edit / Write 改过的文件恢复到 checkpoint（某一问之前）的样子。之后几问的改动也一起撤销。"""
+    TYPE: ClassVar[str] = "rewind"
+    checkpoint: str
+
+
+@_message
 class Quit:
     """关掉助手：子进程收拾好就退出。"""
     TYPE: ClassVar[str] = "quit"
@@ -162,7 +169,8 @@ class TurnFinished:
     """这一轮回答结束了。
 
     cost_usd：这一轮花了多少美元（服务商不按美元算时是 None，见 Provider.cost_in_usd）；
-    session_cost_usd：这次打开助手以来一共花了多少；stopped：是不是用户点了"停止"。
+    session_cost_usd：这次打开助手以来一共花了多少；stopped：是不是用户点了"停止"；
+    checkpoint：撤销这一轮的改动要用的标记（Rewind；没开检查点时是空的）；files：这一轮用 Edit / Write 改成功的文件。
     """
     TYPE: ClassVar[str] = "turn_finished"
     cost_usd: float | None = None
@@ -170,6 +178,20 @@ class TurnFinished:
     input_tokens: int = 0
     output_tokens: int = 0
     stopped: bool = False
+    checkpoint: str = ""
+    files: tuple = ()
+
+    def __post_init__(self):
+        object.__setattr__(self, "files", tuple(self.files))   # JSON 读回来是列表：统一成元组
+
+
+@_message
+class Rewound:
+    """撤销做完了（ok）或没做成（detail：原因，只进日志）。"""
+    TYPE: ClassVar[str] = "rewound"
+    checkpoint: str
+    ok: bool
+    detail: str = ""
 
 
 @_message
@@ -194,5 +216,5 @@ ERROR_KINDS = (
     "other",
 )
 
-COMMANDS = (Ask, Interrupt, PermissionReply, Quit)
-EVENTS = (Ready, TextDelta, ToolStarted, ToolFinished, PermissionRequest, TurnFinished, Error)
+COMMANDS = (Ask, Interrupt, PermissionReply, Rewind, Quit)
+EVENTS = (Ready, TextDelta, ToolStarted, ToolFinished, PermissionRequest, TurnFinished, Rewound, Error)

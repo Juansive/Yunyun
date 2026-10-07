@@ -623,3 +623,49 @@ def test_stop_and_exit_drop_the_confirm(qapp, working):
     assert wait_until(qapp, lambda: mode.confirm.is_open)
     pet.close_assistant()                                        # 退出助手模式
     assert process.stopped and not mode.confirm.isVisible()
+
+
+# ---------- 撤销 ----------
+
+def test_undo_from_the_reader(qapp, working):
+    pet, _, process = working
+    mode = pet.assistant
+    process.say(protocol.TurnFinished(0.001, 0.001, checkpoint="cp-1", files=("F:\\p\\a.py", "F:\\p\\b.py")))
+    card = mode.cards[-1]
+    assert card.files and card.checkpoint == "cp-1" and card.generation == mode.session.generation
+    mode._open_card(card)
+    assert wait_until(qapp, lambda: mode.reader.is_open)
+    assert mode.reader._undo.isEnabled()
+    mode.reader._undo.click()
+    mode.reader._undo.click()                                     # 点两次才算
+    assert process.sent == [protocol.Rewind("cp-1")]
+    assert mode.reader._undo.text() == i18n.tr("assistant_undo_working")
+    process.say(protocol.Rewound("cp-1", True))
+    assert card.undone and mode.reader._undo.text() == i18n.tr("assistant_undo_done")
+    assert i18n.tr("assistant_undo_said", 2) in bubbles(pet)
+
+
+def test_undo_is_disabled_while_answering_and_after_a_new_chat(qapp, working):
+    pet, _, process = working
+    mode = pet.assistant
+    process.say(protocol.TurnFinished(0.001, 0.001, checkpoint="cp-1", files=("a.py",)))
+    card = mode.cards[-1]
+    mode._open_card(card)
+    assert wait_until(qapp, lambda: mode.reader.is_open)
+    ask(pet, "再改一下")
+    assert not mode.reader._undo.isEnabled()                      # 回答时不能撤销
+    process.say(protocol.TurnFinished(0.001, 0.001))
+    assert mode.reader._undo.isEnabled()
+    mode.new_conversation()
+    assert mode._undo_state_for(card) == "expired" and not mode.reader._undo.isEnabled()
+
+
+def test_failed_undo_says_so(qapp, working):
+    pet, _, process = working
+    mode = pet.assistant
+    process.say(protocol.TurnFinished(0.001, 0.001, checkpoint="cp-1", files=("a.py",)))
+    card = mode.cards[-1]
+    mode._undo(card)
+    process.say(protocol.Rewound("cp-1", False, "No file checkpoint"))
+    assert not card.undone and i18n.tr("assistant_undo_failed") in bubbles(pet)
+    assert mode._undo_state_for(card) == "ready"                  # 还可以再试

@@ -312,3 +312,77 @@ def test_each_turn_is_recorded_in_the_ledger(session):
     session.ask("二")
     process.say(protocol.TurnFinished(None, None, 100, 20))   # 按 token 计费的服务商：不记美元
     assert round(ledger.summary().today, 6) == 0.012
+
+
+# ---------- 撤销 ----------
+
+def answered(session, question, files=(), checkpoint=""):
+    """问一句、马上答完；返回这一轮。"""
+    session.ask(question)
+    process = session.processes[-1]
+    if not process.ready:
+        process.say(protocol.Ready("anthropic", "m"))
+    process.say(protocol.TurnFinished(0.001, 0.001, checkpoint=checkpoint, files=files))
+    return session.turns[-1]
+
+
+def rewinds(session):
+    results = []
+    session.rewind_finished.connect(lambda cp, ok, turns: results.append((cp, ok, [t.question for t in turns])))
+    return results
+
+
+def test_turn_remembers_its_changes_and_generation(session):
+    turn = answered(session, "改 a", ("F:\\p\\a.py",), "cp-1")
+    assert turn.files == ("F:\\p\\a.py",) and turn.checkpoint == "cp-1"
+    assert turn.generation == session.generation > 0
+
+
+def test_rewind_marks_this_and_later_turns_and_tells_claude_next_time(session):
+    first = answered(session, "改 a", ("F:\\p\\a.py",), "cp-1")
+    answered(session, "随便聊聊")
+    third = answered(session, "改 b", ("F:\\p\\b.py",), "cp-3")
+    results = rewinds(session)
+    process = session.processes[0]
+    assert session.rewind(first.generation, "cp-1")
+    assert process.sent == [protocol.Rewind("cp-1")] and session.rewinding == "cp-1"
+    assert not session.ask("撤销还没做完")                               # 等撤销做完再问
+    process.say(protocol.Rewound("cp-1", True))
+    assert results == [("cp-1", True, ["改 a", "改 b"])]               # 这一轮和之后改过文件的都撤销了
+    assert first.undone and third.undone and session.rewinding == ""
+    session.ask("接着来")
+    assert process.asked[-1].startswith("[Note from Yunyun") and "F:\\p\\a.py, F:\\p\\b.py" in process.asked[-1]
+    assert process.asked[-1].endswith("接着来") and session.turns[-1].question == "接着来"   # 界面上不显示这句说明
+    session.processes[0].say(protocol.TurnFinished(0.001, 0.001))
+    session.ask("再来")
+    assert process.asked[-1] == "再来"                                  # 只说一次
+
+
+def test_failed_rewind_changes_nothing(session):
+    turn = answered(session, "改 a", ("a.py",), "cp-1")
+    results = rewinds(session)
+    session.rewind(turn.generation, "cp-1")
+    session.processes[0].say(protocol.Rewound("cp-1", False, "No file checkpoint"))
+    assert results == [("cp-1", False, [])] and not turn.undone
+    session.ask("接着来")
+    assert session.processes[0].asked[-1] == "接着来"
+
+
+def test_cannot_rewind_while_answering_or_from_another_conversation(session):
+    turn = answered(session, "改 a", ("a.py",), "cp-1")
+    session.ask("slow")
+    assert not session.can_rewind(turn.generation, "cp-1") and not session.rewind(turn.generation, "cp-1")
+    session.stop()
+    session.processes[0].say(protocol.TurnFinished(stopped=True))
+    assert session.can_rewind(turn.generation, "cp-1")
+    assert not session.can_rewind(turn.generation, "")                 # 没改文件的轮次
+    session.new_conversation()                                         # 换了子进程：检查点在旧的那个里
+    assert session.generation != turn.generation and not session.can_rewind(turn.generation, "cp-1")
+
+
+def test_process_gone_while_rewinding_counts_as_failed(session):
+    turn = answered(session, "改 a", ("a.py",), "cp-1")
+    results = rewinds(session)
+    session.rewind(turn.generation, "cp-1")
+    session.processes[0].die()
+    assert results == [("cp-1", False, [])] and session.rewinding == ""

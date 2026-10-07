@@ -8,13 +8,16 @@
     │ ┌────────────────────── [复制] ┐ │   ← 代码块灰底，右上角浮着"复制"
     │ │ nums[::-1]                   │ │
     │ └──────────────────────────────┘ │
-    │                        复制回答   │
+    │ ↶ 撤销这次改动           复制回答   │   ← 这一问改了文件才有"撤销"
     └──────────────────────────────────┘
 
 - 放在"芸芸 + 输入框 + 卡片堆"旁边（哪边空间大放哪边），从卡片堆那边滑出、淡入；高度跟着内容，短回答不会空一大块。
   （滑出、定位、阴影、焦点去了别的程序就 dismissed：公共部分在 side_panel.SidePanel）
 - 换一张卡片：内容先淡出、换好再淡入（高度在看不见的那一刻变）。
 - Esc / × → closed_by_user（只关阅读框）；焦点去了别的程序 → dismissed（助手模式整个收起）。
+- 撤销（这一问改了文件才显示）：点一下变成"确定撤销？再点一次"，3 秒内再点才发 undo_requested；
+  能不能撤销问总管（undo_state_for(卡片) → "hidden" / "ready" / "busy" / "working" / "expired" / "done"），
+  状态可能变了（开始 / 结束回答、撤销完）时总管调 refresh_undo()。
 """
 from PySide6.QtCore import QRect, QRectF, QSize, Qt, QTimer, QVariantAnimation, Signal
 from PySide6.QtGui import QColor, QGuiApplication, QTextCursor
@@ -89,13 +92,23 @@ def group_text(group):
     return "\n".join(block.text() for block in group).replace(" ", "\n")
 
 
+_UNDO_STYLE = """
+QPushButton { background: #FFF6E8; color: #B7791F; border: 1px solid #F3DDB8; border-radius: 9px;
+              padding: 1px 9px; font-size: 9pt; }
+QPushButton:hover { background: #FDEBD0; }
+QPushButton:disabled { background: #F4F6FA; color: #9AA3B2; border: 1px solid #E6EAF1; }
+"""
+
+
 class AssistantReader(SidePanel):
     closed_by_user = Signal()    # Esc / ×：只关阅读框（焦点回到输入框）
+    undo_requested = Signal(object)   # 卡片：要撤销这一问的改动（已经点了两次确认）
 
     READER_W = 470
     MIN_H = 200
     MAX_H = 640
     SWAP_MS = 110        # 换卡片时淡出 / 淡入各多久
+    UNDO_ARM_MS = 3000   # 点了一次"撤销"后，多久内再点才算数
 
     def __init__(self, owner):
         super().__init__(owner)
@@ -139,6 +152,16 @@ class AssistantReader(SidePanel):
         self._body.verticalScrollBar().valueChanged.connect(self._place_copy_buttons)
         layout.addWidget(self._body, 1)
         bottom = QHBoxLayout()
+        self._undo = QPushButton()
+        self._undo.setStyleSheet(_UNDO_STYLE)
+        self._undo.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._undo.clicked.connect(self._on_undo)
+        self.undo_state_for = lambda card: "hidden"   # 总管换成自己的
+        self._undo_state = "hidden"
+        self._undo_armed = False
+        self._undo_timer = QTimer(self, singleShot=True, interval=self.UNDO_ARM_MS)
+        self._undo_timer.timeout.connect(self._disarm_undo)
+        bottom.addWidget(self._undo)
         bottom.addStretch(1)
         self._copy_all = QPushButton()
         self._copy_all.setStyleSheet(_BUTTON_STYLE)
@@ -172,21 +195,74 @@ class AssistantReader(SidePanel):
         self._swap.stop()
         super().close_now()
 
+    def refresh_undo(self):
+        """撤销按钮重新问一下状态：hidden（这一问没改文件）/ ready / busy（芸芸在回答）/ working（正在撤销）/
+        expired（换过对话了，撤销不了）/ done（已经撤销了）。"""
+        state = self.undo_state_for(self.card) if self.card is not None else "hidden"
+        if state != self._undo_state:
+            self._undo_state = state
+            self._undo_armed = False
+            self._undo_timer.stop()
+        if self.card is not None:
+            self._meta.setText(self._meta_text(self.card))
+        self._show_undo()
+
     def retranslate(self):
         self._copy_all.setText(i18n.tr("assistant_reader_copy_all"))
         self._close.setToolTip(i18n.tr("assistant_reader_close"))
         if self.card is not None:
             self._fill(self.card)
+        else:
+            self._show_undo()
+
+    # ---------- 撤销 ----------
+
+    def _show_undo(self):
+        state, armed = self._undo_state, self._undo_armed
+        self._undo.setVisible(state != "hidden")
+        self._undo.setEnabled(state == "ready")
+        key = {"working": "assistant_undo_working", "done": "assistant_undo_done"}.get(
+            state, "assistant_undo_confirm" if armed else "assistant_undo")
+        self._undo.setText(i18n.tr(key))
+        files = len(self.card.files) if self.card is not None else 0
+        tip = {"busy": "assistant_undo_tip_busy", "expired": "assistant_undo_tip_expired"}.get(state, "assistant_undo_tip")
+        self._undo.setToolTip(i18n.tr(tip, files))
+
+    def _on_undo(self):
+        if self._undo_state != "ready" or self.card is None:
+            return
+        if not self._undo_armed:   # 第一次点：先问一句
+            self._undo_armed = True
+            self._undo_timer.start()
+            self._show_undo()
+            return
+        self._undo_armed = False
+        self._undo_timer.stop()
+        self.undo_requested.emit(self.card)
+
+    def _disarm_undo(self):
+        self._undo_armed = False
+        self._undo_timer.stop()
+        self._show_undo()
 
     # ---------- 内容 ----------
+
+    @staticmethod
+    def _meta_text(card):
+        parts = [f"{card.time:%H:%M}"] + ([card.cost] if card.cost else [])
+        if card.files:
+            parts.append(i18n.tr("assistant_card_files", len(card.files)))
+        if card.stopped:
+            parts.append(i18n.tr("assistant_card_stopped"))
+        if card.undone:
+            parts.append(i18n.tr("assistant_card_undone"))
+        return " · ".join(parts)
 
     def _fill(self, card):
         self.card = card
         self._question.setText(i18n.tr("assistant_card_you", card.question))
-        parts = [f"{card.time:%H:%M}"] + ([card.cost] if card.cost else [])
-        if card.stopped:
-            parts.append(i18n.tr("assistant_card_stopped"))
-        self._meta.setText(" · ".join(parts))
+        self._undo_state = None   # 换了卡片：撤销按钮重新问
+        self.refresh_undo()
         if card.answer:
             self._body.setMarkdown(card.answer)
             style_code_blocks(self._body.document())
@@ -205,8 +281,9 @@ class AssistantReader(SidePanel):
         width = self.READER_W - 2 * (m + pad)
         self._body.document().setTextWidth(width - 10)
         doc_h = int(self._body.document().size().height()) + 18   # 多留一点：估少了就会冒出滚动条
+        bottom_row = self._copy_all.isVisibleTo(self) or self._undo.isVisibleTo(self)
         others = (self._question.heightForWidth(width - 32) + self._meta.sizeHint().height() + 1
-                  + (self._copy_all.sizeHint().height() if self._copy_all.isVisibleTo(self) else 0) + 6 * 4)
+                  + (self._copy_all.sizeHint().height() if bottom_row else 0) + 6 * 4)
         screen = QGuiApplication.screenAt(self._anchor.center()) or QGuiApplication.primaryScreen()
         limit = min(self.MAX_H, screen.availableGeometry().height() - 40)
         height = max(self.MIN_H, min(2 * (m + pad) + others + doc_h, limit))

@@ -140,3 +140,46 @@ def test_escape_and_close_button(qapp, reader):
 def test_paints(qapp, reader):
     opened(qapp, reader)
     assert not reader.grab().isNull()
+
+
+# ---------- 撤销按钮 ----------
+
+def test_undo_button_only_for_cards_that_changed_files(qapp, reader):
+    opened(qapp, reader)
+    assert not reader._undo.isVisibleTo(reader)                    # 默认（没改文件）：没有撤销
+    reader.undo_state_for = lambda c: "ready"
+    changed = card(files=("F:\\p\\a.py",), checkpoint="cp")
+    opened(qapp, reader, changed)
+    assert wait_until(qapp, lambda: reader.card is changed)      # 开着时换卡片：淡出后才换内容
+    assert reader._undo.isVisibleTo(reader) and reader._undo.isEnabled()
+    assert "改了 1 个文件" in reader._meta.text()
+
+
+def test_undo_needs_two_clicks(qapp, reader, monkeypatch):
+    monkeypatch.setattr(AssistantReader, "UNDO_ARM_MS", 50)
+    asked = []
+    reader.undo_requested.connect(asked.append)
+    reader.undo_state_for = lambda c: "ready"
+    c = card(files=("a.py",), checkpoint="cp")
+    opened(qapp, reader, c)
+    reader._undo.click()
+    assert asked == [] and reader._undo.text() == i18n.tr("assistant_undo_confirm")
+    assert wait_until(qapp, lambda: reader._undo.text() == i18n.tr("assistant_undo"))   # 过一会儿没再点：算了
+    reader._undo.click()
+    reader._undo.click()
+    assert asked == [c]
+
+
+@pytest.mark.parametrize("state, enabled, key", [
+    ("busy", False, "assistant_undo"),
+    ("working", False, "assistant_undo_working"),
+    ("expired", False, "assistant_undo"),
+    ("done", False, "assistant_undo_done"),
+])
+def test_undo_button_states(qapp, reader, state, enabled, key):
+    reader.undo_state_for = lambda c: state
+    opened(qapp, reader, card(files=("a.py",), checkpoint="cp"))
+    assert reader._undo.isVisibleTo(reader) and reader._undo.isEnabled() == enabled
+    assert reader._undo.text() == i18n.tr(key)
+    if state == "expired":
+        assert "git" in reader._undo.toolTip()

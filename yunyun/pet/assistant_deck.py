@@ -38,6 +38,10 @@ class AssistantCard:
     cost: str = ""          # "$0.0123" / "120 / 30 token"
     stopped: bool = False
     error: str = ""         # 出错时给人看的话
+    files: tuple = ()       # 这一问里芸芸改了的文件（撤销用）
+    checkpoint: str = ""    # 撤销这一问的改动要用的标记（session.rewind）
+    generation: int = 0     # 是哪一个大脑会话（session.generation）里的：换了会话就撤销不了了
+    undone: bool = False    # 已经撤销了
 
     @classmethod
     def divider(cls, folder=""):
@@ -374,10 +378,12 @@ class AssistantDeck(QWidget):
         s = QFontMetrics(self._small)
         p.setFont(self._small)
         parts = [f"{card.time:%H:%M}"] + ([card.cost] if card.cost else [])
+        if card.files:
+            parts.append(i18n.tr("assistant_card_files", len(card.files)))
         p.setPen(QColor("#8A94A6"))
         p.drawText(QRectF(x, y, w, s.height()), Qt.AlignmentFlag.AlignLeft, " · ".join(parts))
         status = i18n.tr("assistant_card_stopped") if card.stopped else (
-            i18n.tr("assistant_card_error") if card.error else "")
+            i18n.tr("assistant_card_error") if card.error else i18n.tr("assistant_card_undone") if card.undone else "")
         if status:
             p.setPen(QColor("#C62828") if card.error and not card.stopped else QColor("#B7791F"))
             p.drawText(QRectF(x, y, w, s.height()), Qt.AlignmentFlag.AlignRight, status)

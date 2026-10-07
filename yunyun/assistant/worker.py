@@ -94,6 +94,11 @@ async def serve(stdin, write, language, make_brain):
                     await brain.interrupt()
             elif isinstance(command, protocol.PermissionReply):
                 brain.reply_permission(command)   # 大脑那边的 can_use_tool 正等着它
+            elif isinstance(command, protocol.Rewind):
+                if turn is not None and not turn.done():   # 回答到一半不撤销（界面上这时按钮是灰的）
+                    emit(protocol.Rewound(command.checkpoint, False, "busy"))
+                else:
+                    await brain.rewind(command.checkpoint)
     finally:
         if turn is not None and not turn.done():
             turn.cancel()

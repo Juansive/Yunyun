@@ -62,6 +62,83 @@ def test_plain_user_message_is_ignored():
     assert translate(UserMessage(content="你好"), TurnState()) == []
 
 
+# ---------- 撤销：检查点和改过的文件 ----------
+
+def edit(tool_id, path, tool="Edit"):
+    return AssistantMessage(content=[ToolUseBlock(tool_id, tool, {"file_path": path, "old_string": "a"})], model="m")
+
+
+def test_checkpoint_and_changed_files_are_reported_at_turn_end():
+    state = TurnState()
+    state.new_turn()
+    translate(UserMessage(content="改一下", uuid="cp-1"), state)          # 传回来的这一问：它的 uuid 就是检查点
+    translate(UserMessage(content="别的注入消息", uuid="cp-x"), state)     # 只认第一条
+    for message in (edit("t1", "F:\\p\\a.py"), edit("t2", "F:\\p\\b.py", "Write"), edit("t3", "F:\\p\\c.py"),
+                    AssistantMessage(content=[ToolUseBlock("t4", "Read", {"file_path": "F:\\p\\d.py"})], model="m")):
+        translate(message, state)
+    translate(UserMessage(content=[ToolResultBlock("t1", "ok", is_error=False), ToolResultBlock("t2", "ok"),
+                                   ToolResultBlock("t3", "失败", is_error=True), ToolResultBlock("t4", "内容")],
+                          uuid="tool-result-uuid"), state)
+    translate(edit("t5", "F:\\p\\a.py"), state)                               # 同一个文件改两次：只记一次
+    translate(UserMessage(content=[ToolResultBlock("t5", "ok", is_error=False)]), state)
+    finished = translate(result(total=0.01), state)[-1]
+    assert finished.checkpoint == "cp-1"
+    assert finished.files == ("F:\\p\\a.py", "F:\\p\\b.py")                  # 改失败的、只读的不算
+
+
+def test_turn_without_changes_has_no_checkpoint():
+    state = TurnState()
+    state.new_turn()
+    translate(UserMessage(content="问问题", uuid="cp-2"), state)
+    finished = translate(result(total=0.01), state)[-1]
+    assert (finished.checkpoint, finished.files) == ("", ())                  # 没改文件：没什么可撤销的
+
+
+def test_new_turn_forgets_the_last_checkpoint():
+    state = TurnState()
+    state.new_turn()
+    translate(UserMessage(content="一", uuid="cp-1"), state)
+    translate(edit("t1", "a.py"), state)
+    translate(UserMessage(content=[ToolResultBlock("t1", "ok", is_error=False)]), state)
+    translate(result(total=0.01), state)
+    state.new_turn()
+    translate(UserMessage(content="二", uuid="cp-2"), state)
+    finished = translate(result(total=0.02), state)[-1]
+    assert (finished.checkpoint, finished.files) == ("", ())
+
+
+def test_checkpointing_only_with_a_work_folder(monkeypatch, tmp_path):
+    monkeypatch.setattr(claude_brain, "system_proxy_env", lambda: {})
+    working = claude_brain.build_options(AssistantSettings(workspace=str(tmp_path)), "k", "zh")
+    assert working.enable_file_checkpointing and working.extra_args == {"replay-user-messages": None}
+    chatting = claude_brain.build_options(AssistantSettings(), "k", "zh")
+    assert not chatting.enable_file_checkpointing and chatting.extra_args == {}
+
+
+class RewindClient:
+    """只会 rewind_files 的假 SDK 客户端。"""
+
+    def __init__(self, error=None):
+        self.error, self.rewound = error, []
+
+    async def rewind_files(self, checkpoint):
+        if self.error:
+            raise self.error
+        self.rewound.append(checkpoint)
+
+
+@pytest.mark.parametrize("error", [None, RuntimeError("No file checkpoint found for this message.")])
+def test_brain_rewind_reports_the_result(error):
+    events = []
+    brain = claude_brain.ClaudeBrain(AssistantSettings(), "k", "zh", events.append)
+    brain._client = RewindClient(error)
+    asyncio.run(brain.rewind("cp-1"))
+    if error is None:
+        assert brain._client.rewound == ["cp-1"] and events == [protocol.Rewound("cp-1", True)]
+    else:
+        assert events[0].ok is False and "No file checkpoint" in events[0].detail
+
+
 # ---------- 翻译：这一轮结束、花费 ----------
 
 def test_cost_is_per_turn_although_sdk_reports_session_total():
