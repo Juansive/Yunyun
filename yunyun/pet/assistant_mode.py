@@ -3,6 +3,7 @@
 - 唤出（右键"✦ 助手模式"）：启动大脑，输入框从芸芸脚下展开；有卡片的话，卡片堆在"芸芸 + 输入框"这一列旁边淡入。
 - 发问：芸芸思考（光晕流动），头顶气泡先说进度（"芸芸在想……" / "正在搜索网页……"），出字后逐字说回答的开头几行。
 - 答完：这一问一答变成一张卡片，滑到卡片堆最前面；卡片堆开着时气泡很快收起（全文在卡片里）。
+- 单击卡片：阅读框从卡片堆旁边滑出，显示全文；开着时翻卡片堆，阅读框跟着换；再点同一张就关掉。
 - 新对话（卡片堆右上角 / 输入框里 Ctrl+N）：换一个新的大脑会话，卡片堆里插一张分隔卡。
   大脑重启过（闲置退出后再唤出）也插一张：芸芸只记得分隔卡之后的内容。
 - 收起（Esc / 点到别的程序）：输入框缩回去、卡片堆淡出，助手还开着；IDLE_EXIT_MS 没再用才真正退出（释放约 300 MB）。
@@ -20,6 +21,7 @@ from yunyun import i18n
 from yunyun.assistant.session import SETTINGS_ERRORS, AssistantSession, error_text
 from yunyun.pet.assistant_deck import AssistantCard, AssistantDeck
 from yunyun.pet.assistant_input import AssistantInput
+from yunyun.pet.assistant_reader import AssistantReader
 from yunyun.pet.bubble import bubble_font, elide_lines
 
 
@@ -66,6 +68,7 @@ class AssistantMode(QObject):
         self.session = AssistantSession(pet, make_process)
         self.input = AssistantInput(pet)
         self.deck = AssistantDeck(pet, cards)
+        self.reader = AssistantReader(pet)
         self._closed = False
 
         self.input.submitted.connect(self._on_submitted)
@@ -74,6 +77,11 @@ class AssistantMode(QObject):
         self.input.collapse_started.connect(self.deck.hide_animated)
         self.input.collapsed.connect(self._on_collapsed)
         self.deck.new_conversation_requested.connect(self.new_conversation)
+        self.deck.card_clicked.connect(self._open_card)
+        self.deck.current_changed.connect(self._on_deck_moved)
+        self.input.collapse_started.connect(self.reader.hide_animated)
+        self.reader.closed_by_user.connect(self.input.focus)
+        self.reader.dismissed.connect(self._collapse_all)
         self.session.busy_changed.connect(self._on_busy)
         self.session.answer_changed.connect(self._on_answer_changed)
         self.session.progress_changed.connect(self._on_progress)
@@ -103,6 +111,8 @@ class AssistantMode(QObject):
             self.input.follow(body_rect)
         if self.deck.isVisible():
             self.deck.follow(self._column())
+        if self.reader.isVisible():
+            self.reader.follow(self._reader_anchor())
 
     def new_conversation(self):
         """忘掉之前的对话（正在回答就先停下），卡片堆里插一张分隔卡。"""
@@ -115,6 +125,7 @@ class AssistantMode(QObject):
     def retranslate(self):
         self.input.retranslate()
         self.deck.update()
+        self.reader.retranslate()
 
     def exit(self, wait=False):
         """退出助手模式：输入框、卡片堆立刻消失，关掉子进程。wait=True（芸芸退出时）等子进程真的退出。"""
@@ -125,10 +136,12 @@ class AssistantMode(QObject):
         self._bubble_timer.stop()
         self.input.close_now()
         self.deck.close_now()
+        self.reader.close_now()
         self.session.close(wait)
         self._pet.end_live(0)
         self.input.deleteLater()
         self.deck.deleteLater()
+        self.reader.deleteLater()
         self.closed.emit()
 
     # ---------- 内部 ----------
@@ -138,6 +151,32 @@ class AssistantMode(QObject):
         body = self._pet.body_rect()
         width = max(body.width(), AssistantInput.WIDTH)
         return QRect(body.center().x() - width // 2, body.top(), width, body.height())
+
+    def _reader_anchor(self):
+        """阅读框放在"芸芸 + 输入框 + 卡片堆"旁边。"""
+        column = self._column()
+        return column.united(self.deck.cards_rect()) if self.deck.isVisible() else column
+
+    def _open_card(self, card):
+        if card.kind != "turn":
+            return
+        if self.reader.is_open and self.reader.card is card:   # 再点同一张：关掉
+            self.reader.hide_animated()
+            return
+        self.reader.show_card(card, self._reader_anchor())
+
+    def _on_deck_moved(self, index):
+        card = self.deck.card(index)
+        if self.reader.is_open and card.kind == "turn":
+            self.reader.show_card(card, self._reader_anchor())
+
+    def _collapse_all(self):
+        """焦点去了别的程序（从阅读框那里）：输入框、卡片堆、阅读框一起收起。"""
+        if self.input.is_open:
+            self.input.collapse()
+        else:
+            self.reader.hide_animated()
+            self.deck.hide_animated()
 
     def _on_submitted(self, text):
         if self.session.ask(text):

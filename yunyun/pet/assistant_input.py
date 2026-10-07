@@ -199,6 +199,13 @@ class AssistantInput(QWidget):
         self._edit.setFocus()
         self._animate_to(1.0, self.OPEN_MS * (1.0 - self._t))
 
+    def focus(self):
+        """把键盘焦点拿回来（关掉阅读框之后）。"""
+        if self.is_open:
+            self.raise_()
+            self.activateWindow()
+            self._edit.setFocus()
+
     def collapse(self):
         """收起（动画结束后隐藏、发 collapsed）。输入框里打了一半的字留着，下次展开还在。"""
         if not self.isVisible() or self._closing:

@@ -58,7 +58,8 @@ def _with_alpha(color, alpha):
 
 class AssistantDeck(QWidget):
     card_clicked = Signal(object)            # 单击了当前卡片（AssistantCard）
-    new_conversation_requested = Signal()    # 点了"＋ 新对话"
+    new_conversation_requested = Signal()    # 点了"+ 新对话"
+    current_changed = Signal(int)            # 翻到了另一张（或者最前面换成了新卡片）；阅读框跟着换
 
     CARD_W = 290
     PAD = 14
@@ -123,6 +124,11 @@ class AssistantDeck(QWidget):
     def card_count(self):
         return len(self._cards)
 
+    def cards_rect(self):
+        """卡片占的区域（屏幕坐标，不含四周给阴影的留白）。"""
+        m = self.MARGIN
+        return self.geometry().adjusted(m, m, -m, -m)
+
     def card(self, index):
         """第 index 张（0 = 最新）。"""
         return self._cards[-1 - index]
@@ -161,6 +167,7 @@ class AssistantDeck(QWidget):
         if self._target == 0:
             self._pos = 1.0               # 原来最前面那张现在是第 1 张：先停在它，再滑到新的
             self.go_to(0)
+            self.current_changed.emit(0)
         else:
             self._target += 1             # 还看着原来那张
             self._pos += 1
@@ -168,8 +175,11 @@ class AssistantDeck(QWidget):
 
     def go_to(self, index):
         index = max(0, min(index, len(self._cards) - 1))
+        changed = index != self._target
         self._target = index
         self._animate(self._scroll, self._pos, float(index))
+        if changed:
+            self.current_changed.emit(index)
 
     def reset(self):
         """卡片全换了（比如测试）：回到最新一张，不要动画。"""

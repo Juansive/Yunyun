@@ -361,3 +361,65 @@ def test_deck_follows_the_input(qapp, world, monkeypatch):
     assert wait_until(qapp, lambda: not mode.deck.isVisible())
     pet.open_assistant()
     assert wait_until(qapp, lambda: mode.deck.isVisible())
+
+
+# ---------- 阅读框（U3） ----------
+
+@pytest.fixture
+def two_cards(qapp, world, monkeypatch):
+    from yunyun.pet.assistant_reader import AssistantReader
+    monkeypatch.setattr(AssistantReader, "OPEN_MS", 20)
+    monkeypatch.setattr(AssistantReader, "SWAP_MS", 10)
+    pet, machine, processes = world
+    has_key(monkeypatch)
+    pet.move(100, 100)
+    pet.open_assistant()
+    process = processes[0]
+    process.say(protocol.Ready("anthropic", "m"))
+    finish_turn(pet, process, "第一问", "第一答")
+    finish_turn(pet, process, "第二问", "第二答")
+    return pet, pet.assistant
+
+
+def test_click_card_opens_the_reader_and_again_closes(qapp, two_cards):
+    pet, mode = two_cards
+    mode.deck.card_clicked.emit(mode.deck.card(0))
+    assert wait_until(qapp, lambda: mode.reader.is_open and mode.reader._shown == 1.0)
+    assert mode.reader.card.question == "第二问"
+    mode.deck.card_clicked.emit(mode.deck.card(0))   # 再点同一张：关掉
+    assert wait_until(qapp, lambda: not mode.reader.isVisible())
+
+
+def test_reader_follows_the_deck(qapp, two_cards):
+    pet, mode = two_cards
+    mode.deck.card_clicked.emit(mode.deck.card(0))
+    mode.deck.go_to(1)                                # 开着阅读框翻卡片堆：阅读框跟着换
+    assert wait_until(qapp, lambda: mode.reader.card.question == "第一问")
+
+
+def test_divider_cards_do_not_open_the_reader(qapp, two_cards):
+    pet, mode = two_cards
+    mode.new_conversation()
+    mode.deck.card_clicked.emit(mode.deck.card(0))   # 分隔卡
+    assert not mode.reader.isVisible()
+
+
+def test_collapse_and_exit_close_the_reader(qapp, two_cards):
+    pet, mode = two_cards
+    mode.deck.card_clicked.emit(mode.deck.card(0))
+    assert wait_until(qapp, lambda: mode.reader.isVisible())
+    mode.input.collapse()
+    assert wait_until(qapp, lambda: not mode.reader.isVisible() and not mode.deck.isVisible())
+    pet.open_assistant()
+    mode.deck.card_clicked.emit(mode.deck.card(0))
+    reader = mode.reader
+    pet.close_assistant()
+    assert not reader.isVisible()
+
+
+def test_reader_losing_focus_collapses_everything(qapp, two_cards):
+    pet, mode = two_cards
+    mode.deck.card_clicked.emit(mode.deck.card(0))
+    mode.reader.dismissed.emit()                     # 焦点去了别的程序
+    assert wait_until(qapp, lambda: not mode.input.isVisible() and not mode.reader.isVisible())
+    assert pet.assistant is mode                     # 只是收起，助手还开着

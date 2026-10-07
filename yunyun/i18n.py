@@ -554,6 +554,10 @@ TEXTS = {
     "assistant_card_error": {"zh": "出错了", "en": "Error", "ja": "エラー"},
     "assistant_card_empty": {"zh": "（没有回答）", "en": "(No answer)", "ja": "（回答なし）"},
     "assistant_card_tokens": {"zh": "{} / {} token", "en": "{} / {} tokens", "ja": "{} / {} トークン"},
+    "assistant_reader_copy": {"zh": "复制", "en": "Copy", "ja": "コピー"},
+    "assistant_reader_copied": {"zh": "已复制 ✓", "en": "Copied ✓", "ja": "コピーしました ✓"},
+    "assistant_reader_copy_all": {"zh": "复制回答", "en": "Copy answer", "ja": "回答をコピー"},
+    "assistant_reader_close": {"zh": "关闭（Esc）", "en": "Close (Esc)", "ja": "閉じる（Esc）"},
     "assistant_fix_in_settings": {
         "zh": "可以在这里改：右键芸芸 → 设置… → 助手。",
         "en": "You can change it in: right-click Yunyun → Settings… → Assistant.",
