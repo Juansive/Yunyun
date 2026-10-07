@@ -79,6 +79,7 @@ class TurnState:
     over_budget: bool = False          # 估算超过了每次回答的上限：大脑会停下这一轮
     _message_out: int = 0              # 当前这条模型消息已经算过的输出 token / 网页搜索次数（SDK 报的是累计值）
     _message_searches: int = 0
+    unreported: float = 0.0            # 中途停下的几轮里，Claude Code 没算进总花费、芸芸按估算补上的钱
 
     def new_turn(self):
         self.interrupted = False
@@ -189,10 +190,14 @@ def _turn_finished(message, state):
     if total is not None:
         cost = max(total - state.session_cost, 0.0)
         state.session_cost = total
+    if not cost and state.estimate > 0 and (state.interrupted or state.over_budget):
+        # 中途停下时 Claude Code 报的这一轮花费是 0（2026-10-07 实测），可停下前处理过的 token 一样计费：用自己的估算
+        cost = state.estimate
+        state.unreported += state.estimate
     usage = message.usage or {}
     events.append(protocol.TurnFinished(
         cost_usd=cost if state.cost_in_usd else None,
-        session_cost_usd=state.session_cost if state.cost_in_usd else None,
+        session_cost_usd=state.session_cost + state.unreported if state.cost_in_usd else None,
         input_tokens=sum(int(usage.get(k) or 0) for k in
                          ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")),
         output_tokens=int(usage.get("output_tokens") or 0),

@@ -260,3 +260,16 @@ def test_build_options(monkeypatch):
 def test_persona_languages():
     assert "芸芸" in persona("zh") and "Yunyun" in persona("en") and "芸芸" in persona("ja")
     assert persona("fr") == persona("zh")                          # 不认识的语言用中文
+
+
+def test_stopped_turn_without_reported_cost_uses_the_estimate():
+    """中途停下时 Claude Code 报的花费是 0，可 token 一样计费：用芸芸自己的估算记账（2026-10-07 实测）。"""
+    state = TurnState(prices=(1, 5), reply_budget=1.0)
+    translate(usage_event("start", {"input_tokens": 10000}), state)   # 估算 $0.01
+    state.interrupted = True
+    finished = translate(result("error_during_execution", total=0.0, is_error=True), state)[-1]
+    assert finished.cost_usd == pytest.approx(0.01) and finished.session_cost_usd == pytest.approx(0.01)
+    state.new_turn()
+    translate(usage_event("start", {"input_tokens": 3000}), state)
+    finished = translate(result("success", total=0.003), state)[-1]   # 下一轮：Claude Code 的总数里没有上一轮
+    assert finished.cost_usd == pytest.approx(0.003) and finished.session_cost_usd == pytest.approx(0.013)
