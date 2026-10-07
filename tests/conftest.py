@@ -29,18 +29,20 @@ def isolate_user_data(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def no_real_assistant(monkeypatch):
+def no_real_assistant(monkeypatch, tmp_path):
     """测试里绝不启动真的助手子进程 / 测试连接的小进程（会启动 Claude Code、联网），也不读真的助手 Key（autouse：自动生效）。
+    助手的记账本也换到临时目录（不往用户真实的记账本里记假花费）。
 
     要测子进程的收发，用 tests/fake_assistant_worker.py、tests/fake_assistant_check.py（传 command=...）。
     """
     import keyring
-    from yunyun.assistant import process, settings as assistant_settings
+    from yunyun.assistant import ledger, process, settings as assistant_settings
 
     def refuse(role, *args):
         raise RuntimeError(f"测试里不许启动真的助手小进程（{role}），请用 tests/fake_assistant_*.py")
 
     monkeypatch.setattr(process, "subprocess_command", refuse)
+    monkeypatch.setattr(ledger, "LEDGER_PATH", tmp_path / "assistant_spending.json")
     real_get = keyring.get_password
     monkeypatch.setattr(keyring, "get_password", lambda service, user: None
                         if service == assistant_settings.KEYRING_SERVICE else real_get(service, user))

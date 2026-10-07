@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from PySide6.QtCore import QCoreApplication, QObject, Signal
 
 from yunyun import i18n
-from yunyun.assistant import protocol
+from yunyun.assistant import ledger, protocol
 
 log = logging.getLogger(__name__)
 
@@ -232,6 +232,7 @@ class AssistantSession(QObject):
         elif isinstance(event, protocol.TurnFinished):
             turn.cost_usd, turn.session_cost_usd = event.cost_usd, event.session_cost_usd
             turn.input_tokens, turn.output_tokens = event.input_tokens, event.output_tokens
+            ledger.record(event.cost_usd)   # 记账：设置页显示今天 / 本月 / 一共花了多少
             self._end_turn(stopped=event.stopped)
         else:
             log.info("暂不处理的事件：%s", type(event).__name__)   # PermissionRequest：阶段 2

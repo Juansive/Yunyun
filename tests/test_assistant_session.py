@@ -234,3 +234,13 @@ def test_real_channel_with_fake_worker(qapp):
     process = processes[0]
     session.close(wait=True)
     assert not isValid(process) or not process.is_running()
+
+
+def test_each_turn_is_recorded_in_the_ledger(session):
+    from yunyun.assistant import ledger
+    session.ask("一")
+    process = session.processes[0]
+    process.say(protocol.Ready("anthropic", "m"), protocol.TurnFinished(0.012, 0.012))
+    session.ask("二")
+    process.say(protocol.TurnFinished(None, None, 100, 20))   # 按 token 计费的服务商：不记美元
+    assert round(ledger.summary().today, 6) == 0.012

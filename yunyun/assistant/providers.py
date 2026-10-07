@@ -19,6 +19,7 @@ class Provider:
     models: tuple = ()                         # 设置页下拉框里的模型，第一个是默认的（用户也可以手填别的）
     prices: dict = field(default_factory=dict)  # 模型 → (输入, 输出) 每百万 token 多少美元，设置页显示价格档次用
     key_url: str = ""                          # 去哪里申请 API Key
+    billing_url: str = ""                      # 看账户余额的网页（Anthropic 没有查余额的接口）
     base_url: str = ""                         # 接口地址；空 = Claude 官方（Claude Code 默认的地址）
     key_env: str = "ANTHROPIC_API_KEY"         # Key 用哪个环境变量传：官方是 x-api-key 头；不少兼容接口要 ANTHROPIC_AUTH_TOKEN
     alias_models: bool = False                 # 把 Claude Code 的模型别名都指到用户选的模型（接别家时要）
@@ -38,6 +39,7 @@ PROVIDERS = {
             models=("claude-haiku-4-5", "claude-sonnet-5-5", "claude-opus-5-5"),   # 便宜 → 聪明
             prices={"claude-haiku-4-5": (1, 5), "claude-sonnet-5-5": (2, 10), "claude-opus-5-5": (4, 20)},
             key_url="https://platform.claude.com",
+            billing_url="https://platform.claude.com/settings/billing",
         ),
     ]
 }

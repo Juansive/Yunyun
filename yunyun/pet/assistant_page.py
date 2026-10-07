@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
 )
 
 from yunyun import i18n
+from yunyun.assistant import ledger
 from yunyun.assistant import settings as assistant_settings
 from yunyun.assistant.process import KeyCheck
 from yunyun.assistant.providers import PROVIDERS
@@ -61,6 +62,12 @@ class AssistantSettingsPage(QWidget):
         self._budget_warning.setWordWrap(True)
         self._budget_warning.setStyleSheet("color: #B26A00;")
         layout.addWidget(self._budget_warning)
+        self._spent = QLabel()   # 芸芸花了多少（自己记的账，见 assistant/ledger.py）+ 去官网看余额的链接
+        self._spent.setWordWrap(True)
+        self._spent.setTextFormat(Qt.TextFormat.RichText)
+        self._spent.setOpenExternalLinks(True)
+        self._spent.setStyleSheet("color: #666;")
+        layout.addWidget(self._spent)
 
         self._hint = QLabel()
         self._hint.setWordWrap(True)
@@ -98,6 +105,7 @@ class AssistantSettingsPage(QWidget):
         self._provider.currentIndexChanged.connect(self._on_provider_changed)
         self._model.currentIndexChanged.connect(self._update_custom_model)
         self._update_provider_texts()
+        self.refresh_spending()
 
     # ---------- 对外（测试也用） ----------
 
@@ -145,6 +153,18 @@ class AssistantSettingsPage(QWidget):
         self._privacy.setText("ℹ️ " + i18n.tr("assistant_privacy_note", self._provider.currentText()))
         saved = assistant_settings.get_api_key(info.code) is not None
         self._key.setPlaceholderText(i18n.tr("assistant_key_saved" if saved else "assistant_key_placeholder"))
+
+    def refresh_spending(self):
+        """今天 / 本月 / 一共花了多少（每次显示这一页时刷新：刚问过问题就能看到）。"""
+        spent = ledger.summary()
+        text = i18n.tr("assistant_spent", ledger.money(spent.today), ledger.money(spent.month), ledger.money(spent.total))
+        if self._info.billing_url:
+            text += "<br>" + i18n.tr("assistant_spent_balance", self._info.billing_url)
+        self._spent.setText(text)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self.refresh_spending()
 
     def _update_budget_warning(self):
         warnings = []

@@ -145,3 +145,15 @@ def test_low_budget_warnings(qapp, keys):
     page._conversation_budget.setValue(1.0)
     assert page._budget_warning.isHidden()
 
+
+
+def test_spending_and_balance_link(qapp, keys):
+    from yunyun.assistant import ledger
+    ledger.record(0.0123)
+    page = make_page()
+    text = page._spent.text()
+    assert "$0.012" in text and "platform.claude.com/settings/billing" in text
+    ledger.record(1.0)
+    page.show()                                      # 每次显示这一页都刷新
+    assert "$1.01" in page._spent.text()
+    page.close()

@@ -465,6 +465,16 @@ TEXTS = {
               "Haiku 4.5 ならたいてい 1 回 1 セントほど（会話の最初の質問は少し高め）。\n"
               "1 つの会話：会話全体の合計の上限です。達したら新しい会話を始めるようお知らせします。",
     },
+    "assistant_spent": {   # 今天、本月、一共（芸芸自己记的账）
+        "zh": "芸芸花的钱：今天 {} · 本月 {} · 一共 {}（只算助手模式）。",
+        "en": "Spent by Yunyun: today {} · this month {} · total {} (assistant mode only).",
+        "ja": "芸芸が使った金額：今日 {} · 今月 {} · 合計 {}（アシスタントモードのみ）。",
+    },
+    "assistant_spent_balance": {   # Anthropic 没有查余额的接口，只能去官网看
+        "zh": '<a href="{}">去官网看账户余额</a>',
+        "en": '<a href="{}">Check your balance online</a>',
+        "ja": '<a href="{}">残高を公式サイトで確認</a>',
+    },
     "assistant_conversation_budget": {"zh": "每段对话最多花", "en": "Max per chat", "ja": "1 つの会話の上限"},
     "assistant_budget_low": {
         "zh": "⚠ 每次回答的上限有点低：每问一次至少要 1 美分左右，低于 $0.05 时芸芸可能总是答到一半就停。",
