@@ -12,11 +12,12 @@
     └──────────────────────────────────┘
 
 - 放在"芸芸 + 输入框 + 卡片堆"旁边（哪边空间大放哪边），从卡片堆那边滑出、淡入；高度跟着内容，短回答不会空一大块。
+  （滑出、定位、阴影、焦点去了别的程序就 dismissed：公共部分在 side_panel.SidePanel）
 - 换一张卡片：内容先淡出、换好再淡入（高度在看不见的那一刻变）。
 - Esc / × → closed_by_user（只关阅读框）；焦点去了别的程序 → dismissed（助手模式整个收起）。
 """
-from PySide6.QtCore import QEasingCurve, QEvent, QPoint, QRect, QRectF, QSize, Qt, QTimer, QVariantAnimation, Signal
-from PySide6.QtGui import QColor, QFont, QGuiApplication, QPainter, QPainterPath, QTextCursor
+from PySide6.QtCore import QRect, QRectF, QSize, Qt, QTimer, QVariantAnimation, Signal
+from PySide6.QtGui import QColor, QGuiApplication, QTextCursor
 from PySide6.QtWidgets import (
     QApplication, QFrame, QGraphicsOpacityEffect, QHBoxLayout, QLabel, QPushButton, QTextBrowser, QVBoxLayout,
     QWidget,
@@ -25,7 +26,7 @@ from PySide6.QtWidgets import (
 from shiboken6 import isValid
 
 from yunyun import i18n
-from yunyun.pet.bubble import place_block
+from yunyun.pet.side_panel import SidePanel
 
 CODE_BACKGROUND = QColor("#F3F5F9")
 
@@ -88,31 +89,17 @@ def group_text(group):
     return "\n".join(block.text() for block in group).replace(" ", "\n")
 
 
-class AssistantReader(QWidget):
+class AssistantReader(SidePanel):
     closed_by_user = Signal()    # Esc / ×：只关阅读框（焦点回到输入框）
-    dismissed = Signal()         # 焦点去了别的程序：助手模式整个收起
 
     READER_W = 470
     MIN_H = 200
     MAX_H = 640
-    MARGIN = 12          # 窗口四周留白（给阴影）
-    PAD = 18
-    GAP = 14
-    SLIDE = 22           # 滑出来的距离
-    OPEN_MS = 280
     SWAP_MS = 110        # 换卡片时淡出 / 淡入各多久
 
     def __init__(self, owner):
         super().__init__(owner)
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Tool)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setFont(QFont("Microsoft YaHei", 10))
         self.card = None
-        self._anchor = QRect()
-        self._placement = None
-        self._target_pos = QPoint()
-        self._shown = 0.0
-        self._hiding = False
         self._pending = None          # 换卡片：淡出后要换上的那张
         self._copy_buttons = []
 
@@ -161,9 +148,6 @@ class AssistantReader(QWidget):
         bottom.addWidget(self._copy_all)
         layout.addLayout(bottom)
 
-        self._open = QVariantAnimation(self, duration=self.OPEN_MS, easingCurve=QEasingCurve.Type.OutCubic)
-        self._open.valueChanged.connect(self._on_open)
-        self._open.finished.connect(self._on_open_finished)
         self._swap = QVariantAnimation(self, duration=self.SWAP_MS)
         self._swap.valueChanged.connect(self._on_swap)
         self._swap.finished.connect(self._on_swap_finished)
@@ -173,44 +157,20 @@ class AssistantReader(QWidget):
 
     # ---------- 对外 ----------
 
-    @property
-    def is_open(self):
-        return self.isVisible() and not self._hiding
-
     def show_card(self, card, anchor):
         """显示一张卡片的全文。anchor：芸芸 + 输入框 + 卡片堆占的区域（屏幕坐标），阅读框放它旁边。"""
         self._anchor = QRect(anchor)
-        if self.isVisible() and not self._hiding:
+        if self.is_open:
             if card is not self.card:
                 self._pending = card          # 已经开着：内容淡出 → 换 → 淡入
                 self._start_swap(out=True)
             return
-        self._hiding = False
         self._fill(card)
-        self._place()
-        if not self.isVisible():
-            self._shown = 0.0
-            self._apply_open()
-            self.show()
-        self.raise_()
-        self._animate(self._open, self._shown, 1.0)
-
-    def hide_animated(self):
-        if self.isVisible() and not self._hiding:
-            self._hiding = True
-            self._animate(self._open, self._shown, 0.0)
+        self._show_animated()
 
     def close_now(self):
-        self._open.stop()
         self._swap.stop()
-        self._hiding = False
-        self.hide()
-
-    def follow(self, anchor):
-        self._anchor = QRect(anchor)
-        if self.isVisible():
-            self._place()
-            self._apply_open()
+        super().close_now()
 
     def retranslate(self):
         self._copy_all.setText(i18n.tr("assistant_reader_copy_all"))
@@ -288,38 +248,7 @@ class AssistantReader(QWidget):
         button.setText(i18n.tr("assistant_reader_copied"))
         QTimer.singleShot(1500, lambda: button.setText(i18n.tr(key)) if _alive(button) else None)
 
-    # ---------- 位置和动画 ----------
-
-    def _place(self):
-        m = self.MARGIN
-        x, y, self._placement = place_block(
-            self._anchor, self.width() - 2 * m, self.height() - 2 * m, gap=self.GAP, current=self._placement,
-            prefer="side")
-        self._target_pos = QPoint(int(x) - m, int(y) - m)
-
-    @staticmethod
-    def _animate(animation, start, end):
-        animation.stop()
-        animation.setStartValue(float(start))
-        animation.setEndValue(float(end))
-        animation.start()
-
-    def _on_open(self, value):
-        self._shown = float(value)
-        self._apply_open()
-
-    def _apply_open(self):
-        """从卡片堆那边滑出来：placement 是 right 就从左往右滑，left 就从右往左。"""
-        direction = -1 if self._placement == "right" else 1 if self._placement == "left" else 0
-        dy = 0 if direction else -self.SLIDE   # 放在上 / 下方时竖着滑
-        offset = int(self.SLIDE * (1 - self._shown))
-        self.move(self._target_pos + QPoint(direction * offset, int(dy * (1 - self._shown))))
-        self.setWindowOpacity(self._shown)
-
-    def _on_open_finished(self):
-        if self._hiding:
-            self._hiding = False
-            self.hide()
+    # ---------- 换卡片的动画 ----------
 
     def _start_swap(self, out):
         self._fading_out = out
@@ -357,32 +286,9 @@ class AssistantReader(QWidget):
             return
         super().keyPressEvent(event)
 
-    def changeEvent(self, event):
-        if event.type() == QEvent.Type.ActivationChange and not self.isActiveWindow() and self.isVisible():
-            QTimer.singleShot(150, self._check_focus_lost)
-        super().changeEvent(event)
-
-    def _check_focus_lost(self):
-        if self.isVisible() and not self._hiding and QApplication.activeWindow() is None:
-            self.dismissed.emit()
-
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self._place_copy_buttons()
-
-    def paintEvent(self, event):
-        p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        rect = QRectF(self.rect()).adjusted(self.MARGIN, self.MARGIN, -self.MARGIN, -self.MARGIN)
-        for i in range(6, 0, -1):   # 柔和的阴影
-            shadow = QPainterPath()
-            shadow.addRoundedRect(rect.adjusted(-i, -i + 3, i, i + 3), 14 + i, 14 + i)
-            p.fillPath(shadow, QColor(30, 40, 70, int(8 * (7 - i) / 6)))
-        body = QPainterPath()
-        body.addRoundedRect(rect, 14, 14)
-        p.fillPath(body, QColor(255, 255, 255, 252))
-        p.setPen(QColor("#DDE3EE"))
-        p.drawPath(body)
 
 
 def _escape(text):

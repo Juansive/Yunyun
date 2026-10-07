@@ -8,6 +8,8 @@
   大脑重启过（闲置退出后再唤出）也插一张：芸芸只记得分隔卡之后的内容。
 - 工作文件夹（输入框左边的按钮）：存进设置，子进程启动时读；换文件夹 = 新对话（Claude Code 的工作目录启动后就不能改），
   分隔卡上写着文件夹名。
+- 确认（改文件、执行命令……）：确认卡片放在阅读框的位置（阅读框先让开），一次一个；等确认时芸芸一直在"思考"。
+  收起着的时候来了确认：芸芸用气泡提醒，唤出时卡片再出来。停止 / 新对话 / 退出 = 等着的都算拒绝。
 - 收起（Esc / 点到别的程序）：输入框缩回去、卡片堆淡出，助手还开着；IDLE_EXIT_MS 没再用才真正退出（释放约 300 MB）。
 - 退出（菜单"退出助手模式" / 闲置太久 / 芸芸退出）：关掉子进程，发 closed。卡片留在 cards 里（芸芸退出才清掉，不写硬盘）。
 
@@ -23,6 +25,7 @@ from PySide6.QtGui import QTextDocument
 from yunyun import i18n
 from yunyun.assistant import settings as assistant_settings
 from yunyun.assistant.session import SETTINGS_ERRORS, AssistantSession, error_text
+from yunyun.pet.assistant_confirm import AssistantConfirm
 from yunyun.pet.assistant_deck import AssistantCard, AssistantDeck
 from yunyun.pet.assistant_input import AssistantInput, folder_name
 from yunyun.pet.assistant_reader import AssistantReader
@@ -61,6 +64,7 @@ class AssistantMode(QObject):
     ANSWER_LINES = 4              # 气泡里只说开头几行，全文在卡片里
     DONE_SAY_MS = 8000            # 答完以后气泡再留多久（卡片堆没显示时）
     DONE_SAY_WITH_DECK_MS = 3000  # 卡片堆开着时：卡片里已经有了，气泡早点收
+    CONFIRM_SAY_MS = 15000        # 收起着时来了确认请求：气泡提醒多久
 
     def __init__(self, pet, cards, make_process=None):
         """cards：所有卡片（从旧到新），由芸芸保管，助手模式退出了也还在。"""
@@ -76,6 +80,8 @@ class AssistantMode(QObject):
         self.input.set_workspace(self.workspace)
         self.deck = AssistantDeck(pet, cards)
         self.reader = AssistantReader(pet)
+        self.confirm = AssistantConfirm(pet)
+        self._confirm_count = 0   # 上次看到有几个等确认（多了才提醒）
         self._closed = False
 
         self.input.submitted.connect(self._on_submitted)
@@ -90,6 +96,10 @@ class AssistantMode(QObject):
         self.input.collapse_started.connect(self.reader.hide_animated)
         self.reader.closed_by_user.connect(self.input.focus)
         self.reader.dismissed.connect(self._collapse_all)
+        self.input.collapse_started.connect(self.confirm.hide_animated)
+        self.confirm.answered.connect(self._on_answered)
+        self.confirm.dismissed.connect(self._collapse_all)
+        self.session.permissions_changed.connect(self._on_permissions_changed)
         self.session.busy_changed.connect(self._on_busy)
         self.session.answer_changed.connect(self._on_answer_changed)
         self.session.progress_changed.connect(self._on_progress)
@@ -113,6 +123,7 @@ class AssistantMode(QObject):
         self.session.start()
         self.input.open(self._pet.body_rect())
         self.deck.show_beside(self._column())
+        self._show_confirm()   # 收起着的时候来的确认
 
     def follow(self, body_rect):
         if self.input.isVisible():
@@ -121,6 +132,8 @@ class AssistantMode(QObject):
             self.deck.follow(self._column())
         if self.reader.isVisible():
             self.reader.follow(self._reader_anchor())
+        if self.confirm.isVisible():
+            self.confirm.follow(self._reader_anchor())
 
     def new_conversation(self, said=None):
         """忘掉之前的对话（正在回答就先停下），卡片堆里插一张分隔卡。"""
@@ -148,6 +161,7 @@ class AssistantMode(QObject):
         self.input.retranslate()
         self.deck.update()
         self.reader.retranslate()
+        self.confirm.retranslate()
 
     def exit(self, wait=False):
         """退出助手模式：输入框、卡片堆立刻消失，关掉子进程。wait=True（芸芸退出时）等子进程真的退出。"""
@@ -159,11 +173,13 @@ class AssistantMode(QObject):
         self.input.close_now()
         self.deck.close_now()
         self.reader.close_now()
+        self.confirm.close_now()
         self.session.close(wait)
         self._pet.end_live(0)
         self.input.deleteLater()
         self.deck.deleteLater()
         self.reader.deleteLater()
+        self.confirm.deleteLater()
         self.closed.emit()
 
     # ---------- 内部 ----------
@@ -183,7 +199,7 @@ class AssistantMode(QObject):
         return column.united(self.deck.cards_rect()) if self.deck.isVisible() else column
 
     def _open_card(self, card):
-        if card.kind != "turn":
+        if card.kind != "turn" or self.confirm.is_open:   # 确认卡片占着阅读框的位置：先回答它
             return
         if self.reader.is_open and self.reader.card is card:   # 再点同一张：关掉
             self.reader.hide_animated()
@@ -196,12 +212,38 @@ class AssistantMode(QObject):
             self.reader.show_card(card, self._reader_anchor())
 
     def _collapse_all(self):
-        """焦点去了别的程序（从阅读框那里）：输入框、卡片堆、阅读框一起收起。"""
+        """焦点去了别的程序（从阅读框 / 确认卡片那里）：输入框、卡片堆、阅读框、确认卡片一起收起。"""
         if self.input.is_open:
             self.input.collapse()
         else:
             self.reader.hide_animated()
             self.deck.hide_animated()
+            self.confirm.hide_animated()
+
+    # ---------- 确认 ----------
+
+    def _show_confirm(self):
+        """显示排在最前面的确认请求（输入框开着的时候；没有就收起确认卡片）。"""
+        pending = self.session.pending_permissions
+        if not pending:
+            self.confirm.hide_animated()
+            return
+        if not self.input.is_open:
+            return
+        self.reader.hide_animated()   # 让出位置
+        self.confirm.show_request(pending[0], self._reader_anchor(), len(pending) - 1, self.workspace)
+
+    def _on_permissions_changed(self):
+        pending = self.session.pending_permissions
+        new_request = len(pending) > self._confirm_count
+        self._confirm_count = len(pending)
+        if new_request and not self.input.is_open and len(pending) == 1:
+            self._pet.say(i18n.tr("assistant_confirm_waiting_said"), self.CONFIRM_SAY_MS)   # 收起着：提醒一下
+        self._show_confirm()
+
+    def _on_answered(self, request_id, allow, reason, remember):
+        self.session.answer_permission(request_id, allow, reason, remember)
+        self.input.focus()   # 确认卡片拿过焦点：还给输入框（不然会被当成"点到别的程序"而收起）
 
     def _on_submitted(self, text):
         if self.session.ask(text):

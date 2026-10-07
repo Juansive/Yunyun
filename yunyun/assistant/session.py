@@ -8,11 +8,15 @@
     session.progress_changed.connect(...)  # 进度行："正在搜索网页…… 关键词" / "芸芸在想……" / ""（不用显示）
     session.turn_finished.connect(...)   # 这一轮结束（回答完、被停止或出错）
     session.error_occurred.connect(...)  # 出错（包括没在回答时的错误，比如启动失败）
+    session.permissions_changed.connect(...)   # 等你确认的操作变了（session.pending_permissions）
     session.start()                      # 先把大脑启动起来（约 2 秒），用户打字的工夫就好了
     session.ask("你好")
+    session.answer_permission(request_id, allow=True)   # 回答确认请求
 
 - 子进程没准备好时先发的问题会先存着，准备好了再交给它。
 - "新对话" = 关掉旧的子进程、启动新的（大脑也就是一个新会话）。旧子进程之后发来的事件一律不理。
+- 确认请求排成队（Claude 可能一次要用好几个工具），界面一次显示第一个；停止 / 新对话 / 关掉时整队作废
+  （大脑那边停下时会把等着的都当成拒绝，这里不用一个个回）。
 - 只用 Qt 和 protocol，不碰 Agent SDK（SDK 在子进程里）。
 """
 import logging
@@ -31,8 +35,6 @@ _TOOL_TEXT = {
     "Edit": "assistant_tool_edit", "Write": "assistant_tool_write", "NotebookEdit": "assistant_tool_edit",
     "Bash": "assistant_tool_command", "PowerShell": "assistant_tool_command",
 }
-# 确认卡片（2.4）做好之前：要确认的操作一律拒绝，免得大脑一直等着
-NO_CONFIRM_UI_REASON = "Yunyun's confirmation UI isn't ready yet, so this action can't be approved for now."
 SETTINGS_ERRORS = {"no_key", "auth", "model", "budget", "reply_budget"}   # 这几种错误在设置页能改好（界面可以给个"去设置"）
 
 
@@ -83,6 +85,7 @@ class AssistantSession(QObject):
     progress_changed = Signal(str)
     turn_finished = Signal(object)    # Turn
     error_occurred = Signal(object)   # protocol.Error
+    permissions_changed = Signal()    # pending_permissions 变了（来了新的 / 回答了 / 作废了）
 
     def __init__(self, parent=None, make_process=None):
         """make_process(语言, parent) → 和 AssistantProcess 一样的对象；不传就用 default_process。"""
@@ -94,6 +97,8 @@ class AssistantSession(QObject):
         self._pending = None          # 子进程还没准备好时先发的问题
         self._tools = set()           # 正在用的工具
         self._progress = ""
+        self._progress_before_wait = ""   # 等确认之前的进度行（答完了换回来）
+        self.pending_permissions = []     # 等你确认的 protocol.PermissionRequest（先来的在前）
         self.turns = []               # 这次会话的所有问答（从旧到新）
 
     # ---------- 对外 ----------
@@ -151,14 +156,30 @@ class AssistantSession(QObject):
         return True
 
     def stop(self):
-        """停止这一轮回答（停下后可以接着聊）。"""
+        """停止这一轮回答（停下后可以接着聊）。等着确认的一起作废（大脑停下时都当成拒绝）。"""
         if not self.busy:
             return
+        self._drop_permissions()
         if self._pending is not None or self._process is None:   # 还没交给大脑：直接收回
             self._pending = None
             self._end_turn(stopped=True)
         else:
             self._process.interrupt()
+
+    def answer_permission(self, request_id, allow, reason="", remember=False):
+        """回答一个确认请求：允许一次（allow）/ 这次对话都允许（allow + remember）/ 拒绝（可以附一句理由）。"""
+        request = next((r for r in self.pending_permissions if r.request_id == request_id), None)
+        if request is None:
+            return False
+        self.pending_permissions.remove(request)
+        if self._process is not None:
+            self._process.send(protocol.PermissionReply(request_id, allow, reason.strip(), remember and allow))
+        log.info("确认 %d（%s）：%s", request_id, request.kind,
+                 "拒绝" if not allow else "这次对话都允许" if remember else "允许一次")
+        if not self.pending_permissions:
+            self._set_progress(self._progress_before_wait)
+        self.permissions_changed.emit()
+        return True
 
     def new_conversation(self):
         """忘掉之前的对话：换一个新的子进程。"""
@@ -193,10 +214,23 @@ class AssistantSession(QObject):
             self._progress = text
             self.progress_changed.emit(text)
 
+    def _set_activity(self, text):
+        """工具 / 文字带来的进度：等确认时先记着（进度行一直显示"等你确认"），答完再换上。"""
+        if self.pending_permissions:
+            self._progress_before_wait = text
+        else:
+            self._set_progress(text)
+
+    def _drop_permissions(self):
+        if self.pending_permissions:
+            self.pending_permissions = []
+            self.permissions_changed.emit()
+
     def _end_turn(self, stopped=False):
         turn, self._turn = self._turn, None
         turn.finished = True
         turn.stopped = turn.stopped or stopped
+        self._drop_permissions()
         self._tools.clear()
         self._set_progress("")
         self.busy_changed.emit(False)
@@ -225,25 +259,28 @@ class AssistantSession(QObject):
         elif isinstance(event, protocol.TextDelta):
             turn.answer += event.text
             if not self._tools:
-                self._set_progress("")
+                self._set_activity("")
             self.answer_changed.emit(turn)
         elif isinstance(event, protocol.ToolStarted):
             self._tools.add(event.tool_id)
             key = _TOOL_TEXT.get(event.name)
             text = i18n.tr(key) if key else i18n.tr("assistant_tool_other", event.name)
-            self._set_progress(f"{text} {event.detail}".strip())
+            self._set_activity(f"{text} {event.detail}".strip())
         elif isinstance(event, protocol.ToolFinished):
             self._tools.discard(event.tool_id)
             if not self._tools:
-                self._set_progress(i18n.tr("assistant_thinking"))
+                self._set_activity(i18n.tr("assistant_thinking"))
         elif isinstance(event, protocol.TurnFinished):
             turn.cost_usd, turn.session_cost_usd = event.cost_usd, event.session_cost_usd
             turn.input_tokens, turn.output_tokens = event.input_tokens, event.output_tokens
             ledger.record(event.cost_usd)   # 记账：设置页显示今天 / 本月 / 一共花了多少
             self._end_turn(stopped=event.stopped)
         elif isinstance(event, protocol.PermissionRequest):
-            log.info("确认请求 %d（%s）：确认卡片还没做，先拒绝", event.request_id, event.kind)
-            process.send(protocol.PermissionReply(event.request_id, False, NO_CONFIRM_UI_REASON))
+            if not self.pending_permissions:
+                self._progress_before_wait = self._progress
+            self.pending_permissions.append(event)
+            self._set_progress(i18n.tr("assistant_waiting_confirm"))
+            self.permissions_changed.emit()
         else:
             log.info("暂不处理的事件：%s", type(event).__name__)
 

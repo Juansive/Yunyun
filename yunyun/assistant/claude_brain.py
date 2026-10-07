@@ -112,6 +112,7 @@ class PermissionGate:
     def __init__(self, workspace, emit):
         self.workspace = str(workspace)
         self.grants = set()
+        self.stopped = False  # 这一轮被停下了：之后迟到的确认请求直接拒绝（下一轮开始时 ClaudeBrain.ask 清掉）
         self._emit = emit
         self._pending = {}    # request_id → (Future, Decision)
         self._next_id = 1
@@ -140,6 +141,8 @@ class PermissionGate:
             return PermissionResultAllow()
         if decision.action == permissions.DENY:
             return PermissionResultDeny(message=decision.reason)
+        if self.stopped:
+            return PermissionResultDeny(message=self.STOPPED)
         request_id, self._next_id = self._next_id, self._next_id + 1
         future = asyncio.get_running_loop().create_future()
         self._pending[request_id] = (future, decision)
@@ -168,7 +171,8 @@ class PermissionGate:
             pending[0].set_result(reply)
 
     def deny_all(self, reason=""):
-        """停下 / 关掉时：等着的确认一律按"拒绝"处理，免得卡住。"""
+        """停下 / 关掉时：等着的确认一律按"拒绝"处理，免得卡住；这一轮之后再来的也直接拒绝。"""
+        self.stopped = True
         for request_id, (future, _) in list(self._pending.items()):
             if not future.done():
                 future.set_result(protocol.PermissionReply(request_id, False, reason))
@@ -378,6 +382,7 @@ class ClaudeBrain:
 
     async def ask(self, text):
         self._state.new_turn()
+        self.gate.stopped = False
         started, first_text = time.monotonic(), None   # 首字要等多久（只记时间，不记内容）
         try:
             await self._client.query(text)

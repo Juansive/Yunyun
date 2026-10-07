@@ -12,7 +12,6 @@ from shiboken6 import isValid
 from fake_assistant_process import FakeProcess
 from yunyun import i18n
 from yunyun.assistant import protocol
-from yunyun.assistant import session as session_module
 from yunyun.assistant.session import AssistantSession, Turn, error_text
 
 FAKE_WORKER = Path(__file__).with_name("fake_assistant_worker.py")
@@ -143,14 +142,70 @@ def test_tool_progress(session):
     assert session.progress == ""
 
 
-def test_permission_requests_are_denied_until_the_confirm_card_exists(session):
-    """确认卡片（2.4）做好之前：一律拒绝，大脑不会一直等。"""
+# ---------- 确认请求 ----------
+
+def edit_request(request_id=7):
+    return protocol.PermissionRequest(request_id, "Edit", {"file_path": "a.py"}, "edit", True, "F:\\proj")
+
+
+def command_request(request_id=8):
+    return protocol.PermissionRequest(request_id, "Bash", {"command": "pytest"}, "command", True, "pytest")
+
+
+def asking(session):
+    changes = []
+    session.permissions_changed.connect(lambda: changes.append([r.request_id for r in session.pending_permissions]))
     session.ask("改一下")
     process = session.processes[0]
-    process.say(protocol.Ready("anthropic", "m"),
-                protocol.PermissionRequest(7, "Edit", {"file_path": "a.py"}, "edit", True, "F:\\proj"))
-    assert process.sent == [protocol.PermissionReply(7, False, session_module.NO_CONFIRM_UI_REASON)]
-    assert session.busy                                   # 这一轮还在继续（Claude 会说它没能改）
+    process.say(protocol.Ready("anthropic", "m"), protocol.ToolStarted("t1", "Edit", "a.py"))
+    return process, changes
+
+
+def test_permission_requests_queue_up_and_progress_says_waiting(session):
+    process, changes = asking(session)
+    process.say(edit_request(7), command_request(8))
+    assert changes == [[7], [7, 8]]
+    assert session.progress == i18n.tr("assistant_waiting_confirm")
+    assert session.answer_permission(7, True)
+    assert process.sent == [protocol.PermissionReply(7, True, "", False)]
+    assert session.progress == i18n.tr("assistant_waiting_confirm")      # 还有一个在等
+    assert session.answer_permission(8, False, "  先别跑  ", remember=True)
+    assert process.sent[-1] == protocol.PermissionReply(8, False, "先别跑", False)   # 拒绝时"都允许"不算数
+    assert changes[-1] == [] and session.progress == "正在改…… a.py"   # 答完了：换回等确认之前的进度
+    assert not session.answer_permission(8, True)                       # 已经答过了
+
+
+def test_allow_for_the_whole_chat_is_passed_on(session):
+    process, _ = asking(session)
+    process.say(command_request(3))
+    session.answer_permission(3, True, remember=True)
+    assert process.sent == [protocol.PermissionReply(3, True, "", True)]
+
+
+def test_tool_events_while_waiting_do_not_hide_the_waiting_text(session):
+    process, _ = asking(session)
+    process.say(edit_request(1), protocol.ToolFinished("t1"))
+    assert session.progress == i18n.tr("assistant_waiting_confirm")
+    session.answer_permission(1, True)
+    assert session.progress == i18n.tr("assistant_thinking")             # 等的时候工具结束了：答完显示最新的
+
+
+def test_stop_drops_waiting_requests(session):
+    process, changes = asking(session)
+    process.say(edit_request(1))
+    session.stop()
+    assert session.pending_permissions == [] and changes[-1] == []
+    assert process.interrupts == 1 and process.sent == []                 # 不用一个个回：大脑停下时都当成拒绝
+
+
+def test_turn_end_and_new_conversation_drop_waiting_requests(session):
+    process, _ = asking(session)
+    process.say(edit_request(1), protocol.TurnFinished(0.001, 0.001))
+    assert session.pending_permissions == []
+    session.ask("再来")
+    process.say(edit_request(2))
+    session.new_conversation()
+    assert session.pending_permissions == []
 
 
 def test_error_during_a_turn(session):

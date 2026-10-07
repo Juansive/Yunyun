@@ -527,3 +527,99 @@ def test_sdk_check_does_not_import_it():
             "print(assistant_available(), 'claude_agent_sdk' in sys.modules)")
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, cwd=Path(__file__).parents[1])
     assert out.stdout.split() == ["True", "False"]   # 开发版找得到 SDK，但没有载入
+
+
+# ---------- 确认卡片 ----------
+
+def permission(request_id=1, tool="Bash", data=None, kind="command", can_remember=True, scope="pytest"):
+    return protocol.PermissionRequest(request_id, tool, data or {"command": "pytest -q"}, kind, can_remember, scope)
+
+
+@pytest.fixture
+def working(qapp, world, monkeypatch):
+    """助手开着、正在回答"跑一下测试"。"""
+    from yunyun.pet.assistant_confirm import AssistantConfirm
+    monkeypatch.setattr(AssistantConfirm, "OPEN_MS", 20)
+    pet, machine, processes = world
+    has_key(monkeypatch)
+    pet.open_assistant()
+    processes[0].say(protocol.Ready("anthropic", "m"))
+    ask(pet, "跑一下测试")
+    return pet, machine, processes[0]
+
+
+def test_confirm_card_asks_and_the_answer_goes_to_the_brain(qapp, working):
+    pet, machine, process = working
+    mode = pet.assistant
+    process.say(protocol.ToolStarted("t1", "Bash", "pytest -q"), permission())
+    assert wait_until(qapp, lambda: mode.confirm.is_open and mode.confirm._shown == 1.0)
+    assert mode.confirm.parent() is pet                          # 从属窗口
+    assert machine.state is PetState.THINKING                    # 等你确认时芸芸一直在"想"
+    assert bubbles(pet)[-1] == i18n.tr("assistant_waiting_confirm")
+    mode.confirm._remember_button.click()
+    assert process.sent == [protocol.PermissionReply(1, True, "", True)]
+    assert wait_until(qapp, lambda: not mode.confirm.isVisible())
+
+
+def test_confirms_come_one_at_a_time(qapp, working):
+    pet, _, process = working
+    confirm = pet.assistant.confirm
+    process.say(permission(1), permission(2, "Edit", {"file_path": "a.py"}, "edit"))
+    assert wait_until(qapp, lambda: confirm.is_open)
+    assert confirm.request.request_id == 1 and confirm._more.text() == "还有 1 个"
+    confirm._deny_button.click()
+    assert confirm.is_open and confirm.request.request_id == 2 and confirm._more.text() == ""
+    confirm._allow_button.click()
+    assert [r.request_id for r in process.sent] == [1, 2]
+    assert wait_until(qapp, lambda: not confirm.isVisible())
+
+
+def test_reader_makes_way_for_the_confirm_card(qapp, working):
+    pet, _, process = working
+    mode = pet.assistant
+    process.say(protocol.TurnFinished(0.001, 0.001))
+    mode._open_card(mode.cards[-1])
+    assert wait_until(qapp, lambda: mode.reader.is_open)
+    ask(pet, "再跑一次")
+    process.say(permission())
+    assert wait_until(qapp, lambda: mode.confirm.is_open and not mode.reader.isVisible())
+    mode._open_card(mode.cards[-1])                              # 确认卡片开着：点卡片不打开阅读框
+    assert not mode.reader.isVisible()
+
+
+def test_confirm_while_collapsed_reminds_then_shows_on_summon(qapp, working):
+    pet, _, process = working
+    mode = pet.assistant
+    mode.input.collapse()
+    assert wait_until(qapp, lambda: not mode.input.isVisible())
+    process.say(permission(1), permission(2))
+    assert not mode.confirm.isVisible()
+    assert bubbles(pet).count(i18n.tr("assistant_confirm_waiting_said")) == 1   # 来了两个，只提醒一次
+    pet.open_assistant()
+    assert wait_until(qapp, lambda: mode.confirm.is_open and mode.confirm.request.request_id == 1)
+
+
+def test_collapse_hides_the_confirm_but_keeps_it_waiting(qapp, working):
+    pet, _, process = working
+    mode = pet.assistant
+    process.say(permission())
+    assert wait_until(qapp, lambda: mode.confirm.is_open)
+    mode.input.collapse()
+    assert wait_until(qapp, lambda: not mode.confirm.isVisible())
+    assert process.sent == [] and len(mode.session.pending_permissions) == 1
+
+
+def test_stop_and_exit_drop_the_confirm(qapp, working):
+    pet, _, process = working
+    mode = pet.assistant
+    process.say(permission())
+    assert wait_until(qapp, lambda: mode.confirm.is_open)
+    mode.input._button.click()                                   # 停止
+    assert process.interrupts == 1 and process.sent == []      # 大脑停下时把等着的都当成拒绝
+    assert wait_until(qapp, lambda: not mode.confirm.isVisible())
+    process.say(protocol.TurnFinished(stopped=True))
+    ask(pet, "再来")
+    process.say(permission(2))
+    assert wait_until(qapp, lambda: mode.confirm.is_open)
+    pet.close_assistant()                                        # 退出助手模式
+    assert process.stopped and not mode.confirm.isVisible()
