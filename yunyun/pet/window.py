@@ -644,13 +644,16 @@ class PetWindow(QWidget):
         """每次右键都重新创建菜单，这样菜单的语言、"暂停/开始"、勾选状态总是最新的。"""
         tr = i18n.tr
         menu = KeepOpenMenu(self)
-        # "✦ 助手模式"：第一项、蓝紫渐变的字，要醒目（2026-10-07 用户要求）；开着时下面多一项"退出助手模式"
+        # "✦ 助手模式"：第一项、蓝紫渐变的字，要醒目（2026-10-07 用户要求）；开着时下面多一项"退出助手模式"，
+        # 芸芸在干活时再多一项"停止助手"（紧急停止：输入框收起着也能停）
         # （这个版本没有助手模式就不显示：打包版要到阶段 9 才带上 Claude Code）
         if assistant_available():
             assistant = FancyAction(tr("menu_assistant"), menu)
             assistant.triggered.connect(self.open_assistant)
             menu.addAction(assistant)
             if self._assistant is not None:
+                if self._assistant.busy:
+                    menu.addAction(tr("menu_assistant_stop"), self.stop_assistant)
                 menu.addAction(tr("menu_assistant_exit"), self.close_assistant)
             menu.addSeparator()
         # "设置…"：所有设置都在设置窗口里（"…"表示点了会打开一个窗口，这是桌面软件的惯例）
@@ -707,6 +710,11 @@ class PetWindow(QWidget):
     def assistant(self):
         """助手模式（没开就是 None）。"""
         return self._assistant
+
+    def stop_assistant(self):
+        """右键"停止助手"：停下正在做的事（命令也结束掉），等着确认的都算拒绝；助手模式还开着，可以接着聊。"""
+        if self._assistant is not None:
+            self._assistant.stop_now()
 
     def close_assistant(self, wait=False):
         """退出助手模式（输入框 + 子进程）。芸芸退出时 wait=True：等子进程真的退出再返回（这时事件循环已经停了）。"""

@@ -89,7 +89,7 @@ class AssistantMode(QObject):
 
         self.input.submitted.connect(self._on_submitted)
         self.input.workspace_chosen.connect(self.change_workspace)
-        self.input.stop_requested.connect(self.session.stop)
+        self.input.stop_requested.connect(self.stop_now)
         self.input.new_conversation_requested.connect(self.new_conversation)
         self.input.collapse_started.connect(self.deck.hide_animated)
         self.input.collapsed.connect(self._on_collapsed)
@@ -152,6 +152,11 @@ class AssistantMode(QObject):
             self.deck.update()
         self.reader.refresh_undo()   # 换了对话：以前的改动撤销不了了
         self._pet.say(said or i18n.tr("assistant_new_chat_said"), 2500)
+
+    def stop_now(self):
+        """停止（输入框的 ■、右键"停止助手"）：大脑停下、正在跑的命令结束、等着的确认都算拒绝。
+        这一轮结束时气泡会说"（已停止）"。"""
+        self.session.stop()
 
     def change_workspace(self, path):
         """换工作文件夹（"" = 不用文件夹）：记进设置，换了的话开新对话（大脑在新文件夹里启动）。"""

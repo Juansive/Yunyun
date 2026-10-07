@@ -625,6 +625,23 @@ def test_stop_and_exit_drop_the_confirm(qapp, working):
     assert process.stopped and not mode.confirm.isVisible()
 
 
+def test_emergency_stop_from_the_menu_even_when_collapsed(qapp, working):
+    pet, machine, process = working
+    mode = pet.assistant
+    process.say(permission())
+    assert wait_until(qapp, lambda: mode.confirm.is_open)
+    mode.input.collapse()                                          # 收起着也能停
+    assert wait_until(qapp, lambda: not mode.input.isVisible())
+    texts = menu_texts(pet)
+    assert texts[1] == "■ 停止助手" and texts[2] == "退出助手模式"   # 干活时才有
+    stop = next(a for a in pet._build_menu().actions() if a.text() == "■ 停止助手")
+    stop.trigger()
+    assert process.interrupts == 1 and mode.session.pending_permissions == []
+    process.say(protocol.TurnFinished(stopped=True))
+    assert machine.state is PetState.IDLE and "■ 停止助手" not in menu_texts(pet)
+    assert pet.assistant is mode and not process.stopped           # 停止 ≠ 退出：还能接着聊
+
+
 # ---------- 撤销 ----------
 
 def test_undo_from_the_reader(qapp, working):

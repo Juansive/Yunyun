@@ -20,6 +20,7 @@ TEXTS = {
     # ---- 右键菜单 ----
     "menu_settings": {"zh": "设置…", "en": "Settings…", "ja": "設定…"},
     "menu_assistant": {"zh": "✦ 助手模式", "en": "✦ Assistant mode", "ja": "✦ アシスタントモード"},
+    "menu_assistant_stop": {"zh": "■ 停止助手", "en": "■ Stop the assistant", "ja": "■ アシスタントを停止"},
     "menu_assistant_exit": {"zh": "退出助手模式", "en": "Exit assistant mode", "ja": "アシスタントモードを終了"},
     "menu_language": {"zh": "语言", "en": "Language", "ja": "言語"},
     "menu_always_on_top": {"zh": "始终在上", "en": "Always on Top", "ja": "常に最前面"},

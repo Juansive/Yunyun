@@ -21,7 +21,7 @@ from claude_agent_sdk import (
     PermissionResultDeny, ResultMessage, ServerToolUseBlock, StreamEvent, ToolResultBlock, ToolUseBlock, UserMessage,
 )
 
-from yunyun.assistant import permissions, protocol
+from yunyun.assistant import permissions, proctree, protocol
 from yunyun.assistant.environment import (   # noqa: F401（clean_environment、hide_child_consoles 也从这里用）
     clean_environment, hide_child_consoles, prepare_process, system_proxy_env,
 )
@@ -383,6 +383,9 @@ class ClaudeBrain:
 
     async def start(self):
         removed = prepare_process()
+        # 放进作业对象：之后开的 claude.exe、命令都在里面，停止时能找全；这个进程没了，它们也跟着结束
+        guarded = proctree.guard_this_process()
+        log.info("作业对象：%s", "好了" if guarded else "没放进去（停止时只能尽量结束命令）")
         log.info("准备启动 Claude Code：服务商 %s，模型 %s，%s，清掉了 %d 个继承的环境变量",
                  self._settings.provider, self._settings.effective_model,
                  "用了工作文件夹" if self._settings.workspace else "没有工作文件夹", len(removed))
@@ -445,10 +448,25 @@ class ClaudeBrain:
         self.gate.deny_all(PermissionGate.STOPPED)   # 等着确认的先拒绝掉，不然停不下来
         if self._client is not None:
             self._state.interrupted = True
+            running = proctree.before_stop()
             await self._client.interrupt()
+            self._kill_leftovers(running)
 
     async def close(self):
         self.gate.deny_all(PermissionGate.STOPPED)
         if self._client is not None:
             client, self._client = self._client, None
+            running = proctree.before_stop()
             await client.disconnect()
+            self._kill_leftovers(running)
+
+    @staticmethod
+    def _kill_leftovers(running):
+        """Claude Code 停下后，它执行命令开的进程可能还在后台跑（Windows 不会顺着进程树结束）：结束掉（见 proctree）。"""
+        try:
+            killed = proctree.stop_commands(running)
+        except OSError as e:
+            log.warning("结束命令进程时出错：%s", e)
+            return
+        if killed:
+            log.info("停下后还有 %d 个命令进程在跑，结束掉了", killed)
