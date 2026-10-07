@@ -39,6 +39,7 @@ class Decision:
     scope: str = ""        # "都允许"管到哪里，给人看的：命令开头 / 文件夹
     danger: bool = False   # 危险命令 / 敏感文件：确认卡片上要醒目地提醒
     reason: str = ""       # 拒绝时告诉 Claude 为什么
+    by_grant: bool = False  # ALLOW 是因为你之前选了"这次对话都允许"（操作记录里区分开）
 
 
 def decide(tool, tool_input, workspace, grants=frozenset()):
@@ -103,7 +104,7 @@ def _decide_read(tool, tool_input, workspace, grants):
     if is_inside(target, workspace):
         return Decision(ALLOW)
     if any(item[0] == "read" and is_inside(target, item[1]) for item in grants if len(item) == 2):
-        return Decision(ALLOW)
+        return Decision(ALLOW, by_grant=True)
     folder = os.path.dirname(target) if tool == "Read" else target
     return Decision(ASK, "read_outside", (("read", _key(folder)),), folder)
 
@@ -116,7 +117,7 @@ def _decide_edit(tool_input, workspace, grants):
     if any(part in SENSITIVE_DIRS for part in parts):
         return Decision(ASK, "edit_sensitive", danger=True)
     if ("edit",) in grants:
-        return Decision(ALLOW)
+        return Decision(ALLOW, by_grant=True)
     return Decision(ASK, "edit", (("edit",),), workspace)
 
 
@@ -270,5 +271,5 @@ def _decide_command(command, grants):
     info = analyze_command(command)
     grant = tuple(("command", prefix) for prefix in info.prefixes) if info.grantable else ()
     if grant and all(item in grants for item in grant):
-        return Decision(ALLOW)
+        return Decision(ALLOW, by_grant=True)
     return Decision(ASK, "command", grant, " · ".join(info.prefixes), info.danger)

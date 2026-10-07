@@ -475,7 +475,75 @@ def test_grant_given_while_another_request_waits_applies(tmp_path):
     gate = Gate(tmp_path)
     gate.gate.grants.add(("command", "pytest"))
     result_ = asyncio.run(gate.gate.can_use_tool("Bash", {"command": "pytest -q"}, None))
-    assert result_.behavior == "allow" and gate.events == []
+    assert result_.behavior == "allow"
+    assert gate.events == [protocol.ToolDecision("", "Bash", "granted", "pytest -q")]   # 没问，只记一笔
+
+
+# ---------- 操作记录：每次工具调用最后怎么定的 ----------
+
+class Context:
+    def __init__(self, tool_use_id):
+        self.tool_use_id = tool_use_id
+
+
+def decisions(gate):
+    return [(e.tool_id, e.decision, e.detail) for e in gate.events if isinstance(e, protocol.ToolDecision)]
+
+
+def test_hook_records_what_it_decided_without_asking(tmp_path):
+    gate = Gate(tmp_path)
+    anyio.run(gate.gate.pre_tool_use, {"tool_name": "Read", "tool_input": {"file_path": str(tmp_path / "a.py")}},
+              "t1", {})
+    anyio.run(gate.gate.pre_tool_use, {"tool_name": "Task", "tool_input": {}}, "t2", {})
+    anyio.run(gate.gate.pre_tool_use, {"tool_name": "Bash", "tool_input": {"command": "pytest"}}, "t3", {})
+    gate.gate.grants.add(("command", "pytest"))
+    anyio.run(gate.gate.pre_tool_use, {"tool_name": "Bash", "tool_input": {"command": "pytest -q"}}, "t4", {})
+    assert decisions(gate) == [("t1", "auto", "a.py"), ("t2", "blocked", ""), ("t4", "granted", "pytest -q")]
+    # t3 要问：问完了才记（见下面）
+
+
+@pytest.mark.parametrize("reply, decision", [
+    (dict(allow=True), "allowed"),
+    (dict(allow=True, remember=True), "remembered"),
+    (dict(allow=False, reason="不要"), "denied"),
+])
+def test_answer_is_recorded(tmp_path, reply, decision):
+    gate = Gate(tmp_path)
+
+    async def main():
+        task = asyncio.create_task(gate.gate.can_use_tool("Bash", {"command": "pytest -q"}, Context("t9")))
+        while not gate.events:
+            await asyncio.sleep(0)
+        assert gate.events[0].tool_id == "t9"                      # 确认请求带着是哪一次工具调用
+        gate.gate.reply(protocol.PermissionReply(gate.events[0].request_id, **reply))
+        await task
+
+    asyncio.run(main())
+    assert decisions(gate) == [("t9", decision, "pytest -q")]
+
+
+def test_stopping_is_recorded_as_stopped(tmp_path):
+    gate = Gate(tmp_path)
+
+    async def main():
+        task = asyncio.create_task(gate.gate.can_use_tool("Bash", {"command": "pytest"}, Context("t1")))
+        while not gate.gate.waiting:
+            await asyncio.sleep(0)
+        gate.gate.deny_all(claude_brain.PermissionGate.STOPPED)
+        await task
+        await gate.gate.can_use_tool("Bash", {"command": "late"}, Context("t2"))   # 停下之后迟到的
+
+    asyncio.run(main())
+    assert [d[:2] for d in decisions(gate)] == [("t1", "stopped"), ("t2", "stopped")]
+
+
+def test_long_commands_are_recorded_in_full_up_to_a_limit(tmp_path):
+    gate = Gate(tmp_path)
+    gate.gate.grants.add(("command", "echo"))
+    command = "echo " + "x" * 1000
+    anyio.run(gate.gate.pre_tool_use, {"tool_name": "PowerShell", "tool_input": {"command": command}}, "t1", {})
+    _, decision, detail = decisions(gate)[-1]
+    assert decision == "granted" and detail == command[:500]        # 命令记全文（进度行里只有开头 120 个字）
 
 
 def test_stopped_turn_without_reported_cost_uses_the_estimate():

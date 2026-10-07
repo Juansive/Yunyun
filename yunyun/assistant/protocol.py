@@ -162,6 +162,29 @@ class PermissionRequest:
     can_remember: bool = False
     scope: str = ""
     danger: bool = False
+    tool_id: str = ""      # 是哪一次工具调用（和 ToolStarted 的 tool_id 一样；操作记录用）
+
+
+@_message
+class ToolDecision:
+    """某一次工具调用最后是怎么定的（操作记录用）。decision 是 DECISIONS 里的一个；
+    detail：给人看的目标（文件、命令全文、网址……）。网页搜索在 Anthropic 那边执行，没有这条（算自动允许）。"""
+    TYPE: ClassVar[str] = "tool_decision"
+    tool_id: str
+    tool: str
+    decision: str
+    detail: str = ""
+
+
+DECISIONS = (
+    "auto",        # 按规则不用问（读文件、搜索、网页）
+    "granted",     # 你之前选了"这次对话都允许"
+    "allowed",     # 你点了"允许一次"
+    "remembered",  # 你点了"这次对话都允许"
+    "denied",      # 你拒绝了
+    "blocked",     # 规则不允许（没开的工具）
+    "stopped",     # 停下了，没做
+)
 
 
 @_message
@@ -217,4 +240,4 @@ ERROR_KINDS = (
 )
 
 COMMANDS = (Ask, Interrupt, PermissionReply, Rewind, Quit)
-EVENTS = (Ready, TextDelta, ToolStarted, ToolFinished, PermissionRequest, TurnFinished, Rewound, Error)
+EVENTS = (Ready, TextDelta, ToolStarted, ToolFinished, PermissionRequest, ToolDecision, TurnFinished, Rewound, Error)

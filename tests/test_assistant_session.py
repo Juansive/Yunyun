@@ -386,3 +386,41 @@ def test_process_gone_while_rewinding_counts_as_failed(session):
     session.rewind(turn.generation, "cp-1")
     session.processes[0].die()
     assert results == [("cp-1", False, [])] and session.rewinding == ""
+
+
+# ---------- 操作记录 ----------
+
+def test_actions_are_recorded_per_turn(session):
+    session.ask("修 bug")
+    process = session.processes[0]
+    process.say(protocol.Ready("anthropic", "m"),
+                protocol.ToolStarted("w1", "WebSearch", "pytest 报错"),         # 网页搜索：没有决定事件，算不用问
+                protocol.ToolStarted("t1", "Read", "calc.py"),
+                protocol.ToolDecision("t1", "Read", "auto", "calc.py"),
+                protocol.ToolFinished("t1", ok=True),
+                protocol.ToolStarted("t2", "Bash", "pytest -q 很长的命令开头"),
+                protocol.ToolDecision("t2", "Bash", "allowed", "pytest -q 很长的命令开头……全文"),
+                protocol.ToolFinished("t2", ok=False),
+                protocol.ToolStarted("t3", "Bash", "rm -rf build"),
+                protocol.ToolDecision("t3", "Bash", "denied", "rm -rf build"),
+                protocol.ToolFinished("t3", ok=False),                       # 拒绝的不算"没成功"
+                protocol.ToolDecision("t4", "Write", "stopped", "new.py"))   # 没见过开始的也记上
+    process.say(protocol.TurnFinished(0.01, 0.01))
+    turn = session.turns[0]
+    assert [(a.tool, a.detail, a.decision, a.ok) for a in turn.actions] == [
+        ("WebSearch", "pytest 报错", "auto", None),
+        ("Read", "calc.py", "auto", True),
+        ("Bash", "pytest -q 很长的命令开头……全文", "allowed", False),   # 命令换成全文
+        ("Bash", "rm -rf build", "denied", None),
+        ("Write", "new.py", "stopped", None),
+    ]
+    session.ask("下一问")
+    process.say(protocol.ToolStarted("t5", "Read", "x.py"))
+    assert [a.tool_id for a in session.turns[1].actions] == ["t5"]   # 每一轮各记各的
+
+
+def test_unknown_decision_is_shown_as_auto(session):
+    session.ask("问")
+    process = session.processes[0]
+    process.say(protocol.Ready("anthropic", "m"), protocol.ToolDecision("t1", "Read", "something-new", "a.py"))
+    assert session.current_turn.actions[0].decision == "auto"

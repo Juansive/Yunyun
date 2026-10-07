@@ -3,6 +3,7 @@
     ┌──────────────────────────────────┐
     │ 你：Python 里怎么把列表倒过来？ × │
     │ 14:20 · $0.0123                  │
+    │ ▸ 芸芸做了 3 件事                 │   ← 操作记录（用过工具才有），点一下展开 / 收起
     │──────────────────────────────────│
     │ 有两种常用写法：                   │
     │ ┌────────────────────── [复制] ┐ │   ← 代码块灰底，右上角浮着"复制"
@@ -83,6 +84,40 @@ def style_code_blocks(document):
             QTextCursor(block).setBlockFormat(fmt)
 
 
+_ACTION_VERBS = {
+    "Read": "assistant_action_read", "Glob": "assistant_action_search", "Grep": "assistant_action_search",
+    "Edit": "assistant_action_edit", "NotebookEdit": "assistant_action_edit", "Write": "assistant_action_write",
+    "Bash": "assistant_action_command", "PowerShell": "assistant_action_command",
+    "WebSearch": "assistant_action_web_search", "web_search": "assistant_action_web_search",
+    "WebFetch": "assistant_action_web_fetch",
+}
+_DECISION_COLORS = {"auto": "#8A94A6", "granted": "#2E7D32", "allowed": "#2E7D32", "remembered": "#2E7D32",
+                    "denied": "#C62828", "blocked": "#C62828", "stopped": "#B7791F"}
+ACTION_DETAIL_CHARS = 56   # 目标太长就中间省略
+
+
+def _short(text, limit=ACTION_DETAIL_CHARS):
+    text = " ".join(str(text).split())   # 命令里的换行压成一行
+    return text if len(text) <= limit else text[:limit - 16] + "…" + text[-15:]
+
+
+def actions_html(actions):
+    """操作记录 → 一张小表：时间、做了什么、目标、怎么定的（没成功的标出来）。"""
+    rows = []
+    for action in actions:
+        key = _ACTION_VERBS.get(action.tool)
+        verb = i18n.tr(key) if key else action.tool
+        decision = i18n.tr(f"assistant_decision_{action.decision}")
+        if action.ok is False:
+            decision += i18n.tr("assistant_action_failed")
+        color = _DECISION_COLORS.get(action.decision, "#8A94A6")
+        rows.append(
+            f'<tr><td style="color:#9AA3B2;">{action.time:%H:%M}</td><td>{_escape(verb)}</td>'
+            f'<td style="font-family:Consolas,\'Microsoft YaHei\';">{_escape(_short(action.detail))}</td>'
+            f'<td style="color:{color};">{_escape(decision)}</td></tr>')
+    return f'<table cellspacing="0" cellpadding="2">{"".join(rows)}</table>'
+
+
 def set_clipboard(text):
     """放进剪贴板（测试时换掉，免得动到用户真实的剪贴板）。"""
     QApplication.clipboard().setText(text)
@@ -92,6 +127,17 @@ def group_text(group):
     return "\n".join(block.text() for block in group).replace(" ", "\n")
 
 
+_ACTIONS_TOGGLE_STYLE = """
+QPushButton { background: transparent; color: #4C6FD8; border: none; padding: 0; font-size: 9pt; text-align: left; }
+QPushButton:hover { color: #2F55C9; text-decoration: underline; }
+"""
+_ACTIONS_STYLE = """
+QTextBrowser { background: #F7F8FB; color: #374151; border: none; border-radius: 6px; font-size: 9pt; }
+QScrollBar:vertical { width: 6px; background: transparent; margin: 2px; }
+QScrollBar::handle:vertical { background: #CBD3E1; border-radius: 3px; min-height: 24px; }
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }
+"""
 _UNDO_STYLE = """
 QPushButton { background: #FFF6E8; color: #B7791F; border: 1px solid #F3DDB8; border-radius: 9px;
               padding: 1px 9px; font-size: 9pt; }
@@ -107,6 +153,7 @@ class AssistantReader(SidePanel):
     READER_W = 470
     MIN_H = 200
     MAX_H = 640
+    ACTIONS_MAX_H = 200  # 操作记录最多占多高（再多就在框里滚动）
     SWAP_MS = 110        # 换卡片时淡出 / 淡入各多久
     UNDO_ARM_MS = 3000   # 点了一次"撤销"后，多久内再点才算数
 
@@ -138,11 +185,24 @@ class AssistantReader(SidePanel):
         self._meta = QLabel()
         self._meta.setStyleSheet("color: #8A94A6; font-size: 9pt;")
         layout.addWidget(self._meta)
+        self._actions_toggle = QPushButton()   # "▸ 芸芸做了 3 件事"：点一下展开操作记录
+        self._actions_toggle.setStyleSheet(_ACTIONS_TOGGLE_STYLE)
+        self._actions_toggle.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._actions_toggle.clicked.connect(self._toggle_actions)
+        layout.addWidget(self._actions_toggle, 0, Qt.AlignmentFlag.AlignLeft)
+        self._actions = QTextBrowser()   # 高度按排版出来的算（_fit_actions），太多就在框里滚动
+        self._actions.setFrameShape(QFrame.Shape.NoFrame)
+        self._actions.setStyleSheet(_ACTIONS_STYLE)
+        self._actions.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._actions.document().setDocumentMargin(6)
+        layout.addWidget(self._actions)
+        self._actions_open = False   # 展开着：换卡片也保持展开
         line = QFrame()
         line.setFixedHeight(1)
         line.setStyleSheet("background: #E6EAF1;")
         layout.addWidget(line)
         self._body = QTextBrowser()
+        self._body.setMinimumHeight(40)   # 放不下时回答在框里滚动，不和上面的挤在一起
         self._body.setOpenExternalLinks(True)
         self._body.setFrameShape(QFrame.Shape.NoFrame)
         self._body.setStyleSheet(_BODY_STYLE)
@@ -214,6 +274,25 @@ class AssistantReader(SidePanel):
             self._fill(self.card)
         else:
             self._show_undo()
+            self._show_actions()
+
+    # ---------- 操作记录 ----------
+
+    def _show_actions(self):
+        actions = self.card.actions if self.card is not None else ()
+        self._actions_toggle.setVisible(bool(actions))
+        self._actions_toggle.setText(("▾ " if self._actions_open else "▸ ")
+                                     + i18n.tr("assistant_actions_toggle", len(actions)))
+        self._actions.setVisible(bool(actions) and self._actions_open)
+        if actions and self._actions_open:
+            self._actions.setHtml(actions_html(actions))
+
+    def _toggle_actions(self):
+        self._actions_open = not self._actions_open
+        self._show_actions()
+        self._fit_height()
+        self._place()
+        self._apply_open()
 
     # ---------- 撤销 ----------
 
@@ -263,6 +342,7 @@ class AssistantReader(SidePanel):
         self._question.setText(i18n.tr("assistant_card_you", card.question))
         self._undo_state = None   # 换了卡片：撤销按钮重新问
         self.refresh_undo()
+        self._show_actions()
         if card.answer:
             self._body.setMarkdown(card.answer)
             style_code_blocks(self._body.document())
@@ -284,8 +364,16 @@ class AssistantReader(SidePanel):
         bottom_row = self._copy_all.isVisibleTo(self) or self._undo.isVisibleTo(self)
         others = (self._question.heightForWidth(width - 32) + self._meta.sizeHint().height() + 1
                   + (self._copy_all.sizeHint().height() if bottom_row else 0) + 6 * 4)
+        if self._actions_toggle.isVisibleTo(self):
+            others += self._actions_toggle.sizeHint().height() + 6
         screen = QGuiApplication.screenAt(self._anchor.center()) or QGuiApplication.primaryScreen()
         limit = min(self.MAX_H, screen.availableGeometry().height() - 40)
+        if self._actions.isVisibleTo(self):
+            self._actions.document().setTextWidth(width - 10)
+            # 操作记录最多占三分之一（屏幕矮的时候也给回答留地方），再多就在框里滚动
+            actions_h = min(int(self._actions.document().size().height()) + 8, self.ACTIONS_MAX_H, limit // 3)
+            self._actions.setFixedHeight(actions_h)
+            others += actions_h + 6
         height = max(self.MIN_H, min(2 * (m + pad) + others + doc_h, limit))
         self.resize(self.READER_W, height)
         self._content.setGeometry(m + pad, m + pad, width, height - 2 * (m + pad))

@@ -183,3 +183,40 @@ def test_undo_button_states(qapp, reader, state, enabled, key):
     assert reader._undo.text() == i18n.tr(key)
     if state == "expired":
         assert "git" in reader._undo.toolTip()
+
+
+# ---------- 操作记录 ----------
+
+def actions():
+    from yunyun.assistant.session import Action
+    return (
+        Action(datetime(2026, 10, 7, 14, 20), "Read", "calc.py", "auto", True),
+        Action(datetime(2026, 10, 7, 14, 21), "Bash", "pytest -q <tests>", "remembered", False),
+        Action(datetime(2026, 10, 7, 14, 22), "Bash", "del /s " + "very\\long\\path\\" * 10, "denied"),
+        Action(datetime(2026, 10, 7, 14, 23), "mcp__x", "", "blocked"),
+    )
+
+
+def test_actions_table():
+    html = assistant_reader.actions_html(actions())
+    assert "14:20" in html and "读" in html and "calc.py" in html and "不用问" in html
+    assert "pytest -q &lt;tests&gt;" in html                      # 转义
+    assert "你允许了，同类不再问（没成功）" in html
+    assert "你拒绝了" in html and "…" in html                       # 太长的目标中间省略
+    assert "mcp__x" in html                                        # 不认识的工具显示原名
+
+
+def test_actions_are_collapsed_until_clicked(qapp, reader):
+    opened(qapp, reader)
+    assert not reader._actions_toggle.isVisibleTo(reader)         # 没用过工具：没有这一行
+    with_actions = card(actions=actions())
+    opened(qapp, reader, with_actions)
+    assert wait_until(qapp, lambda: reader.card is with_actions)
+    assert reader._actions_toggle.isVisibleTo(reader) and not reader._actions.isVisibleTo(reader)
+    assert reader._actions_toggle.text() == "▸ 芸芸做了 4 件事"
+    collapsed = reader.height()
+    reader._actions_toggle.click()
+    assert reader._actions.isVisibleTo(reader) and reader._actions_toggle.text().startswith("▾")
+    assert reader.height() > collapsed                             # 展开后变高
+    reader._actions_toggle.click()
+    assert not reader._actions.isVisibleTo(reader)

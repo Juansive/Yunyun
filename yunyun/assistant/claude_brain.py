@@ -124,46 +124,63 @@ class PermissionGate:
     def decide(self, tool, tool_input):
         return permissions.decide(tool, tool_input, self.workspace, self.grants)
 
+    def _record(self, tool_id, tool, tool_input, decision):
+        """操作记录：这次工具调用最后怎么定的（protocol.DECISIONS），给芸芸发一条 ToolDecision。"""
+        if tool in permissions.SHELL_TOOLS and isinstance(tool_input, dict):
+            detail = str(tool_input.get("command") or "")[:500]   # 命令记全文（太长的截一下）
+        else:
+            detail = _tool_detail(tool, tool_input, self.workspace)
+        self._emit(protocol.ToolDecision(tool_id or "", tool, decision, detail))
+
     async def pre_tool_use(self, hook_input, tool_use_id, context):
         """PreToolUse hook：所有工具调用都先经过这里。"""
-        tool = hook_input.get("tool_name", "")
-        decision = self.decide(tool, hook_input.get("tool_input"))
+        tool, tool_input = hook_input.get("tool_name", ""), hook_input.get("tool_input")
+        decision = self.decide(tool, tool_input)
         log.info("工具 %s：%s%s", tool, decision.action, f"（{decision.kind}）" if decision.kind else "")
         output = {"hookEventName": "PreToolUse", "permissionDecision": decision.action}
         if decision.action == permissions.DENY:
             output["permissionDecisionReason"] = decision.reason
+            self._record(tool_use_id, tool, tool_input, "blocked")
         elif decision.action == permissions.ASK:
-            output["permissionDecisionReason"] = f"Yunyun asks the user ({decision.kind})"
+            output["permissionDecisionReason"] = f"Yunyun asks the user ({decision.kind})"   # 记录等问完再发
         else:
             output["permissionDecisionReason"] = "Allowed by Yunyun's rules"
+            self._record(tool_use_id, tool, tool_input, "granted" if decision.by_grant else "auto")
         return {"hookSpecificOutput": output}
 
     async def can_use_tool(self, tool, tool_input, context):
         """hook 说"要问"的工具：问芸芸（界面上的确认卡片），等回答。"""
+        tool_id = getattr(context, "tool_use_id", None) or ""
         decision = self.decide(tool, tool_input)   # 再看一次：等着的时候你可能刚选了"都允许"
         if decision.action == permissions.ALLOW:
+            self._record(tool_id, tool, tool_input, "granted" if decision.by_grant else "auto")
             return PermissionResultAllow()
         if decision.action == permissions.DENY:
+            self._record(tool_id, tool, tool_input, "blocked")
             return PermissionResultDeny(message=decision.reason)
         if self.stopped:
+            self._record(tool_id, tool, tool_input, "stopped")
             return PermissionResultDeny(message=self.STOPPED)
         request_id, self._next_id = self._next_id, self._next_id + 1
         future = asyncio.get_running_loop().create_future()
         self._pending[request_id] = (future, decision)
         self._emit(protocol.PermissionRequest(
             request_id, tool, tool_input if isinstance(tool_input, dict) else {}, decision.kind,
-            bool(decision.grant), decision.scope, decision.danger))
+            bool(decision.grant), decision.scope, decision.danger, tool_id))
         try:
             reply = await future
         finally:
             self._pending.pop(request_id, None)
+        remember = reply.allow and reply.remember and bool(decision.grant)
         log.info("确认 %d（%s）：%s%s", request_id, decision.kind, "允许" if reply.allow else "拒绝",
-                 "，这次对话都允许" if reply.allow and reply.remember and decision.grant else "")
+                 "，这次对话都允许" if remember else "")
         if not reply.allow:
+            self._record(tool_id, tool, tool_input, "stopped" if self.stopped else "denied")
             message = self.DENIED + (f" Reason: {reply.reason}" if reply.reason else "")
             return PermissionResultDeny(message=message)
-        if reply.remember and decision.grant:
+        if remember:
             self.grants.update(decision.grant)
+        self._record(tool_id, tool, tool_input, "remembered" if remember else "allowed")
         return PermissionResultAllow()
 
     def reply(self, reply):

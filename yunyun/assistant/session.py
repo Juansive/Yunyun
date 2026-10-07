@@ -25,7 +25,8 @@
 """
 import itertools
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import datetime
 
 from PySide6.QtCore import QCoreApplication, QObject, Signal
 
@@ -62,6 +63,17 @@ def error_text(error):
 
 
 @dataclass(eq=False)
+class Action:
+    """操作记录里的一条：芸芸用了一次工具（只在内存里，不写硬盘、不进日志；不记文件内容）。"""
+    time: datetime
+    tool: str
+    detail: str = ""              # 目标：文件、命令全文、网址、搜索词
+    decision: str = "auto"        # protocol.DECISIONS 里的一个
+    ok: bool | None = None        # 用完了没有出错；None = 还没用完 / 没用（被拒绝）
+    tool_id: str = ""
+
+
+@dataclass(eq=False)
 class Turn:
     """一问一答。"""
     question: str
@@ -77,6 +89,10 @@ class Turn:
     checkpoint: str = ""       # 撤销这一轮要用的标记
     generation: int = 0        # 在哪个子进程里问的（撤销只能在同一个子进程里）
     undone: bool = False
+    actions: list = field(default_factory=list)   # 操作记录：这一轮用过的工具（Action，按先后）
+
+    def action(self, tool_id):
+        return next((a for a in self.actions if a.tool_id and a.tool_id == tool_id), None)
 
     def cost_text(self):
         """底部那行小字："这一轮 $… · 这次对话共 $…"（按 token 计费的服务商显示 token 数）；什么都不知道就是空的。"""
@@ -304,11 +320,23 @@ class AssistantSession(QObject):
             self.answer_changed.emit(turn)
         elif isinstance(event, protocol.ToolStarted):
             self._tools.add(event.tool_id)
+            if turn.action(event.tool_id) is None:
+                turn.actions.append(Action(datetime.now(), event.name, event.detail, tool_id=event.tool_id))
             key = _TOOL_TEXT.get(event.name)
             text = i18n.tr(key) if key else i18n.tr("assistant_tool_other", event.name)
             self._set_activity(f"{text} {event.detail}".strip())
+        elif isinstance(event, protocol.ToolDecision):
+            action = turn.action(event.tool_id)
+            if action is None:   # 没见过开始（不应该发生）：也记上
+                action = Action(datetime.now(), event.tool, tool_id=event.tool_id)
+                turn.actions.append(action)
+            action.decision = event.decision if event.decision in protocol.DECISIONS else "auto"
+            action.detail = event.detail or action.detail   # 命令记全文（开始时的线索只有开头）
         elif isinstance(event, protocol.ToolFinished):
             self._tools.discard(event.tool_id)
+            action = turn.action(event.tool_id)
+            if action is not None and action.decision not in ("denied", "blocked", "stopped"):
+                action.ok = event.ok
             if not self._tools:
                 self._set_activity(i18n.tr("assistant_thinking"))
         elif isinstance(event, protocol.TurnFinished):

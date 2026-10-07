@@ -53,7 +53,7 @@ def card_from_turn(turn):
         "turn", datetime.now(), turn.question, turn.answer,
         markdown_to_plain(turn.answer) if turn.answer else "", cost, turn.stopped,
         error_text(turn.error) if turn.error else "",
-        tuple(turn.files), turn.checkpoint, turn.generation, turn.undone,
+        tuple(turn.files), turn.checkpoint, turn.generation, turn.undone, tuple(turn.actions),
     )
 
 

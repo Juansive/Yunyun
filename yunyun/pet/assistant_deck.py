@@ -42,6 +42,7 @@ class AssistantCard:
     checkpoint: str = ""    # 撤销这一问的改动要用的标记（session.rewind）
     generation: int = 0     # 是哪一个大脑会话（session.generation）里的：换了会话就撤销不了了
     undone: bool = False    # 已经撤销了
+    actions: tuple = ()     # 操作记录（session.Action）：这一问芸芸用过哪些工具、怎么定的
 
     @classmethod
     def divider(cls, folder=""):

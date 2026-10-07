@@ -56,9 +56,12 @@ async def main():
                                              answer == "remember")
             requests.append((event, answer))
             loop.call_soon(brain.reply_permission, reply)
+        elif isinstance(event, protocol.ToolDecision):
+            decisions.append(event)
         elif isinstance(event, protocol.Error):
             print("出错：", event)
 
+    decisions = []   # 操作记录（2.9）：每次工具调用最后怎么定的
     brain = make_brain(server, tmp, proj, emit)
     try:
         await asyncio.wait_for(brain.start(), 60)
@@ -71,6 +74,9 @@ async def main():
     print("结论：", "✓ 和规则一致" if [answer for _, answer in requests] == expected_asks
           and (proj / "hello.py").read_text(encoding="utf-8").strip() == "print('hello')"
           and not (other / "new.txt").exists() else "✗ 和规则不一致，看下面的明细")
+    called = {tool_id for tool_id, _, _ in api.calls}
+    print("操作记录：", [(d.tool_id, d.tool, d.decision) for d in decisions])
+    print("操作记录的 id 都对得上工具调用：", "✓" if decisions and {d.tool_id for d in decisions} <= called else "✗")
     print("Claude Code 给模型的工具：", api.offered_tools)
     print("别的请求：", sorted(set(api.others)))
     print("确认请求：")
