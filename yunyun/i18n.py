@@ -524,6 +524,34 @@ TEXTS = {
         "ja": "プロバイダーにこのモデルがありません。モデル名を確認してください。",
     },
     "assistant_error_other": {"zh": "出错了。", "en": "Something went wrong.", "ja": "エラーが発生しました。"},
+    # ---- 助手模式的对话面板（pet/assistant_panel.py）----
+    "assistant_panel_title": {"zh": "芸芸 · 助手", "en": "Yunyun · Assistant", "ja": "芸芸 · アシスタント"},
+    "assistant_panel_model": {"zh": "模型：{}", "en": "Model: {}", "ja": "モデル：{}"},
+    "assistant_new_chat": {"zh": "新对话", "en": "New chat", "ja": "新しい会話"},
+    "assistant_send": {"zh": "发送", "en": "Send", "ja": "送信"},
+    "assistant_stop": {"zh": "停止", "en": "Stop", "ja": "停止"},
+    "assistant_input_placeholder": {
+        "zh": "问芸芸点什么……（Enter 发送，Shift+Enter 换行）",
+        "en": "Ask Yunyun something… (Enter to send, Shift+Enter for a new line)",
+        "ja": "芸芸に聞いてみよう…（Enter で送信、Shift+Enter で改行）",
+    },
+    "assistant_connecting": {"zh": "正在连接大脑……", "en": "Connecting…", "ja": "接続中…"},
+    "assistant_thinking": {"zh": "芸芸在想……", "en": "Yunyun is thinking…", "ja": "芸芸が考え中…"},
+    "assistant_tool_web_search": {"zh": "正在搜索网页……", "en": "Searching the web…", "ja": "ウェブを検索中…"},
+    "assistant_tool_web_fetch": {"zh": "正在看网页……", "en": "Reading a web page…", "ja": "ウェブページを読んでいます…"},
+    "assistant_tool_other": {"zh": "正在使用 {}……", "en": "Using {}…", "ja": "{} を使用中…"},
+    "assistant_stopped": {"zh": "（已停止）", "en": "(Stopped)", "ja": "（停止しました）"},
+    "assistant_cost": {   # 这一轮花费、这次对话累计（美元）
+        "zh": "这一轮 ${:.4f} · 这次对话共 ${:.4f}",
+        "en": "This reply ${:.4f} · This chat ${:.4f}",
+        "ja": "今回 ${:.4f} · この会話の合計 ${:.4f}",
+    },
+    "assistant_cost_tokens": {   # 不按美元计费的服务商：输入 / 输出 token
+        "zh": "这一轮 {} / {} token（输入 / 输出）",
+        "en": "This reply {} / {} tokens (in / out)",
+        "ja": "今回 {} / {} トークン（入力 / 出力）",
+    },
+    "assistant_open_settings": {"zh": "去设置", "en": "Open settings", "ja": "設定を開く"},
 }
 
 _current = DEFAULT_LANGUAGE  # 模块级变量：整个程序共享"当前语言"

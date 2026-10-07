@@ -30,7 +30,8 @@ def main():
         result = {"ok": False, "kind": "nonsense", "detail": "?"}
     else:
         result = {"ok": False, "kind": "model", "detail": f"没有 {model}（Key 长 {len(request['key'])}）"}
-    sys.stdout.write(json.dumps(result, ensure_ascii=False) + "\n")
+    # 和真的 check.py 一样按 UTF-8 写字节：sys.stdout 用系统编码（中文 Windows 是 GBK），芸芸那头会读不懂
+    sys.stdout.buffer.write((json.dumps(result, ensure_ascii=False) + "\n").encode("utf-8"))
     sys.stdout.flush()
 
 
