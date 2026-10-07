@@ -35,6 +35,16 @@ MAX_BUDGET_USD = 0.05
 PERSONA = "你是芸芸，一个住在用户桌面上的桌宠助手。用中文回答，语气亲切、简洁。"
 
 
+def _read_lines(fd):
+    """直接用 os.read 一行行读（和正式代码 yunyun/assistant/protocol.read_lines 一样）。"""
+    buffer = b""
+    while chunk := os.read(fd, 65536):
+        buffer += chunk
+        while b"\n" in buffer:
+            line, buffer = buffer.split(b"\n", 1)
+            yield line + b"\n"
+
+
 def hide_child_consoles():
     """让 SDK 启动的所有子进程（claude.exe，还有它检查版本时的那一次）都不建控制台窗口。
 
@@ -174,7 +184,7 @@ async def run(hide_console, emit, stdin):
 def main():
     # pythonw 没有控制台时 sys.stdout 可能是 None；芸芸给了管道，就直接用文件描述符 0 / 1
     out = sys.stdout.buffer if sys.stdout else os.fdopen(1, "wb")
-    stdin = sys.stdin.buffer if sys.stdin else os.fdopen(0, "rb")
+    stdin = _read_lines(0)   # 不用 sys.stdin.buffer：读线程占着它的锁，退出时 Python 会崩溃（见 yunyun/assistant/protocol.read_lines）
     sys.stdout = sys.stderr   # 别的代码 print 的东西去 stderr，别弄乱和芸芸之间的 JSON
 
     def emit(obj):

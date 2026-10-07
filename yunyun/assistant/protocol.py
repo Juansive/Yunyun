@@ -10,6 +10,7 @@
 界面上显示的文字不放在事件里（要多语言，由芸芸那边用 i18n 生成）：事件里只放工具名、出错种类这类"代号"。
 """
 import json
+import os
 from dataclasses import asdict, dataclass, fields
 from typing import ClassVar
 
@@ -34,6 +35,29 @@ def encode(message):
     """消息 → 一行 UTF-8 的 JSON（以换行结尾）。文字里的换行会被 JSON 转义成 \\n，所以一条消息永远只占一行。"""
     data = {"type": message.TYPE, **asdict(message)}
     return (json.dumps(data, ensure_ascii=False) + "\n").encode("utf-8")
+
+
+def read_lines(fd=0):
+    """从文件描述符（默认 0 = 标准输入）一行行读，读到头（管道断了）就结束。给子进程的读线程用。
+
+    为什么不直接 `for line in sys.stdin.buffer`：读线程会一直卡在那里等下一行，并且占着 sys.stdin 的锁；
+    主程序结束时 Python 要关掉 sys.stdin，拿不到锁，等约 2.5 秒后直接崩溃（Fatal Python error:
+    _enter_buffered_busy，退出码 0xC0000005）。os.read 读的是底层的描述符，不碰那把锁。
+    """
+    buffer = b""
+    while True:
+        try:
+            chunk = os.read(fd, 65536)
+        except OSError:
+            break
+        if not chunk:
+            break
+        buffer += chunk
+        while b"\n" in buffer:
+            line, buffer = buffer.split(b"\n", 1)
+            yield line + b"\n"
+    if buffer:
+        yield buffer
 
 
 def decode(line):

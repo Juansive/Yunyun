@@ -10,5 +10,10 @@ if __name__ == "__main__":
         from yunyun import selfcheck
         sys.exit(selfcheck.run(sys.argv[2]))
 
+    if len(sys.argv) >= 2 and sys.argv[1] == "--assistant-worker":   # 助手子进程（见 yunyun/assistant/worker.py）
+        from yunyun.assistant import worker   # 这条路不 import Qt，子进程要轻
+        worker.main(sys.argv[2:])
+        sys.exit(0)
+
     from yunyun.main import main
     main()

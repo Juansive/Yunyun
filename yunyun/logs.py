@@ -1,6 +1,7 @@
 """日志：把出错信息写进文件，方便排查问题。
 
 位置：%APPDATA%\\Yunyun\\Yunyun\\logs\\yunyun.log（满 1 MB 自动轮换，最多保留 3 个旧文件，总共约 4 MB）。
+助手子进程（助手模式）写同一个文件夹里的 assistant.log。
 
 隐私红线：日志里绝不写邮件正文、授权码、API Key、按了哪个键。只记录"发生了什么问题"。
 
@@ -15,22 +16,22 @@ import threading
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-from PySide6.QtCore import QStandardPaths
-
 _log = logging.getLogger("yunyun")
 
 
 def log_dir():
     """日志文件夹（必须在 QApplication 设置好组织名 / 程序名之后调用）。"""
+    # 用到时才 import Qt：助手子进程也用这个文件配置日志，但它不能载入 Qt（要轻），它会直接传 directory
+    from PySide6.QtCore import QStandardPaths
     base = Path(QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppDataLocation))
     return base / "logs"
 
 
-def setup_logging(directory=None):
+def setup_logging(directory=None, filename="yunyun.log", who="芸芸"):
     """配置日志写到文件，并让"没被捕获的异常"（程序崩溃）也记进日志。返回日志文件路径。"""
     directory = Path(directory) if directory else log_dir()
     directory.mkdir(parents=True, exist_ok=True)
-    path = directory / "yunyun.log"
+    path = directory / filename
 
     handler = RotatingFileHandler(path, maxBytes=1_000_000, backupCount=3, encoding="utf-8")
     handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)-7s %(name)s: %(message)s"))
@@ -49,5 +50,5 @@ def setup_logging(directory=None):
 
     sys.excepthook = excepthook
     threading.excepthook = thread_excepthook
-    _log.info("芸芸启动（Python %s）", sys.version.split()[0])
+    _log.info("%s启动（Python %s）", who, sys.version.split()[0])
     return path

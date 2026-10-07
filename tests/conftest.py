@@ -29,6 +29,24 @@ def isolate_user_data(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def no_real_assistant(monkeypatch):
+    """测试里绝不启动真的助手子进程（它会启动 Claude Code、花钱），也不读真的助手 Key（autouse：自动生效）。
+
+    要测子进程的收发，用 tests/fake_assistant_worker.py（AssistantProcess(..., command=...)）。
+    """
+    import keyring
+    from yunyun.assistant import process, settings as assistant_settings
+
+    def refuse(language):
+        raise RuntimeError("测试里不许启动真的助手子进程，请用 tests/fake_assistant_worker.py")
+
+    monkeypatch.setattr(process, "worker_command", refuse)
+    real_get = keyring.get_password
+    monkeypatch.setattr(keyring, "get_password", lambda service, user: None
+                        if service == assistant_settings.KEYRING_SERVICE else real_get(service, user))
+
+
+@pytest.fixture(autouse=True)
 def close_windows_after_test():
     """每个测试结束后，明确关闭并销毁它创建的所有窗口（autouse：所有测试自动使用）。
 
