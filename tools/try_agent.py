@@ -13,8 +13,6 @@
 """
 import argparse
 import asyncio
-import ctypes
-import ctypes.wintypes as wt
 import os
 import shutil
 import subprocess
@@ -27,6 +25,8 @@ import keyring
 from claude_agent_sdk import (
     AssistantMessage, ClaudeAgentOptions, ClaudeSDKClient, ResultMessage, StreamEvent, ToolUseBlock,
 )
+
+from procutil import clean_inherited_env, descendants, is_alive, kill, memory_mb   # 同一个文件夹里的 tools/procutil.py
 
 SERVICE, PROVIDER = "yunyun-assistant", "anthropic"   # 和 tools/assistant_key.py 一致
 MODEL = "claude-opus-5-5"
@@ -41,94 +41,7 @@ QUESTIONS = [   # (说明, 问题, 回答到多少个字时打断；None = 不�
     ("停止后继续", "刚才那个不用继续了。请只回复两个字：好的。", None),
 ]
 
-# ---------- Windows：进程内存、进程树（ctypes 直接调 API，不用另装 psutil） ----------
-
-k32 = ctypes.WinDLL("kernel32", use_last_error=True)
-psapi = ctypes.WinDLL("psapi")
-PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_VM_READ, PROCESS_TERMINATE, SYNCHRONIZE = 0x1000, 0x0010, 0x0001, 0x100000
-INVALID_HANDLE = ctypes.c_void_p(-1).value
-
-
-class MemCounters(ctypes.Structure):   # PROCESS_MEMORY_COUNTERS_EX
-    _fields_ = [("cb", wt.DWORD), ("PageFaultCount", wt.DWORD),
-                ("PeakWorkingSetSize", ctypes.c_size_t), ("WorkingSetSize", ctypes.c_size_t),
-                ("QuotaPeakPagedPoolUsage", ctypes.c_size_t), ("QuotaPagedPoolUsage", ctypes.c_size_t),
-                ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t), ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
-                ("PagefileUsage", ctypes.c_size_t), ("PeakPagefileUsage", ctypes.c_size_t),
-                ("PrivateUsage", ctypes.c_size_t)]
-
-
-class ProcessEntry(ctypes.Structure):   # PROCESSENTRY32W
-    _fields_ = [("dwSize", wt.DWORD), ("cntUsage", wt.DWORD), ("th32ProcessID", wt.DWORD),
-                ("th32DefaultHeapID", ctypes.c_size_t), ("th32ModuleID", wt.DWORD), ("cntThreads", wt.DWORD),
-                ("th32ParentProcessID", wt.DWORD), ("pcPriClassBase", ctypes.c_long), ("dwFlags", wt.DWORD),
-                ("szExeFile", ctypes.c_wchar * 260)]
-
-
-# 每个函数都声明参数类型：不声明的话，64 位的句柄会被当成 32 位整数，溢出报错
-k32.OpenProcess.argtypes, k32.OpenProcess.restype = [wt.DWORD, wt.BOOL, wt.DWORD], wt.HANDLE
-k32.CloseHandle.argtypes = [wt.HANDLE]
-k32.CreateToolhelp32Snapshot.argtypes, k32.CreateToolhelp32Snapshot.restype = [wt.DWORD, wt.DWORD], wt.HANDLE
-k32.Process32FirstW.argtypes = k32.Process32NextW.argtypes = [wt.HANDLE, ctypes.POINTER(ProcessEntry)]
-k32.WaitForSingleObject.argtypes, k32.WaitForSingleObject.restype = [wt.HANDLE, wt.DWORD], wt.DWORD
-k32.TerminateProcess.argtypes = [wt.HANDLE, wt.UINT]
-psapi.GetProcessMemoryInfo.argtypes = [wt.HANDLE, ctypes.POINTER(MemCounters), wt.DWORD]
-
-
-def memory_mb(pid):
-    """(私有内存, 工作集)，单位 MB；进程不在了返回 None。"""
-    handle = k32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ, False, pid)
-    if not handle:
-        return None
-    try:
-        counters = MemCounters()
-        counters.cb = ctypes.sizeof(MemCounters)
-        if not psapi.GetProcessMemoryInfo(handle, ctypes.byref(counters), counters.cb):
-            return None
-        return counters.PrivateUsage / 2**20, counters.WorkingSetSize / 2**20
-    finally:
-        k32.CloseHandle(handle)
-
-
-def descendants(pid):
-    """pid 的所有子孙进程：[(pid, 程序名)]。"""
-    snap = k32.CreateToolhelp32Snapshot(0x2, 0)   # TH32CS_SNAPPROCESS
-    if snap == INVALID_HANDLE:
-        return []
-    children = {}
-    try:
-        entry = ProcessEntry()
-        entry.dwSize = ctypes.sizeof(ProcessEntry)
-        ok = k32.Process32FirstW(snap, ctypes.byref(entry))
-        while ok:
-            children.setdefault(entry.th32ParentProcessID, []).append((entry.th32ProcessID, entry.szExeFile))
-            ok = k32.Process32NextW(snap, ctypes.byref(entry))
-    finally:
-        k32.CloseHandle(snap)
-    found, todo = [], [pid]
-    while todo:
-        for child in children.get(todo.pop(), []):
-            found.append(child)
-            todo.append(child[0])
-    return found
-
-
-def is_alive(pid):
-    handle = k32.OpenProcess(SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
-    if not handle:
-        return False
-    try:
-        return k32.WaitForSingleObject(handle, 0) == 258   # WAIT_TIMEOUT：还没结束
-    finally:
-        k32.CloseHandle(handle)
-
-
-def kill(pid):
-    handle = k32.OpenProcess(PROCESS_TERMINATE, False, pid)
-    if handle:
-        k32.TerminateProcess(handle, 1)
-        k32.CloseHandle(handle)
-
+# ---------- 内存 ----------
 
 def print_memory(title):
     rows = [(os.getpid(), "python（芸芸所在的进程）")] + descendants(os.getpid())
@@ -144,19 +57,6 @@ def print_memory(title):
 
 
 # ---------- 准备 ----------
-
-def clean_inherited_env():
-    """去掉从父进程继承来的 Claude 相关变量。
-
-    在 Claude 桌面版里运行时，环境里有 ANTHROPIC_BASE_URL 等变量（桌面版自己用的）。
-    原样传给子进程的话，子进程可能走桌面版的通道，而不是用你的 API Key。只删名字，不打印值。
-    """
-    names = [k for k in os.environ
-             if k.startswith(("ANTHROPIC_", "CLAUDE_", "MCP_")) or k in ("CLAUDECODE", "CLAUDE_PID")]
-    for name in names:
-        del os.environ[name]
-    return names
-
 
 def make_options(key, work, config_dir, **extra):
     return ClaudeAgentOptions(
