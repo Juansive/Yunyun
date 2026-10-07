@@ -3,6 +3,7 @@ import pytest
 from PySide6.QtCore import QObject, QTimer, Signal
 
 from yunyun import config as cfg
+from yunyun import i18n
 from yunyun.assistant import protocol
 from yunyun.assistant import settings as assistant_settings
 from yunyun.assistant.settings import AssistantSettings
@@ -50,7 +51,8 @@ def test_defaults(qapp, keys):
     assert page._provider.currentData() == "anthropic"
     assert page.chosen_model == "claude-haiku-4-5"                  # 用户定的默认：最便宜的 Haiku
     assert "$1" in page._model.currentText()                         # 下拉框里写着价格
-    assert page._budget.value() == 0.1
+    assert page._budget.value() == 0.1 and page._conversation_budget.value() == 0.5
+    assert page._budget_warning.isHidden()                           # 默认值不用提醒
     assert page._key.text() == "" and page._key.placeholderText() == "粘贴你的 API Key"
     assert not page._form.isRowVisible(page._custom_model)
 
@@ -78,12 +80,13 @@ def test_test_and_save_success(qapp, keys):
     page._model.setCurrentIndex(page._model.findData("claude-sonnet-5-5"))
     page._key.setText("  sk-ant-new  ")
     page._budget.setValue(0.25)
+    page._conversation_budget.setValue(1.2)
     page._test_and_save()
     assert not page._save_button.isEnabled()                         # 测试期间不能再点
     assert wait_until(qapp, lambda: saved)
     assert FakeCheck.requests == [("anthropic", "claude-sonnet-5-5", "sk-ant-new")]
     assert keys == {"anthropic": "sk-ant-new"}
-    assert assistant_settings.load_settings() == AssistantSettings("anthropic", "claude-sonnet-5-5", 0.25)
+    assert assistant_settings.load_settings() == AssistantSettings("anthropic", "claude-sonnet-5-5", 0.25, 1.2)
     assert page._key.text() == "" and "已保存" in page._key.placeholderText()
     assert page._save_button.isEnabled() and "已保存" in page._status.text()
 
@@ -129,3 +132,16 @@ def test_settings_window_has_the_assistant_page(qapp, keys, monkeypatch):
     """设置窗口里有"助手"页，排在"AI"后面。"""
     from yunyun.pet import settings_window
     assert settings_window.PAGES.index("assistant") == settings_window.PAGES.index("ai") + 1
+
+
+def test_low_budget_warnings(qapp, keys):
+    page = make_page()
+    page._budget.setValue(0.01)                                      # 每问一次就要 1 美分左右
+    assert not page._budget_warning.isHidden()
+    assert page._budget_warning.text() == i18n.tr("assistant_budget_low")
+    page._budget.setValue(0.3)
+    page._conversation_budget.setValue(0.2)                          # 每段对话比每次回答还低
+    assert page._budget_warning.text() == i18n.tr("assistant_budget_conversation_low")
+    page._conversation_budget.setValue(1.0)
+    assert page._budget_warning.isHidden()
+

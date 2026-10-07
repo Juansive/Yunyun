@@ -452,13 +452,30 @@ TEXTS = {
         "ja": "保存済み（変更するときはここに新しいキーを貼り付け）",
     },
     "assistant_key_placeholder": {"zh": "粘贴你的 API Key", "en": "Paste your API key", "ja": "API キーを貼り付け"},
-    "assistant_budget": {"zh": "每次最多花", "en": "Max per reply", "ja": "1 回の上限"},
+    "assistant_budget": {"zh": "每次回答最多花", "en": "Max per reply", "ja": "1 回の回答の上限"},
     "assistant_budget_hint": {
-        "zh": "芸芸每回答你一次（包括期间查网页、读网页）最多花这么多钱，超过就停下来告诉你。用 Haiku 4.5 时，一般一次不到 1 美分。",
-        "en": "The most Yunyun may spend answering you once (including any web searches and page reads). "
-              "If it would go over, she stops and tells you. With Haiku 4.5 a reply usually costs under 1 cent.",
-        "ja": "芸芸が 1 回答えるごと（途中のウェブ検索・閲覧を含む）に使える上限です。超えそうなら止めてお知らせします。"
-              "Haiku 4.5 なら、たいてい 1 回 1 セント未満です。",
+        "zh": "每次回答：芸芸回答你一次（包括期间查网页、读网页）最多花这么多钱，快超过就停下来告诉你。"
+              "用 Haiku 4.5 时一般一次 1 美分左右（每段对话的第一问稍贵一点）。\n"
+              "每段对话：一段对话加起来最多花这么多钱，到了芸芸会提醒你开个新对话。",
+        "en": "Per reply: the most Yunyun may spend answering you once (including web searches and page reads); "
+              "she stops and tells you before going over. With Haiku 4.5 a reply costs about 1 cent "
+              "(the first one in a chat a bit more).\n"
+              "Per chat: the total for one chat; when it's reached, Yunyun suggests starting a new chat.",
+        "ja": "1 回の回答：芸芸が 1 回答えるごと（途中のウェブ検索・閲覧を含む）の上限です。超えそうなら止めてお知らせします。"
+              "Haiku 4.5 ならたいてい 1 回 1 セントほど（会話の最初の質問は少し高め）。\n"
+              "1 つの会話：会話全体の合計の上限です。達したら新しい会話を始めるようお知らせします。",
+    },
+    "assistant_conversation_budget": {"zh": "每段对话最多花", "en": "Max per chat", "ja": "1 つの会話の上限"},
+    "assistant_budget_low": {
+        "zh": "⚠ 每次回答的上限有点低：每问一次至少要 1 美分左右，低于 $0.05 时芸芸可能总是答到一半就停。",
+        "en": "⚠ The per-reply limit is quite low: each question costs at least about 1 cent, "
+              "so below $0.05 Yunyun may often stop halfway.",
+        "ja": "⚠ 1 回の上限が低めです：1 回の質問に最低 1 セントほどかかるので、$0.05 未満だと途中で止まることが多くなります。",
+    },
+    "assistant_budget_conversation_low": {
+        "zh": "⚠ 每段对话的上限比每次回答的还低：一段对话可能只能问一次。",
+        "en": "⚠ The per-chat limit is lower than the per-reply limit: a chat may only fit one question.",
+        "ja": "⚠ 会話の上限が 1 回の上限より低いので、1 つの会話で 1 回しか質問できないかもしれません。",
     },
     "assistant_hint_anthropic": {
         "zh": "在 {} 申请 API Key（按用量付费，和 Claude 订阅分开计费）。点「测试并保存」只检查 Key 和模型，不会花钱。",
@@ -501,9 +518,16 @@ TEXTS = {
         "ja": "リクエストが多すぎます。少し待ってからもう一度お試しください。",
     },
     "assistant_error_budget": {
-        "zh": "这次花费到了上限，芸芸先停下了。可以在设置里调高上限。",
-        "en": "This reply hit the spending limit, so Yunyun stopped. You can raise the limit in Settings.",
-        "ja": "今回の利用額が上限に達したので止めました。上限は設定で変更できます。",
+        "zh": "这段对话加起来花到上限了，芸芸先停下了。开个新对话就能继续（卡片堆右上角，或者 Ctrl+N）。",
+        "en": "This chat has reached its total spending limit, so Yunyun stopped. Start a new chat to continue "
+              "(top-right of the cards, or Ctrl+N).",
+        "ja": "この会話の合計が上限に達したので、芸芸は止まりました。新しい会話を始めれば続けられます"
+              "（カードの右上、または Ctrl+N）。",
+    },
+    "assistant_error_reply_budget": {
+        "zh": "这次回答快超过上限了，芸芸先停下了。",
+        "en": "This reply was about to go over the limit, so Yunyun stopped.",
+        "ja": "今回の回答が上限を超えそうだったので、芸芸は止まりました。",
     },
     "assistant_error_missing_cli": {
         "zh": "找不到 Claude Code 程序，可能需要重新安装芸芸。",

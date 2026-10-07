@@ -43,6 +43,7 @@ PROVIDERS = {
 }
 DEFAULT_PROVIDER = "anthropic"
 DEFAULT_BUDGET_USD = 0.1   # 每次任务最多花多少美元（用户 2026-10-07 定的默认值）
+DEFAULT_CONVERSATION_BUDGET_USD = 0.5   # 每段对话最多花多少（Claude Code 自己按整段对话累计来算）
 
 
 def launch_env(provider, api_key, model):

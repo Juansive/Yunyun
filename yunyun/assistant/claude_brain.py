@@ -6,6 +6,7 @@
 - 会话数据放芸芸自己的数据目录（CLAUDE_CONFIG_DIR），不读用户自己的 Claude Code 设置和 MCP；
 - 阶段 1 只开"网页搜索、读网页"：用 tools 决定有哪些工具（不在列表里的根本不存在），工作文件夹是个空文件夹。
 """
+import asyncio
 import logging
 from collections import deque
 from dataclasses import dataclass, field
@@ -29,6 +30,9 @@ WANTED_TOOLS = ["WebSearch", "WebFetch"]          # 阶段 1：只读，只有�
 CONFIG_DIR = data_dir() / "assistant" / "claude"   # Claude Code 的会话记录、设置放这里（里面有完整对话内容）
 WORKSPACE = data_dir() / "assistant" / "workspace"  # 阶段 1 的工作文件夹：空的，阶段 2 改成用户选的文件夹
 
+# 估算每次回答花了多少（Anthropic 的计价方式）：写缓存 = 输入价 × 1.25，读缓存 = 输入价 × 0.1，网页搜索每次 $0.01
+CACHE_WRITE, CACHE_READ, WEB_SEARCH_USD = 1.25, 0.1, 0.01
+
 
 # ---------- 启动选项 ----------
 
@@ -51,7 +55,7 @@ def build_options(settings, api_key, language, stderr=None):
         strict_mcp_config=True,           # 不加载别处配置的 MCP 服务器
         system_prompt={"type": "preset", "preset": "claude_code", "append": persona(language)},
         include_partial_messages=True,    # 逐字显示
-        max_budget_usd=settings.budget_usd,
+        max_budget_usd=settings.conversation_budget_usd,   # Claude Code 按整段对话累计算；每次回答的上限由 TurnState 估算
         cwd=str(WORKSPACE),
         env=env,
         stderr=stderr,
@@ -68,10 +72,39 @@ class TurnState:
     interrupted: bool = False          # 这一轮用户点了"停止"
     errored: bool = False              # 这一轮已经报过错了（不要重复报）
     seen_tools: set = field(default_factory=set)
+    prices: tuple | None = None        # (输入, 输出)：美元 / 百万 token；None = 不知道价格，不估算
+    reply_budget: float | None = None  # 每次回答的上限（美元）
+    estimate: float = 0.0              # 这一轮估算已经花了多少
+    over_budget: bool = False          # 估算超过了每次回答的上限：大脑会停下这一轮
+    _message_out: int = 0              # 当前这条模型消息已经算过的输出 token / 网页搜索次数（SDK 报的是累计值）
+    _message_searches: int = 0
 
     def new_turn(self):
         self.interrupted = False
         self.errored = False
+        self.estimate = 0.0
+        self.over_budget = False
+
+    def add_usage(self, usage, new_message):
+        """把一次模型调用的用量（流式事件里的 usage）算进这一轮的估算。"""
+        if self.prices is None or not isinstance(usage, dict):
+            return
+        price_in, price_out = (p / 1_000_000 for p in self.prices)
+        if new_message:   # message_start：输入（含读写缓存）只在开头报一次
+            self._message_out = self._message_searches = 0
+            self.estimate += price_in * (int(usage.get("input_tokens") or 0)
+                                         + CACHE_WRITE * int(usage.get("cache_creation_input_tokens") or 0)
+                                         + CACHE_READ * int(usage.get("cache_read_input_tokens") or 0))
+        out = int(usage.get("output_tokens") or 0)
+        if out > self._message_out:
+            self.estimate += price_out * (out - self._message_out)
+            self._message_out = out
+        searches = int((usage.get("server_tool_use") or {}).get("web_search_requests") or 0)
+        if searches > self._message_searches:
+            self.estimate += WEB_SEARCH_USD * (searches - self._message_searches)
+            self._message_searches = searches
+        if self.reply_budget is not None and self.estimate >= self.reply_budget:
+            self.over_budget = True
 
 
 _NETWORK_HINTS = ("connection error", "econnrefused", "econnreset", "enotfound", "etimedout", "fetch failed",
@@ -113,8 +146,13 @@ def translate(message, state):
     events = []
     if isinstance(message, StreamEvent):
         event, delta = message.event, message.event.get("delta") or {}
-        if event.get("type") == "content_block_delta" and delta.get("type") == "text_delta" and delta.get("text"):
+        kind = event.get("type")
+        if kind == "content_block_delta" and delta.get("type") == "text_delta" and delta.get("text"):
             events.append(protocol.TextDelta(delta["text"]))
+        elif kind == "message_start":
+            state.add_usage((event.get("message") or {}).get("usage"), new_message=True)
+        elif kind == "message_delta":
+            state.add_usage(event.get("usage"), new_message=False)
     elif isinstance(message, AssistantMessage):
         if message.error and not state.errored:
             state.errored = True
@@ -134,9 +172,11 @@ def translate(message, state):
 
 def _turn_finished(message, state):
     events = []
-    stopped = state.interrupted
+    stopped = state.interrupted and not state.over_budget
     if message.subtype == "error_max_budget_usd":
-        events.append(protocol.Error("budget"))
+        events.append(protocol.Error("budget"))           # 这段对话累计花到了上限
+    elif state.over_budget:
+        events.append(protocol.Error("reply_budget", f"~${state.estimate:.3f}"))   # 这次回答快超了，芸芸自己停的
     elif message.subtype != "success" and not stopped and not state.errored:
         # 用户点了"停止"时结果是 error_during_execution：那是正常停下，不算出错
         events.append(protocol.Error("other", f"{message.subtype}: {message.errors or ''}"[:500]))
@@ -178,7 +218,11 @@ class ClaudeBrain:
         self._language = language
         self._emit = emit
         self._client = None
-        self._state = TurnState(cost_in_usd=settings.info.cost_in_usd)
+        self._state = TurnState(
+            cost_in_usd=settings.info.cost_in_usd,
+            prices=settings.info.prices.get(settings.effective_model),   # 自己填的模型名不知道价格：不估算
+            reply_budget=settings.budget_usd,
+        )
         self._stderr = deque(maxlen=30)   # Claude Code 的错误输出：启动失败时看最后几行
 
     async def start(self):
@@ -210,6 +254,10 @@ class ClaudeBrain:
                         log.info("一轮结束：花费 %s 美元，token 输入 %d / 输出 %d%s", event.cost_usd,
                                  event.input_tokens, event.output_tokens, "（用户停止）" if event.stopped else "")
                     self._emit(event)
+                if self._state.over_budget and not self._state.interrupted:
+                    log.info("这次回答估算花了约 %.4f 美元，到了上限 %s，停下", self._state.estimate, self._settings.budget_usd)
+                    # 另开一个任务去停：在这里等它的话，SDK 读消息的那一头可能正等着我们把消息取走
+                    asyncio.get_running_loop().create_task(self.interrupt())
         except Exception as e:   # 子进程断了之类：告诉芸芸这一轮出错了，并且结束这一轮
             log.exception("这一轮意外出错")
             self._emit(protocol.Error(error_kind(str(e)), f"{type(e).__name__}: {e}"[:500]))

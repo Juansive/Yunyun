@@ -1,4 +1,4 @@
-"""助手模式的设置：用哪家服务商、哪个模型、每次任务最多花多少钱。
+"""助手模式的设置：用哪家服务商、哪个模型、花费上限（每次回答、每段对话各一个）。
 
 和邮件用的 AI 设置（ai/settings.py）是两套，互不影响：比如邮件用本地模型、助手用 Claude。
 - 服务商、模型、花费上限存在 config.yaml 的 assistant 部分；
@@ -13,17 +13,22 @@ import keyring
 from keyring.errors import PasswordDeleteError
 
 from yunyun import config as cfg
-from yunyun.assistant.providers import DEFAULT_BUDGET_USD, DEFAULT_PROVIDER, PROVIDERS
+from yunyun.assistant.providers import (
+    DEFAULT_BUDGET_USD, DEFAULT_CONVERSATION_BUDGET_USD, DEFAULT_PROVIDER, PROVIDERS,
+)
 
 KEYRING_SERVICE = "yunyun-assistant"
-MIN_BUDGET_USD, MAX_BUDGET_USD = 0.01, 10.0   # 花费上限能设的范围（防止手滑填成 1000）
+MIN_BUDGET_USD, MAX_BUDGET_USD = 0.01, 10.0   # 每次回答的上限能设的范围（防止手滑填成 1000）
+MIN_CONVERSATION_BUDGET_USD, MAX_CONVERSATION_BUDGET_USD = 0.05, 50.0   # 每段对话的上限
+LOW_BUDGET_USD = 0.05   # 每次回答的上限低于这个就提醒：每段对话的第一问就要 1 美分多（Claude Code 自带的说明很长）
 
 
 @dataclass
 class AssistantSettings:
     provider: str = DEFAULT_PROVIDER
     model: str = ""                       # 空 = 用这家服务商的默认模型
-    budget_usd: float = DEFAULT_BUDGET_USD
+    budget_usd: float = DEFAULT_BUDGET_USD                            # 每次回答（芸芸自己按 token 估算）
+    conversation_budget_usd: float = DEFAULT_CONVERSATION_BUDGET_USD  # 每段对话（交给 Claude Code 的 max_budget_usd）
 
     @property
     def info(self):
@@ -43,7 +48,10 @@ def load_settings():
     provider = saved.get("provider")
     if provider not in PROVIDERS:
         return AssistantSettings()
-    return AssistantSettings(provider, str(saved.get("model") or ""), _budget(saved.get("budget_usd")))
+    return AssistantSettings(
+        provider, str(saved.get("model") or ""), _budget(saved.get("budget_usd")),
+        _conversation_budget(saved.get("conversation_budget_usd")),
+    )
 
 
 def save_settings(settings):
@@ -52,18 +60,27 @@ def save_settings(settings):
         "provider": settings.provider,
         "model": settings.model,
         "budget_usd": _budget(settings.budget_usd),
+        "conversation_budget_usd": _conversation_budget(settings.conversation_budget_usd),
     }
     cfg.save_config(config)
 
 
 def _budget(value):
+    return _clamp(value, DEFAULT_BUDGET_USD, MIN_BUDGET_USD, MAX_BUDGET_USD)
+
+
+def _conversation_budget(value):
+    return _clamp(value, DEFAULT_CONVERSATION_BUDGET_USD, MIN_CONVERSATION_BUDGET_USD, MAX_CONVERSATION_BUDGET_USD)
+
+
+def _clamp(value, default, low, high):
     try:
         value = float(value)
     except (TypeError, ValueError):
-        return DEFAULT_BUDGET_USD
+        return default
     if value != value:   # NaN（不是一个数）不等于它自己
-        return DEFAULT_BUDGET_USD
-    return min(max(value, MIN_BUDGET_USD), MAX_BUDGET_USD)
+        return default
+    return min(max(value, low), high)
 
 
 def get_api_key(provider):

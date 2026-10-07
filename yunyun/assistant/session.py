@@ -26,7 +26,7 @@ from yunyun.assistant import protocol
 log = logging.getLogger(__name__)
 
 _TOOL_TEXT = {"WebSearch": "assistant_tool_web_search", "WebFetch": "assistant_tool_web_fetch"}
-SETTINGS_ERRORS = {"no_key", "auth", "model", "budget"}   # 这几种错误在设置页能改好（界面可以给个"去设置"）
+SETTINGS_ERRORS = {"no_key", "auth", "model", "budget", "reply_budget"}   # 这几种错误在设置页能改好（界面可以给个"去设置"）
 
 
 def default_process(language, parent):

@@ -119,3 +119,21 @@ def test_keys_are_stored_per_provider(fake_keyring, monkeypatch):
     assistant_settings.delete_api_key("other")                 # 删两次也不出错
     assert not assistant_settings.is_ready(AssistantSettings("other"))
     assert assistant_settings.get_api_key("anthropic") == "sk-ant-1"
+
+
+@pytest.mark.parametrize("saved, expected", [
+    (2, 2.0),
+    (0, 0.05),          # 太小：按最小值
+    (999, 50.0),        # 太大：按最大值
+    (None, 0.5),        # 以前的设置里没有这一项：用默认值
+    ("abc", 0.5),
+])
+def test_conversation_budget_is_kept_in_a_sane_range(fake_keyring, saved, expected):
+    cfg.save_config({"assistant": {"provider": "anthropic", "conversation_budget_usd": saved}})
+    assert load_settings().conversation_budget_usd == expected
+
+
+def test_both_budgets_are_saved(fake_keyring):
+    save_settings(AssistantSettings(budget_usd=0.2, conversation_budget_usd=1.5))
+    loaded = load_settings()
+    assert (loaded.budget_usd, loaded.conversation_budget_usd) == (0.2, 1.5)

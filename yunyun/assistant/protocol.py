@@ -175,7 +175,8 @@ ERROR_KINDS = (
     "auth",          # Key 不对或过期了
     "billing",       # 账户余额不足
     "rate_limit",    # 请求太频繁，被限流了
-    "budget",        # 这次任务超过了花费上限
+    "budget",        # 这段对话累计花到了上限（Claude Code 的 max_budget_usd）
+    "reply_budget",  # 这次回答估算快超过上限了，芸芸自己停下（TurnState.add_usage）
     "missing_cli",   # 找不到 Claude Code 程序
     "no_key",        # 还没有填 Key
     "model",         # 没有这个模型（模型名填错了）

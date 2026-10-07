@@ -93,6 +93,87 @@ def test_budget_exceeded():
     assert isinstance(events[1], protocol.TurnFinished)
 
 
+# ---------- 每次回答的花费：按 token 估算 ----------
+
+def usage_event(kind, usage):
+    event = ({"type": "message_start", "message": {"usage": usage}} if kind == "start"
+             else {"type": "message_delta", "usage": usage})
+    return StreamEvent(uuid="u", session_id="s", event=event)
+
+
+def test_reply_cost_is_estimated_from_usage():
+    state = TurnState(prices=(1, 5), reply_budget=1.0)
+    assert translate(usage_event("start", {"input_tokens": 1000, "cache_creation_input_tokens": 8000,
+                                           "cache_read_input_tokens": 10000, "output_tokens": 1}), state) == []
+    first_input = (1000 + 8000 * 1.25 + 10000 * 0.1) / 1e6          # 写缓存贵 25%，读缓存只要一成
+    translate(usage_event("delta", {"output_tokens": 201, "server_tool_use": {"web_search_requests": 1}}), state)
+    translate(usage_event("delta", {"output_tokens": 401, "server_tool_use": {"web_search_requests": 1}}), state)
+    assert state.estimate == pytest.approx(first_input + 401 * 5 / 1e6 + 0.01)   # 报的是累计值：只算新增的
+    translate(usage_event("start", {"input_tokens": 500, "output_tokens": 0}), state)   # 用完工具，第二次调用模型
+    assert state.estimate == pytest.approx(first_input + 401 * 5 / 1e6 + 0.01 + 500 / 1e6)
+    assert not state.over_budget
+    state.new_turn()
+    assert state.estimate == 0.0
+
+
+def test_over_reply_budget_stops_with_its_own_error():
+    state = TurnState(prices=(1, 5), reply_budget=0.01)
+    translate(usage_event("start", {"input_tokens": 20000}), state)
+    assert state.over_budget
+    state.interrupted = True                                       # 大脑会去停下这一轮
+    events = translate(result("error_during_execution", total=0.02, is_error=True), state)
+    assert events[0] == protocol.Error("reply_budget", "~$0.020")
+    assert events[1].stopped is False                              # 不算"用户点了停止"
+
+
+def test_unknown_price_means_no_estimate():
+    state = TurnState(prices=None, reply_budget=0.01)
+    translate(usage_event("start", {"input_tokens": 10 ** 6}), state)
+    assert state.estimate == 0 and not state.over_budget
+
+
+class FakeClient:
+    """假的 ClaudeSDKClient：按剧本吐消息，记下有没有被叫停。"""
+
+    def __init__(self, messages):
+        self.messages = messages
+        self.interrupted = False
+
+    async def query(self, text):
+        pass
+
+    async def receive_response(self):
+        for message in self.messages:
+            await anyio.sleep(0)      # 让别的任务（去停下这一轮的）有机会运行
+            yield message
+
+    async def interrupt(self):
+        self.interrupted = True
+
+
+def test_brain_stops_the_reply_when_over_budget():
+    emitted = []
+    brain = claude_brain.ClaudeBrain(AssistantSettings(budget_usd=0.01), "sk-ant-test", "zh", emitted.append)
+    brain._client = FakeClient([
+        usage_event("start", {"input_tokens": 20000}),             # Haiku：$0.02，超过 $0.01
+        text_event("写到"),
+        result("error_during_execution", total=0.02, is_error=True),
+    ])
+
+    async def run():
+        await brain.ask("hi")
+        await anyio.sleep(0.01)
+
+    anyio.run(run)
+    assert brain._client.interrupted
+    assert protocol.Error("reply_budget", "~$0.020") in emitted
+
+
+def test_custom_model_has_no_price_so_no_reply_estimate():
+    brain = claude_brain.ClaudeBrain(AssistantSettings(model="my-own-model"), "k", "zh", lambda e: None)
+    assert brain._state.prices is None
+
+
 def test_unexpected_failure_is_an_error():
     events = translate(result("error_during_execution", is_error=True, errors=["boom"]), TurnState())
     assert events[0].kind == "other" and "boom" in events[0].detail
@@ -160,13 +241,14 @@ def test_system_proxy_env(environ, proxies, expected):
 
 def test_build_options(monkeypatch):
     monkeypatch.setattr(claude_brain, "system_proxy_env", lambda: {})
-    options = claude_brain.build_options(AssistantSettings(budget_usd=0.1), "sk-ant-test", "en")
+    options = claude_brain.build_options(
+        AssistantSettings(budget_usd=0.1, conversation_budget_usd=0.7), "sk-ant-test", "en")
     assert options.model == "claude-haiku-4-5"
     assert options.tools == options.allowed_tools == ["WebSearch", "WebFetch"]   # 阶段 1：只有网页工具
     assert options.permission_mode == "dontAsk"
     assert options.setting_sources == [] and options.strict_mcp_config
     assert options.effort is None                                  # Haiku 4.5 不支持 effort
-    assert options.max_budget_usd == 0.1
+    assert options.max_budget_usd == 0.7   # Claude Code 按整段对话累计算；每次回答的上限芸芸自己估算
     assert options.include_partial_messages
     assert options.system_prompt == {"type": "preset", "preset": "claude_code", "append": persona("en")}
     assert options.cwd == str(claude_brain.WORKSPACE)

@@ -15,7 +15,10 @@ from yunyun import i18n
 from yunyun.assistant import settings as assistant_settings
 from yunyun.assistant.process import KeyCheck
 from yunyun.assistant.providers import PROVIDERS
-from yunyun.assistant.settings import MAX_BUDGET_USD, MIN_BUDGET_USD, AssistantSettings
+from yunyun.assistant.settings import (
+    LOW_BUDGET_USD, MAX_BUDGET_USD, MAX_CONVERSATION_BUDGET_USD, MIN_BUDGET_USD, MIN_CONVERSATION_BUDGET_USD,
+    AssistantSettings,
+)
 
 
 class AssistantSettingsPage(QWidget):
@@ -40,22 +43,24 @@ class AssistantSettingsPage(QWidget):
         self._key = QLineEdit()
         self._key.setEchoMode(QLineEdit.EchoMode.Password)
         self._key.returnPressed.connect(self._test_and_save)
-        self._budget = QDoubleSpinBox()
-        self._budget.setRange(MIN_BUDGET_USD, MAX_BUDGET_USD)
-        self._budget.setDecimals(2)
-        self._budget.setSingleStep(0.05)
-        self._budget.setPrefix("$ ")
+        self._budget = _money_box(MIN_BUDGET_USD, MAX_BUDGET_USD, 0.05)                         # 每次回答
+        self._conversation_budget = _money_box(MIN_CONVERSATION_BUDGET_USD, MAX_CONVERSATION_BUDGET_USD, 0.1)   # 每段对话
         form.addRow(tr("assistant_provider"), self._provider)
         form.addRow(tr("assistant_model"), self._model)
         form.addRow("", self._custom_model)
         form.addRow(tr("assistant_key"), self._key)
         form.addRow(tr("assistant_budget"), self._budget)
+        form.addRow(tr("assistant_conversation_budget"), self._conversation_budget)
         layout.addLayout(form)
 
         budget_hint = QLabel(tr("assistant_budget_hint"))
         budget_hint.setWordWrap(True)
         budget_hint.setStyleSheet("color: #666;")
         layout.addWidget(budget_hint)
+        self._budget_warning = QLabel()   # 上限设得太低时的提醒（橙色），改数字时马上更新
+        self._budget_warning.setWordWrap(True)
+        self._budget_warning.setStyleSheet("color: #B26A00;")
+        layout.addWidget(self._budget_warning)
 
         self._hint = QLabel()
         self._hint.setWordWrap(True)
@@ -86,6 +91,10 @@ class AssistantSettingsPage(QWidget):
         self._provider.setCurrentIndex(self._provider.findData(saved.provider))
         self._fill_models(saved.effective_model)
         self._budget.setValue(saved.budget_usd)
+        self._conversation_budget.setValue(saved.conversation_budget_usd)
+        self._budget.valueChanged.connect(self._update_budget_warning)
+        self._conversation_budget.valueChanged.connect(self._update_budget_warning)
+        self._update_budget_warning()
         self._provider.currentIndexChanged.connect(self._on_provider_changed)
         self._model.currentIndexChanged.connect(self._update_custom_model)
         self._update_provider_texts()
@@ -137,6 +146,15 @@ class AssistantSettingsPage(QWidget):
         saved = assistant_settings.get_api_key(info.code) is not None
         self._key.setPlaceholderText(i18n.tr("assistant_key_saved" if saved else "assistant_key_placeholder"))
 
+    def _update_budget_warning(self):
+        warnings = []
+        if self._budget.value() < LOW_BUDGET_USD - 1e-9:
+            warnings.append(i18n.tr("assistant_budget_low"))
+        if self._conversation_budget.value() < self._budget.value() - 1e-9:
+            warnings.append(i18n.tr("assistant_budget_conversation_low"))
+        self._budget_warning.setText("\n".join(warnings))
+        self._budget_warning.setVisible(bool(warnings))
+
     def _test_and_save(self):
         if not self._save_button.isEnabled():
             return
@@ -150,7 +168,8 @@ class AssistantSettingsPage(QWidget):
         if not key:
             self._show_status(i18n.tr("assistant_empty_key"), error=True)
             return
-        self._pending = (AssistantSettings(info.code, model, round(self._budget.value(), 2)), typed_key)
+        self._pending = (AssistantSettings(info.code, model, round(self._budget.value(), 2),
+                                           round(self._conversation_budget.value(), 2)), typed_key)
         self._set_busy(True)
         self._show_status(i18n.tr("assistant_testing"))
         self._check = self._make_check(info.code, model, key)
@@ -177,9 +196,19 @@ class AssistantSettingsPage(QWidget):
         self.settings_saved.emit()
 
     def _set_busy(self, busy):
-        for widget in (self._save_button, self._provider, self._model, self._custom_model, self._key, self._budget):
+        for widget in (self._save_button, self._provider, self._model, self._custom_model, self._key, self._budget,
+                       self._conversation_budget):
             widget.setEnabled(not busy)
 
     def _show_status(self, text, error=False):
         self._status.setStyleSheet("color: #C62828;" if error else "color: #2E7D32;")
         self._status.setText(text)
+
+
+def _money_box(low, high, step):
+    box = QDoubleSpinBox()
+    box.setRange(low, high)
+    box.setDecimals(2)
+    box.setSingleStep(step)
+    box.setPrefix("$ ")
+    return box
