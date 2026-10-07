@@ -6,8 +6,9 @@
 
     任意状态 ── 收到邮件 ──▶ 激动 EXCITED ── 几秒后 ──▶ 回到 工作 或 待机
 
-    任意状态 ── 用户点小红点 ──▶ 思考 THINKING ── 邮件处理完 ──▶ 回到 工作 或 待机
-    （思考期间来了新邮件不打断思考，只是小红点 +1）
+    任意状态 ── 用户点小红点 / 助手在回答 ──▶ 思考 THINKING ── 都结束了 ──▶ 回到 工作 或 待机
+    （思考按原因分开算："mail" 处理邮件、"assistant" 助手在回答；两件事都结束才不想了。
+      思考期间来了新邮件不打断思考，只是小红点 +1）
 
     免打扰时段里，"休息"的样子从 待机 IDLE 换成 睡觉 SLEEPING：
     睡觉 SLEEPING ── 敲键盘 ──▶ 工作（醒来陪你打字）── 一段时间没敲 ──▶ 又睡着
@@ -41,6 +42,7 @@ class StateMachine(QObject):
         super().__init__(parent)
         self._state = PetState.IDLE
         self._quiet = False  # 是否在免打扰时段
+        self._thinking = set()  # 芸芸在想哪些事（"mail" / "assistant"）
 
         # 这个定时器在"运行中"就代表：用户最近 IDLE_AFTER_MS 内敲过键盘
         self._idle_timer = QTimer(self)
@@ -91,14 +93,21 @@ class StateMachine(QObject):
         self._set_state(PetState.EXCITED)
         self._excited_timer.start()  # 连续来邮件会重新计时
 
-    def start_thinking(self):
-        """开始用 AI 处理邮件。"""
+    @property
+    def thinking_about(self):
+        """芸芸正在想的事（测试和调试用）。"""
+        return frozenset(self._thinking)
+
+    def start_thinking(self, reason="mail"):
+        """开始想一件事："mail" 用 AI 处理邮件，"assistant" 助手在回答。"""
+        self._thinking.add(reason)
         self._excited_timer.stop()   # 如果正在激动，直接转入思考
         self._set_state(PetState.THINKING)
 
-    def stop_thinking(self):
-        """邮件处理完了。"""
-        if self._state is PetState.THINKING:
+    def stop_thinking(self, reason="mail"):
+        """这件事想完了。还有别的事在想就继续思考（比如邮件处理完了，助手还在回答）。"""
+        self._thinking.discard(reason)
+        if not self._thinking and self._state is PetState.THINKING:
             self._back_to_normal()
 
     # ---------- 内部 ----------

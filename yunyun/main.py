@@ -78,7 +78,9 @@ def main():
 
     quiet.changed.connect(on_quiet_changed)
     connect_mail(mail, pet, machine, history, quiet)
+    connect_assistant(pet, machine)
 
+    app.aboutToQuit.connect(lambda: pet.close_assistant(wait=True))   # 退出前关掉助手子进程（等它真的退出）
     app.aboutToQuit.connect(keyboard.stop)       # 退出前停止键盘监听
     app.aboutToQuit.connect(ai.shutdown)         # 退出前关掉芸芸按需启动的 Ollama
     app.aboutToQuit.connect(mail.stop)           # 退出前断开实时接收邮件的连接
@@ -100,6 +102,18 @@ def main():
             pet.open_mail_accounts()
         QTimer.singleShot(800, first_run)  # 稍等芸芸先出现在桌面上，再弹窗口
     sys.exit(app.exec())          # 进入事件循环，直到程序退出
+
+
+def connect_assistant(pet, machine):
+    """助手模式和芸芸连起来：助手回答时芸芸思考（和处理邮件各算各的）。
+    面板本身由 pet.open_assistant() 管；这里不 import 助手的代码（芸芸平时不加载它）。"""
+    def on_busy(busy):
+        if busy:
+            machine.start_thinking("assistant")
+        else:
+            machine.stop_thinking("assistant")
+
+    pet.assistant_busy_changed.connect(on_busy)
 
 
 def connect_mail(mail, pet, machine, history=None, quiet=None):
@@ -139,11 +153,11 @@ def connect_mail(mail, pet, machine, history=None, quiet=None):
         ai.prepare()                     # 本地模型：趁读邮箱的时候提前启动 Ollama、加载模型
         batch["id"] = f"{time.time():.3f}"
         pet.begin_mail_batch()           # 清空卡片堆，接收这一轮的结果
-        machine.start_thinking()         # 芸芸进入思考状态
+        machine.start_thinking("mail")   # 芸芸进入思考状态
         pet.set_mail_processing(True)    # 小红点变成转圈
 
     def on_fetch_finished():
-        machine.stop_thinking()          # 回到工作 / 待机
+        machine.stop_thinking("mail")    # 回到工作 / 待机（助手还在回答的话继续想）
         pet.set_mail_processing(False)   # 小红点恢复成数字（没有剩余邮件就消失）
 
     def on_pet_clicked():

@@ -122,14 +122,14 @@ class AssistantPanel(QWidget):
     settings_requested = Signal()     # 点了错误下面的"去设置"
     closed = Signal()                 # 面板关掉了（子进程也已经在关）
 
-    def __init__(self, parent=None, make_process=default_process):
-        """make_process(语言, parent) → 和 AssistantProcess 一样的对象；测试时换成假的。"""
+    def __init__(self, parent=None, make_process=None):
+        """make_process(语言, parent) → 和 AssistantProcess 一样的对象；不传就用 default_process（测试时换成假的）。"""
         super().__init__(parent, Qt.WindowType.Window)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         self.setMinimumSize(MIN_SIZE)
         self.resize(QSettings().value(_SIZE_KEY, DEFAULT_SIZE, type=QSize))
 
-        self._make_process = make_process
+        self._make_process = make_process or default_process
         self._process = None
         self._model = ""
         self._busy = False

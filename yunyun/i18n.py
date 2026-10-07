@@ -19,6 +19,7 @@ TEXTS = {
 
     # ---- 右键菜单 ----
     "menu_settings": {"zh": "设置…", "en": "Settings…", "ja": "設定…"},
+    "menu_assistant": {"zh": "助手模式…", "en": "Assistant mode…", "ja": "アシスタントモード…"},
     "menu_language": {"zh": "语言", "en": "Language", "ja": "言語"},
     "menu_always_on_top": {"zh": "始终在上", "en": "Always on Top", "ja": "常に最前面"},
     "menu_recent_mail": {"zh": "刚才的邮件", "en": "Recent Mail", "ja": "さっきのメール"},
@@ -552,6 +553,16 @@ TEXTS = {
         "ja": "今回 {} / {} トークン（入力 / 出力）",
     },
     "assistant_open_settings": {"zh": "去设置", "en": "Open settings", "ja": "設定を開く"},
+    "assistant_need_key": {
+        "zh": "先帮我接上大脑吧：填好 API Key 就能用助手模式啦～",
+        "en": "Connect my brain first: add an API key and assistant mode is ready!",
+        "ja": "まず頭脳をつないでね：API キーを入れるとアシスタントモードが使えるよ～",
+    },
+    "assistant_error_bubble": {
+        "zh": "哎呀，出了点问题，对话框里写了原因～",
+        "en": "Oops, something went wrong. The chat window says why.",
+        "ja": "あれ、問題が起きたみたい。理由は会話ウィンドウに書いてあるよ。",
+    },
 }
 
 _current = DEFAULT_LANGUAGE  # 模块级变量：整个程序共享"当前语言"

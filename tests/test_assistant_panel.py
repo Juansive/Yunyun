@@ -1,7 +1,7 @@
 """助手模式的对话面板（pet/assistant_panel.py）。
 
 大部分用 FakeProcess（纯 Qt 对象，测试自己决定它什么时候发什么事件）；
-最后一个用真的 AssistantProcess + tests/fake_assistant_worker.py 把整条通道走一遍。
+（tests/fake_assistant_process.py）最后一个用真的 AssistantProcess + tests/fake_assistant_worker.py 把整条通道走一遍。
 """
 import sys
 import time
@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 from shiboken6 import isValid
-from PySide6.QtCore import QEvent, QObject, QSettings, QSize, Qt, Signal
+from PySide6.QtCore import QEvent, QSettings, QSize, Qt
 from PySide6.QtGui import QKeyEvent
 from PySide6.QtWidgets import QApplication, QPushButton
 
@@ -17,48 +17,9 @@ from yunyun import i18n
 from yunyun.assistant import protocol
 from yunyun.pet import assistant_panel
 from yunyun.pet.assistant_panel import AssistantPanel, _Reply
+from fake_assistant_process import FakeProcess
 
 FAKE_WORKER = Path(__file__).with_name("fake_assistant_worker.py")
-
-
-class FakeProcess(QObject):
-    """和 AssistantProcess 一样的接口；事件由测试调用 say() 发出。"""
-
-    event = Signal(object)
-    finished = Signal()
-
-    def __init__(self, language, parent=None):
-        super().__init__(parent)
-        self.language = language
-        self.ready = False
-        self.started = False
-        self.stopped = False
-        self.asked = []
-        self.interrupts = 0
-
-    def start(self):
-        self.started = True
-
-    def is_running(self):
-        return self.started and not self.stopped
-
-    def ask(self, text):
-        self.asked.append(text)
-
-    def interrupt(self):
-        self.interrupts += 1
-
-    def stop(self):
-        self.stopped = True
-
-    def say(self, *events):
-        for event in events:
-            if isinstance(event, protocol.Ready):
-                self.ready = True
-            self.event.emit(event)
-
-    def die(self):
-        self.finished.emit()
 
 
 def wait_until(qapp, condition, timeout=10.0):

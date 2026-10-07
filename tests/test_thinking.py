@@ -32,6 +32,26 @@ def test_thinking_transitions(qapp):
     assert m2.state is PetState.IDLE             # 最近没打字 → 待机
 
 
+
+def test_thinking_reasons_are_counted_separately(qapp):
+    m = StateMachine()
+    m.start_thinking("assistant")                # 助手在回答
+    m.start_thinking("mail")                     # 同时点了小红点
+    assert m.thinking_about == {"assistant", "mail"}
+    m.stop_thinking("mail")                      # 邮件处理完了，助手还在回答
+    assert m.state is PetState.THINKING
+    m.stop_thinking("mail")                      # 重复结束不出错
+    m.stop_thinking("assistant")
+    assert m.state is PetState.IDLE and m.thinking_about == set()
+
+
+def test_stopping_a_reason_that_never_started_does_not_end_thinking(qapp):
+    m = StateMachine()
+    m.start_thinking("mail")
+    m.stop_thinking("assistant")
+    assert m.state is PetState.THINKING
+
+
 def test_thinking_frames_loop(qapp, tmp_path):
     from PySide6.QtCore import QSettings
     QSettings.setDefaultFormat(QSettings.Format.IniFormat)
