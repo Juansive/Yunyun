@@ -6,11 +6,14 @@
 - 单击卡片：阅读框从卡片堆旁边滑出，显示全文；开着时翻卡片堆，阅读框跟着换；再点同一张就关掉。
 - 新对话（卡片堆右上角 / 输入框里 Ctrl+N）：换一个新的大脑会话，卡片堆里插一张分隔卡。
   大脑重启过（闲置退出后再唤出）也插一张：芸芸只记得分隔卡之后的内容。
+- 工作文件夹（输入框左边的按钮）：存进设置，子进程启动时读；换文件夹 = 新对话（Claude Code 的工作目录启动后就不能改），
+  分隔卡上写着文件夹名。
 - 收起（Esc / 点到别的程序）：输入框缩回去、卡片堆淡出，助手还开着；IDLE_EXIT_MS 没再用才真正退出（释放约 300 MB）。
 - 退出（菜单"退出助手模式" / 闲置太久 / 芸芸退出）：关掉子进程，发 closed。卡片留在 cards 里（芸芸退出才清掉，不写硬盘）。
 
 pet 只需要提供：body_rect()、say(text, ms)、say_live(text, max_width)、end_live(ms)。
 """
+import os
 import re
 from datetime import datetime
 
@@ -18,9 +21,10 @@ from PySide6.QtCore import QObject, QRect, QTimer, Signal
 from PySide6.QtGui import QTextDocument
 
 from yunyun import i18n
+from yunyun.assistant import settings as assistant_settings
 from yunyun.assistant.session import SETTINGS_ERRORS, AssistantSession, error_text
 from yunyun.pet.assistant_deck import AssistantCard, AssistantDeck
-from yunyun.pet.assistant_input import AssistantInput
+from yunyun.pet.assistant_input import AssistantInput, folder_name
 from yunyun.pet.assistant_reader import AssistantReader
 from yunyun.pet.bubble import bubble_font, elide_lines
 
@@ -63,15 +67,19 @@ class AssistantMode(QObject):
         super().__init__(pet)
         self._pet = pet
         self.cards = cards
+        self.workspace = assistant_settings.load_settings().workspace   # 子进程启动时也是读这一项
         if cards and cards[-1].kind != "divider":
-            cards.append(AssistantCard.divider())   # 大脑是新启动的：之前的对话它不记得了
+            cards.append(self._divider())   # 大脑是新启动的：之前的对话它不记得了
         self.session = AssistantSession(pet, make_process)
         self.input = AssistantInput(pet)
+        self.input.recent_folders = assistant_settings.recent_workspaces
+        self.input.set_workspace(self.workspace)
         self.deck = AssistantDeck(pet, cards)
         self.reader = AssistantReader(pet)
         self._closed = False
 
         self.input.submitted.connect(self._on_submitted)
+        self.input.workspace_chosen.connect(self.change_workspace)
         self.input.stop_requested.connect(self.session.stop)
         self.input.new_conversation_requested.connect(self.new_conversation)
         self.input.collapse_started.connect(self.deck.hide_animated)
@@ -114,13 +122,27 @@ class AssistantMode(QObject):
         if self.reader.isVisible():
             self.reader.follow(self._reader_anchor())
 
-    def new_conversation(self):
+    def new_conversation(self, said=None):
         """忘掉之前的对话（正在回答就先停下），卡片堆里插一张分隔卡。"""
         self.session.new_conversation()
         if self.cards and self.cards[-1].kind != "divider":
-            self.cards.append(AssistantCard.divider())
+            self.cards.append(self._divider())
             self.deck.newest_added()
-        self._pet.say(i18n.tr("assistant_new_chat_said"), 2500)
+        elif self.cards:
+            self.cards[-1] = self._divider()   # 刚插过分隔卡（比如连着换了两次文件夹）：换成新的
+            self.deck.update()
+        self._pet.say(said or i18n.tr("assistant_new_chat_said"), 2500)
+
+    def change_workspace(self, path):
+        """换工作文件夹（"" = 不用文件夹）：记进设置，换了的话开新对话（大脑在新文件夹里启动）。"""
+        path = assistant_settings.set_workspace(path)
+        self.input.set_workspace(path)
+        self.input.focus()
+        if os.path.normcase(path) == os.path.normcase(self.workspace):
+            return
+        self.workspace = path
+        self.new_conversation(i18n.tr("assistant_folder_said", folder_name(path)) if path
+                              else i18n.tr("assistant_folder_none_said"))
 
     def retranslate(self):
         self.input.retranslate()
@@ -145,6 +167,9 @@ class AssistantMode(QObject):
         self.closed.emit()
 
     # ---------- 内部 ----------
+
+    def _divider(self):
+        return AssistantCard.divider(folder_name(self.workspace) if self.workspace else "")
 
     def _column(self):
         """"芸芸 + 输入框"这一列（屏幕坐标）：卡片堆放在它旁边，就不会和头顶的气泡、脚下的输入框重叠。"""

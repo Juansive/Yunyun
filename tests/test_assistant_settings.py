@@ -137,3 +137,57 @@ def test_both_budgets_are_saved(fake_keyring):
     save_settings(AssistantSettings(budget_usd=0.2, conversation_budget_usd=1.5))
     loaded = load_settings()
     assert (loaded.budget_usd, loaded.conversation_budget_usd) == (0.2, 1.5)
+
+
+# ---------- 工作文件夹 ----------
+
+def folders(tmp_path, *names):
+    paths = []
+    for name in names:
+        (tmp_path / name).mkdir()
+        paths.append(str(tmp_path / name))
+    return paths
+
+
+def test_no_work_folder_by_default(fake_keyring):
+    assert load_settings().workspace == "" and assistant_settings.recent_workspaces() == []
+
+
+def test_work_folder_is_remembered_newest_first(fake_keyring, tmp_path):
+    a, b, c = folders(tmp_path, "a", "b", "c")
+    for path in (a, b, c, a):
+        assistant_settings.set_workspace(path)
+    assert load_settings().workspace == a
+    assert assistant_settings.recent_workspaces() == [a, c, b]       # 选过的往前挪，不重复
+
+
+def test_only_the_last_five_folders_are_kept(fake_keyring, tmp_path):
+    paths = folders(tmp_path, *"abcdefg")
+    for path in paths:
+        assistant_settings.set_workspace(path)
+    assert assistant_settings.recent_workspaces() == paths[::-1][:5]
+
+
+def test_no_folder_keeps_the_recent_list(fake_keyring, tmp_path):
+    a, = folders(tmp_path, "a")
+    assistant_settings.set_workspace(a)
+    assistant_settings.set_workspace("")
+    assert load_settings().workspace == "" and assistant_settings.recent_workspaces() == [a]
+
+
+def test_deleted_folder_is_forgotten(fake_keyring, tmp_path):
+    a, b = folders(tmp_path, "a", "b")
+    assistant_settings.set_workspace(a)
+    assistant_settings.set_workspace(b)
+    (tmp_path / "b").rmdir()
+    assert load_settings().workspace == ""                    # 不在了：当没选（大脑用空文件夹）
+    assert assistant_settings.recent_workspaces() == [a]
+
+
+def test_settings_page_and_folder_button_do_not_overwrite_each_other(fake_keyring, tmp_path):
+    a, = folders(tmp_path, "a")
+    settings = load_settings()                     # 设置页打开时读的（那时还没选文件夹）
+    assistant_settings.set_workspace(a)            # 然后在输入框那边选了文件夹
+    save_settings(replace(settings, model="claude-sonnet-5-5"))   # 设置页保存
+    loaded = load_settings()
+    assert loaded.workspace == a and loaded.model == "claude-sonnet-5-5"

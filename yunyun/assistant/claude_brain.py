@@ -29,7 +29,7 @@ log = logging.getLogger(__name__)
 
 WANTED_TOOLS = ["WebSearch", "WebFetch"]          # 阶段 1：只读，只有网页
 CONFIG_DIR = data_dir() / "assistant" / "claude"   # Claude Code 的会话记录、设置放这里（里面有完整对话内容）
-WORKSPACE = data_dir() / "assistant" / "workspace"  # 阶段 1 的工作文件夹：空的，阶段 2 改成用户选的文件夹
+WORKSPACE = data_dir() / "assistant" / "workspace"  # 用户没选工作文件夹时用的：一个空文件夹（只聊天）
 
 # 估算每次回答花了多少（Anthropic 的计价方式）：写缓存 = 输入价 × 1.25，读缓存 = 输入价 × 0.1，网页搜索每次 $0.01
 CACHE_WRITE, CACHE_READ, WEB_SEARCH_USD = 1.25, 0.1, 0.01
@@ -57,7 +57,7 @@ def build_options(settings, api_key, language, stderr=None):
         system_prompt={"type": "preset", "preset": "claude_code", "append": persona(language)},
         include_partial_messages=True,    # 逐字显示
         max_budget_usd=settings.conversation_budget_usd,   # Claude Code 按整段对话累计算；每次回答的上限由 TurnState 估算
-        cwd=str(WORKSPACE),
+        cwd=settings.workspace or str(WORKSPACE),
         env=env,
         stderr=stderr,
     )
@@ -233,8 +233,9 @@ class ClaudeBrain:
 
     async def start(self):
         removed = prepare_process()
-        log.info("准备启动 Claude Code：服务商 %s，模型 %s，清掉了 %d 个继承的环境变量",
-                 self._settings.provider, self._settings.effective_model, len(removed))
+        log.info("准备启动 Claude Code：服务商 %s，模型 %s，%s，清掉了 %d 个继承的环境变量",
+                 self._settings.provider, self._settings.effective_model,
+                 "用了工作文件夹" if self._settings.workspace else "没有工作文件夹", len(removed))
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
         WORKSPACE.mkdir(parents=True, exist_ok=True)
         options = build_options(self._settings, self._api_key, self._language, stderr=self._stderr.append)

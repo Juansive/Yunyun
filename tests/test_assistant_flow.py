@@ -348,6 +348,86 @@ def test_new_conversation_while_answering_keeps_the_half_answer(world, monkeypat
     assert [(c.kind, c.stopped) for c in mode.cards] == [("turn", True), ("divider", False)]
 
 
+# ---------- 工作文件夹 ----------
+
+def folder_actions(mode):
+    return {a.text(): a for a in mode.input.folder_menu().actions() if not a.isSeparator()}
+
+
+def test_choose_a_work_folder_starts_a_new_conversation(qapp, world, monkeypatch, tmp_path):
+    pet, _, processes = world
+    has_key(monkeypatch)
+    project = tmp_path / "my-project"
+    project.mkdir()
+    picked = []
+
+    def fake_dialog(parent, start):
+        picked.append(start)
+        return str(project)
+
+    monkeypatch.setattr("yunyun.pet.assistant_input.ask_folder", fake_dialog)
+    pet.open_assistant()
+    mode = pet.assistant
+    assert mode.input.workspace == ""                # 默认没选：只聊天
+    processes[0].say(protocol.Ready("anthropic", "m"))
+    finish_turn(pet, processes[0], "旧问题")
+
+    folder_actions(mode)[i18n.tr("assistant_folder_choose")].trigger()
+    assert assistant_settings.load_settings().workspace == str(project)   # 存进设置：新的子进程启动时读
+    assert mode.input.workspace == str(project)
+    assert processes[0].stopped and len(processes) == 2                   # 换了文件夹 = 新的大脑会话
+    assert (mode.cards[-1].kind, mode.cards[-1].question) == ("divider", "my-project")
+    assert i18n.tr("assistant_folder_said", "my-project") in bubbles(pet)
+
+    actions = folder_actions(mode)                   # 菜单里出现了最近用过的，打着勾
+    recent = next(a for a in actions.values() if a.toolTip() == str(project))
+    assert recent.isChecked() and not actions[i18n.tr("assistant_folder_none")].isChecked()
+    recent.trigger()                                 # 选同一个：什么都不变
+    assert len(processes) == 2
+
+    actions[i18n.tr("assistant_folder_none")].trigger()
+    assert assistant_settings.load_settings().workspace == "" and len(processes) == 3
+    assert mode.cards[-1].question == "" and len([c for c in mode.cards if c.kind == "divider"]) == 1
+    assert assistant_settings.recent_workspaces() == [str(project)]       # 最近用过的还留着
+
+
+def test_cancel_the_folder_dialog_changes_nothing(world, monkeypatch):
+    pet, _, processes = world
+    has_key(monkeypatch)
+    monkeypatch.setattr("yunyun.pet.assistant_input.ask_folder", lambda parent, start: "")
+    pet.open_assistant()
+    folder_actions(pet.assistant)[i18n.tr("assistant_folder_choose")].trigger()
+    assert len(processes) == 1 and pet.assistant.input.workspace == ""
+
+
+def test_folder_dialog_does_not_collapse_the_input(qapp, world, monkeypatch):
+    """选择框是系统的窗口，开着时芸芸没有一个窗口是"活动"的：不能当成"点到别的程序"而收起。"""
+    pet, _, _ = world
+    has_key(monkeypatch)
+    pet.open_assistant()
+    box = pet.assistant.input
+    monkeypatch.setattr(QApplication, "activeWindow", staticmethod(lambda: None))
+
+    def fake_dialog(parent, start):
+        box._check_focus_lost()
+        return ""
+
+    monkeypatch.setattr("yunyun.pet.assistant_input.ask_folder", fake_dialog)
+    box._pick_folder()
+    assert box.is_open
+    box._check_focus_lost()                          # 选择框关了以后照常
+    assert not box.is_open
+
+
+def test_saved_folder_is_shown_and_used_next_time(world, monkeypatch, tmp_path):
+    pet, _, _ = world
+    has_key(monkeypatch)
+    assistant_settings.set_workspace(str(tmp_path))
+    pet.open_assistant()
+    assert pet.assistant.input.workspace == str(tmp_path)
+    assert str(tmp_path) in pet.assistant.input._folder.toolTip()
+
+
 def test_deck_follows_the_input(qapp, world, monkeypatch):
     pet, _, processes = world
     has_key(monkeypatch)

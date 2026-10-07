@@ -1,10 +1,11 @@
 """助手模式的输入框：芸芸脚下一个圆角输入条，四周一圈淡蓝色渐变光晕。
 
-    ( 芸芸 )
- ╭─────────────────────────────╮
- │ 问芸芸点什么……           (↑) │   ← 光晕：平时静止；芸芸思考时沿边框缓缓流动
- ╰─────────────────────────────╯
+         ( 芸芸 )
+ ╭───────────────────────────────────╮
+ │ [▭ project] 问芸芸点什么……     (↑) │   ← 光晕：平时静止；芸芸思考时沿边框缓缓流动
+ ╰───────────────────────────────────╯
 
+- 左边是工作文件夹按钮：点一下弹出菜单（最近用过的几个 / 选择文件夹… / 不用文件夹），选了发 workspace_chosen。
 - 出现：从一个小圆点横向"长"成输入条（带一点弹性），文字和按钮随后淡入；收起是反过来，越缩越快。
 - 动画全部自己画：窗口一开始就是最终大小（四周留出光晕的透明边），动画里只改画的形状，不改窗口大小，所以不抖。
   只在动画进行 / 思考时刷新画面，平时不占 CPU。
@@ -13,10 +14,15 @@
 - 是芸芸的从属窗口（parent = 芸芸）：芸芸被挡住时它也被挡住。
 """
 import math
+import os
 
 from PySide6.QtCore import QEasingCurve, QEvent, QPointF, QRect, QRectF, QSize, Qt, QTimer, QVariantAnimation, Signal
-from PySide6.QtGui import QBrush, QColor, QConicalGradient, QFont, QLinearGradient, QPainter, QPainterPath, QPen
-from PySide6.QtWidgets import QAbstractButton, QApplication, QFrame, QGraphicsOpacityEffect, QTextEdit, QWidget
+from PySide6.QtGui import (
+    QActionGroup, QBrush, QColor, QConicalGradient, QFont, QFontMetrics, QLinearGradient, QPainter, QPainterPath, QPen,
+)
+from PySide6.QtWidgets import (
+    QAbstractButton, QApplication, QFileDialog, QFrame, QGraphicsOpacityEffect, QMenu, QTextEdit, QWidget,
+)
 
 from yunyun import i18n
 from yunyun.pet.bubble import place_block
@@ -29,6 +35,16 @@ def _mix(color, alpha):
     c = QColor(color)
     c.setAlpha(max(0, min(255, int(alpha))))
     return c
+
+
+def folder_name(path):
+    """文件夹显示的名字：最后一级（F:\\ 这种盘符根目录就显示整个）。"""
+    return os.path.basename(os.path.normpath(path)) or path
+
+
+def ask_folder(parent, start):
+    """弹出系统的"选择文件夹"框；取消就返回空字符串。测试里换成假的。"""
+    return QFileDialog.getExistingDirectory(parent, i18n.tr("assistant_folder_dialog"), start)
 
 
 class _Edit(QTextEdit):
@@ -113,17 +129,81 @@ class _SendButton(QAbstractButton):
             p.drawPath(path)
 
 
+class _FolderButton(QAbstractButton):
+    """输入条左边的工作文件夹按钮：文件夹图标 + 名字（没选时只有一个淡色图标）。"""
+
+    HEIGHT = 30
+    MAX_TEXT = 110     # 名字最多占多宽，太长中间用 … 省略
+    ICON = 16
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFont(QFont("Microsoft YaHei", 9))
+        self.path = ""
+        self._label = ""
+        self.set_path("")
+
+    def set_path(self, path):
+        self.path = path
+        self._label = QFontMetrics(self.font()).elidedText(
+            folder_name(path), Qt.TextElideMode.ElideMiddle, self.MAX_TEXT) if path else ""
+        width = self.ICON + 14 + (QFontMetrics(self.font()).horizontalAdvance(self._label) + 6 if path else 0)
+        self.setFixedSize(width, self.HEIGHT)
+        self.update()
+
+    def sizeHint(self):
+        return self.size()
+
+    def enterEvent(self, event):
+        self.update()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self.update()
+        super().leaveEvent(event)
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        r = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
+        if self.underMouse() or self.isDown():
+            p.setPen(Qt.PenStyle.NoPen)
+            p.setBrush(QColor("#E3EAF7") if self.isDown() else QColor("#EEF2FA"))
+            p.drawRoundedRect(r, r.height() / 2, r.height() / 2)
+
+        color = QColor("#4F7BD9") if self.path else QColor("#9AA5B8")
+        x, cy = 7.0, r.center().y()
+        icon = QPainterPath()   # 文件夹：左上角一个小"耳朵"，下面是圆角的夹子
+        icon.moveTo(x, cy - 5)
+        icon.lineTo(x + 5, cy - 5)
+        icon.lineTo(x + 7, cy - 3)
+        icon.lineTo(x + self.ICON, cy - 3)
+        icon.lineTo(x + self.ICON, cy + 5.5)
+        icon.lineTo(x, cy + 5.5)
+        icon.closeSubpath()
+        p.setPen(QPen(color, 1.4, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+        p.setBrush(_mix(color, 40 if self.path else 0))
+        p.drawPath(icon)
+        if self._label:
+            p.setPen(QColor("#4B5563"))
+            p.drawText(QRectF(x + self.ICON + 5, 0, self.width(), self.height()),
+                       Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, self._label)
+
+
 class AssistantInput(QWidget):
     submitted = Signal(str)       # 按了 Enter / 发送（文字由接收方决定要不要清空：发出去了才清）
     stop_requested = Signal()     # 回答时按了"停止"
     collapse_started = Signal()   # 开始收起（卡片堆跟着淡出）
     collapsed = Signal()          # 收起动画结束、窗口已经隐藏
     new_conversation_requested = Signal()   # Ctrl+N
+    workspace_chosen = Signal(str)          # 在文件夹菜单里选了一个文件夹（"" = 不用文件夹）
 
-    WIDTH = 380        # 输入条宽度
+    WIDTH = 420        # 输入条宽度
     GLOW = 26          # 光晕向外延伸多远（窗口四周留出这么多透明边）
     DOT = 46           # 一行时输入条的高度，也是展开前"小圆点"的直径
-    PAD_X = 18         # 文字到左边框
+    PAD_X = 8          # 文件夹按钮到左边框
+    GAP_X = 6          # 文件夹按钮到文字
     MAX_LINES = 5
     GAP = 12           # 输入条到芸芸身体的距离
     OPEN_MS = 520
@@ -147,6 +227,10 @@ class AssistantInput(QWidget):
         self._button = _SendButton(self)
         self._button.clicked.connect(self._on_button)
         self._button.setToolTip(i18n.tr("assistant_send"))
+        self._folder = _FolderButton(self)
+        self._folder.clicked.connect(self._show_folder_menu)
+        self.recent_folders = list   # 最近用过的文件夹（函数，由总管设置；默认没有）
+        self._picking = False          # 文件夹菜单 / 选择框开着：焦点暂时不在输入框，不要收起
 
         self._t = 0.0                  # 展开进度：0 = 小圆点（看不见），1 = 完全展开
         self._closing = False
@@ -167,6 +251,7 @@ class AssistantInput(QWidget):
         self._flow.valueChanged.connect(self._on_flow)
 
         self._effects = []
+        self._update_folder_tip()
         self._fit()
         self._apply_t()
 
@@ -244,9 +329,69 @@ class AssistantInput(QWidget):
             self._flow.stop()
         self.update()
 
+    @property
+    def workspace(self):
+        return self._folder.path
+
+    def set_workspace(self, path):
+        """显示当前的工作文件夹（"" = 没选）。"""
+        self._folder.set_path(path)
+        self._update_folder_tip()
+        self._fit()
+
     def retranslate(self):
         self._edit.setPlaceholderText(i18n.tr("assistant_input_placeholder"))
+        self._update_folder_tip()
         self.set_busy(self._busy)
+
+    # ---------- 工作文件夹 ----------
+
+    def _update_folder_tip(self):
+        path = self._folder.path
+        self._folder.setToolTip(i18n.tr("assistant_folder_tip", path) if path else i18n.tr("assistant_folder_none_tip"))
+
+    def folder_menu(self):
+        """文件夹菜单：最近用过的几个（当前的打勾）、选择文件夹…、不用文件夹。选了就发 workspace_chosen。"""
+        menu = QMenu(self)
+        menu.setToolTipsVisible(True)
+        group = QActionGroup(menu)
+        current = os.path.normcase(self._folder.path)
+        for path in self.recent_folders():
+            parent = os.path.dirname(os.path.normpath(path))
+            action = menu.addAction(f"{folder_name(path)}    {parent}" if parent != path else path)
+            action.setToolTip(path)
+            action.setCheckable(True)
+            action.setChecked(os.path.normcase(path) == current)
+            action.setActionGroup(group)
+            action.triggered.connect(lambda checked=False, p=path: self.workspace_chosen.emit(p))
+        if menu.actions():
+            menu.addSeparator()
+        menu.addAction(i18n.tr("assistant_folder_choose")).triggered.connect(self._pick_folder)
+        none = menu.addAction(i18n.tr("assistant_folder_none"))
+        none.setCheckable(True)
+        none.setChecked(not current)
+        none.setActionGroup(group)
+        none.triggered.connect(lambda: self.workspace_chosen.emit(""))
+        return menu
+
+    def _show_folder_menu(self):
+        menu = self.folder_menu()
+        self._picking = True
+        try:
+            menu.exec(self._folder.mapToGlobal(self._folder.rect().bottomLeft()))
+        finally:
+            self._picking = False
+            menu.deleteLater()
+        self.focus()
+
+    def _pick_folder(self):
+        self._picking = True
+        try:
+            path = ask_folder(self, self._folder.path or os.path.expanduser("~"))
+        finally:
+            self._picking = False
+        if path:
+            self.workspace_chosen.emit(os.path.normpath(path))
 
     # ---------- 事件 ----------
 
@@ -267,7 +412,7 @@ class AssistantInput(QWidget):
         super().changeEvent(event)
 
     def _check_focus_lost(self):
-        if self.is_open and QApplication.activeWindow() is None:   # 焦点去了别的程序
+        if self.is_open and not self._picking and QApplication.activeWindow() is None:   # 焦点去了别的程序
             self.collapse()
 
     def showEvent(self, event):
@@ -289,9 +434,11 @@ class AssistantInput(QWidget):
         pad_y = (self.DOT - line) // 2
         pill_h = max(self.DOT, text_h + 2 * pad_y)
         g = self.GLOW
-        self._edit.setGeometry(g + self.PAD_X, g + pad_y, self._edit_width(), text_h)
+        self._edit.setGeometry(self._edit_left(), g + pad_y, self._edit_width(), text_h)
         b = _SendButton.SIZE
         self._button.move(g + self.WIDTH - (self.DOT + b) // 2, g + pill_h - (self.DOT + b) // 2)
+        # 文件夹按钮和"发送"一样贴着最后一行（多行时在左下角）
+        self._folder.move(g + self.PAD_X, g + pill_h - (self.DOT + _FolderButton.HEIGHT) // 2)
         if pill_h != self._pill_h or self.size() != QSize(self.WIDTH + 2 * g, pill_h + 2 * g):
             self._pill_h = pill_h
             self.resize(self.WIDTH + 2 * g, pill_h + 2 * g)
@@ -299,8 +446,11 @@ class AssistantInput(QWidget):
                 self.follow(self._anchor)
         self._edit.ensureCursorVisible()
 
+    def _edit_left(self):
+        return self.GLOW + self.PAD_X + self._folder.width() + self.GAP_X
+
     def _edit_width(self):
-        return self.WIDTH - self.PAD_X - (self.DOT + _SendButton.SIZE) // 2 - 8
+        return self.WIDTH - (self._edit_left() - self.GLOW) - (self.DOT + _SendButton.SIZE) // 2 - 8
 
     # ---------- 动画 ----------
 
@@ -332,7 +482,7 @@ class AssistantInput(QWidget):
     def _apply_t(self):
         opacity = self._content_opacity()
         visible = opacity > 0
-        for widget in (self._edit, self._button):
+        for widget in (self._edit, self._button, self._folder):
             widget.setVisible(visible)
             if 0 < opacity < 1:
                 effect = widget.graphicsEffect()

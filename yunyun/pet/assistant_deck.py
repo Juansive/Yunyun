@@ -29,7 +29,7 @@ from yunyun.pet.bubble import elide_lines, place_block
 
 @dataclass(eq=False)
 class AssistantCard:
-    """一张卡片要显示的内容。kind = "turn"（一问一答）或 "divider"（新对话的分隔卡）。"""
+    """一张卡片要显示的内容。kind = "turn"（一问一答）或 "divider"（新对话的分隔卡，question 里放工作文件夹的名字）。"""
     kind: str
     time: datetime
     question: str = ""
@@ -40,8 +40,8 @@ class AssistantCard:
     error: str = ""         # 出错时给人看的话
 
     @classmethod
-    def divider(cls):
-        return cls("divider", datetime.now())
+    def divider(cls, folder=""):
+        return cls("divider", datetime.now(), folder)
 
 
 def _font(size, bold=False):
@@ -331,6 +331,9 @@ class AssistantDeck(QWidget):
         p.setFont(self._small)
         text = i18n.tr("assistant_divider", f"{card.time:%H:%M}")
         metrics = QFontMetrics(self._small)
+        if card.question:   # 在哪个工作文件夹里
+            text = metrics.elidedText(f"{text} · {card.question}", Qt.TextElideMode.ElideMiddle,
+                                      int(rect.width() - 2 * self.PAD - 40))
         tw = metrics.horizontalAdvance(text)
         cy = rect.center().y()
         p.setPen(QPen(QColor("#C3CBDA"), 1, Qt.PenStyle.DashLine))
