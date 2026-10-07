@@ -8,7 +8,7 @@
 - 出现：从一个小圆点横向"长"成输入条（带一点弹性），文字和按钮随后淡入；收起是反过来，越缩越快。
 - 动画全部自己画：窗口一开始就是最终大小（四周留出光晕的透明边），动画里只改画的形状，不改窗口大小，所以不抖。
   只在动画进行 / 思考时刷新画面，平时不占 CPU。
-- Enter 发送，Shift+Enter 换行，最多长到 MAX_LINES 行；回答时按钮变成"停止"，可以先打字但发不出去。
+- Enter 发送，Shift+Enter 换行，Ctrl+N 新对话，最多长到 MAX_LINES 行；回答时按钮变成"停止"，可以先打字但发不出去。
 - Esc 或者点到别的程序 → 收起（collapsed 信号）；点芸芸自己的窗口不收起。
 - 是芸芸的从属窗口（parent = 芸芸）：芸芸被挡住时它也被挡住。
 """
@@ -36,6 +36,7 @@ class _Edit(QTextEdit):
 
     submit = Signal()
     escape = Signal()
+    new_chat = Signal()
 
     def __init__(self, parent):
         super().__init__(parent)
@@ -54,6 +55,9 @@ class _Edit(QTextEdit):
             return
         if key == Qt.Key.Key_Escape:
             self.escape.emit()
+            return
+        if key == Qt.Key.Key_N and event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            self.new_chat.emit()
             return
         super().keyPressEvent(event)
 
@@ -112,7 +116,9 @@ class _SendButton(QAbstractButton):
 class AssistantInput(QWidget):
     submitted = Signal(str)       # 按了 Enter / 发送（文字由接收方决定要不要清空：发出去了才清）
     stop_requested = Signal()     # 回答时按了"停止"
+    collapse_started = Signal()   # 开始收起（卡片堆跟着淡出）
     collapsed = Signal()          # 收起动画结束、窗口已经隐藏
+    new_conversation_requested = Signal()   # Ctrl+N
 
     WIDTH = 380        # 输入条宽度
     GLOW = 26          # 光晕向外延伸多远（窗口四周留出这么多透明边）
@@ -136,6 +142,7 @@ class AssistantInput(QWidget):
         self._edit.setPlaceholderText(i18n.tr("assistant_input_placeholder"))
         self._edit.submit.connect(self._on_submit)
         self._edit.escape.connect(self.collapse)
+        self._edit.new_chat.connect(self.new_conversation_requested)
         self._edit.textChanged.connect(self._fit)
         self._button = _SendButton(self)
         self._button.clicked.connect(self._on_button)
@@ -197,6 +204,7 @@ class AssistantInput(QWidget):
         if not self.isVisible() or self._closing:
             return
         self._closing = True
+        self.collapse_started.emit()
         self._animate_to(0.0, self.CLOSE_MS * self._t)
 
     def close_now(self):
@@ -210,7 +218,7 @@ class AssistantInput(QWidget):
         """芸芸移动了：跟过去（优先放在脚下，脚下放不下就放头顶，再不行放左右）。"""
         self._anchor = QRect(anchor)
         x, y, self._placement = place_block(
-            self._anchor, self.WIDTH, self._pill_h, gap=self.GAP, current=self._placement, prefer_below=True)
+            self._anchor, self.WIDTH, self._pill_h, gap=self.GAP, current=self._placement, prefer="below")
         self.move(int(x) - self.GLOW, int(y) - self.GLOW)
 
     def set_busy(self, busy):

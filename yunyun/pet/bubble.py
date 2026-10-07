@@ -355,11 +355,12 @@ class BubbleStack(QObject):
         return x, y
 
 
-def place_block(anchor, bw, bh, gap, current=None, hysteresis=24, prefer_below=False):
+def place_block(anchor, bw, bh, gap, current=None, hysteresis=24, prefer="above"):
     """在芸芸身体（anchor，屏幕坐标）旁边给一块 bw × bh 的区域找位置（气泡、卡片堆共用）。
 
     优先放在头顶；头顶放不下就去左/右侧；再不行去下方；最后保证整块绝不出屏。
-    prefer_below=True 时先试下方、再试头顶，最后才是左右（助手的输入框：放在芸芸脚下）。
+    prefer 换优先顺序："below" 先下方、再头顶、最后左右（助手的输入框：芸芸脚下）；
+    "side" 先左右、再头顶、最后下方（助手的卡片堆）。
     current 是上一次的方向（"above" / "below" / "left" / "right" / None）：
     不是当前方向的，需要多出 hysteresis 的空间才换过去，防止在临界处来回抖。
     返回 (x, y, 这次选的方向)。
@@ -392,7 +393,10 @@ def place_block(anchor, bw, bh, gap, current=None, hysteresis=24, prefer_below=F
         sides.sort(key=lambda name: name != current)
     else:
         sides.sort(key=lambda name: room[name], reverse=True)
-    order = ["below", "above", *sides] if prefer_below else ["above", *sides, "below"]
+    order = {
+        "below": ["below", "above", *sides],
+        "side": [*sides, "above", "below"],
+    }.get(prefer, ["above", *sides, "below"])
 
     # 按优先级挑第一个放得下的。不是当前方向的，需要多出 hysteresis 的空间才换过去
     chosen = max(room, key=room.get)  # 兜底：都放不下时，选空间最大的

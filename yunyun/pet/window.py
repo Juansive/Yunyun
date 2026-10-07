@@ -79,6 +79,7 @@ class PetWindow(QWidget):
         self._bubbles = BubbleStack(self)
         self._settings_window = None  # 设置窗口（用到时才创建，关掉就销毁）
         self._assistant = None        # 助手模式（用到时才创建，退出就销毁）
+        self._assistant_cards = []    # 助手的问答卡片（从旧到新）：退出助手模式也留着，芸芸退出才清掉，不写硬盘
         self._history = None          # 邮件提醒的历史记录（main 里设置）
         self._quiet_hours = None      # 免打扰时段（main 里设置）
 
@@ -692,7 +693,7 @@ class PetWindow(QWidget):
             return
         if self._assistant is None:
             from yunyun.pet.assistant_mode import AssistantMode
-            mode = AssistantMode(self)
+            mode = AssistantMode(self, self._assistant_cards)
             mode.busy_changed.connect(self.assistant_busy_changed)
             mode.closed.connect(self._on_assistant_closed)
             self.language_changed.connect(mode.retranslate)

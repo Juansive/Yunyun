@@ -260,3 +260,104 @@ def test_quit_waits_for_the_real_worker(qapp, world, monkeypatch):
     assert wait_until(qapp, lambda: process.ready)
     pet.close_assistant(wait=True)
     assert not isValid(process) or not process.is_running()   # 返回时已经退出了（不靠事件循环）
+
+
+# ---------- 卡片堆、新对话（U2） ----------
+
+def finish_turn(pet, process, question, answer="答案", cost=0.0012):
+    ask(pet, question)
+    process.say(protocol.TextDelta(answer), protocol.TurnFinished(cost, cost))
+
+
+def test_each_turn_becomes_a_card(qapp, world, monkeypatch):
+    pet, _, processes = world
+    has_key(monkeypatch)
+    pet.open_assistant()
+    mode = pet.assistant
+    assert not mode.deck.isVisible()                 # 还没有卡片
+    process = processes[0]
+    process.say(protocol.Ready("anthropic", "m"))
+    finish_turn(pet, process, "倒序怎么写", "用 `nums[::-1]`")
+    card = mode.cards[-1]
+    assert (card.kind, card.question, card.answer, card.summary, card.cost) == (
+        "turn", "倒序怎么写", "用 `nums[::-1]`", "用 nums[::-1]", "$0.0012")
+    assert mode.deck.isVisible() and mode.deck.card(0) is card
+    assert pet._bubbles._bubbles[-1]._hide_timer.remainingTime() <= AssistantMode.DONE_SAY_WITH_DECK_MS
+
+
+def test_stopped_and_failed_turns_are_marked(world, monkeypatch):
+    pet, _, processes = world
+    has_key(monkeypatch)
+    pet.open_assistant()
+    process = processes[0]
+    process.say(protocol.Ready("anthropic", "m"))
+    ask(pet, "slow")
+    process.say(protocol.TextDelta("一半"), protocol.TurnFinished(0.001, 0.001, stopped=True))
+    ask(pet, "hi")
+    process.say(protocol.Error("network"), protocol.TurnFinished(None, 0.001))
+    stopped, failed = pet.assistant.cards[-2:]
+    assert stopped.stopped and stopped.summary == "一半"
+    assert failed.error.startswith(i18n.tr("assistant_error_network")) and not failed.summary
+
+
+def test_cards_survive_exit_and_a_divider_marks_the_restart(qapp, world, monkeypatch):
+    pet, _, processes = world
+    has_key(monkeypatch)
+    pet.open_assistant()
+    processes[0].say(protocol.Ready("anthropic", "m"))
+    finish_turn(pet, processes[0], "第一段")
+    pet.close_assistant()
+    assert wait_until(qapp, lambda: pet.assistant is None)
+
+    pet.open_assistant()                             # 大脑重新启动了：插一张分隔卡
+    cards = pet.assistant.cards
+    assert [c.kind for c in cards] == ["turn", "divider"]
+    assert pet.assistant.deck.isVisible()            # 以前的卡片还能看
+    pet.close_assistant()
+    assert wait_until(qapp, lambda: pet.assistant is None)
+    pet.open_assistant()                             # 中间没问过：不再多插一张
+    assert [c.kind for c in pet.assistant.cards] == ["turn", "divider"]
+
+
+def test_ctrl_n_starts_a_new_conversation(qapp, world, monkeypatch):
+    pet, _, processes = world
+    has_key(monkeypatch)
+    pet.open_assistant()
+    mode = pet.assistant
+    processes[0].say(protocol.Ready("anthropic", "m"))
+    finish_turn(pet, processes[0], "旧问题")
+    QApplication.sendEvent(mode.input._edit, QKeyEvent(
+        QEvent.Type.KeyPress, Qt.Key.Key_N, Qt.KeyboardModifier.ControlModifier))
+    assert processes[0].stopped and len(processes) == 2   # 换了一个新的大脑会话
+    assert [c.kind for c in mode.cards] == ["turn", "divider"]
+    assert i18n.tr("assistant_new_chat_said") in bubbles(pet)
+    mode.new_conversation()                          # 连按两次：不重复插分隔卡
+    assert [c.kind for c in mode.cards] == ["turn", "divider"]
+
+
+def test_new_conversation_while_answering_keeps_the_half_answer(world, monkeypatch):
+    pet, machine, processes = world
+    has_key(monkeypatch)
+    pet.open_assistant()
+    mode = pet.assistant
+    processes[0].say(protocol.Ready("anthropic", "m"))
+    ask(pet, "slow")
+    processes[0].say(protocol.TextDelta("说到一半"))
+    mode.deck.new_conversation_requested.emit()      # 卡片堆右上角的"＋ 新对话"
+    assert not mode.busy and machine.state is PetState.IDLE
+    assert [(c.kind, c.stopped) for c in mode.cards] == [("turn", True), ("divider", False)]
+
+
+def test_deck_follows_the_input(qapp, world, monkeypatch):
+    pet, _, processes = world
+    has_key(monkeypatch)
+    pet.move(100, 100)
+    pet.open_assistant()
+    mode = pet.assistant
+    processes[0].say(protocol.Ready("anthropic", "m"))
+    finish_turn(pet, processes[0], "问题")
+    assert mode.deck.isVisible()
+    mode.input.collapse()                            # 收起：卡片堆一起淡出
+    assert wait_until(qapp, lambda: not mode.deck.isVisible())
+    pet.open_assistant()
+    assert wait_until(qapp, lambda: mode.deck.isVisible())
