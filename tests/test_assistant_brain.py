@@ -537,6 +537,34 @@ def test_stopping_is_recorded_as_stopped(tmp_path):
     assert [d[:2] for d in decisions(gate)] == [("t1", "stopped"), ("t2", "stopped")]
 
 
+@pytest.mark.parametrize("how", ["interrupt", "close"])
+def test_stop_and_close_deny_waiting_and_end_commands(monkeypatch, tmp_path, how):
+    """停止 / 关闭：等着的确认算拒绝；先记下正在跑的命令 → 让 Claude Code 停 → 再结束还在跑的命令。"""
+    calls = []
+
+    class StopClient:
+        async def interrupt(self):
+            calls.append("interrupt")
+
+        async def disconnect(self):
+            calls.append("disconnect")
+
+    monkeypatch.setattr(claude_brain.proctree, "before_stop", lambda: calls.append("before") or ["running"])
+    monkeypatch.setattr(claude_brain.proctree, "stop_commands", lambda running: calls.append(("end", running)) or 1)
+    brain = claude_brain.ClaudeBrain(AssistantSettings(workspace=str(tmp_path)), "k", "zh", lambda e: None)
+    brain._client = StopClient()
+
+    async def main():
+        task = asyncio.create_task(brain.gate.can_use_tool("Bash", {"command": "pytest"}, Context("t1")))
+        while not brain.gate.waiting:
+            await asyncio.sleep(0)
+        await getattr(brain, how)()
+        return await task
+
+    assert asyncio.run(main()).behavior == "deny"
+    assert calls == ["before", "interrupt" if how == "interrupt" else "disconnect", ("end", ["running"])]
+
+
 def test_long_commands_are_recorded_in_full_up_to_a_limit(tmp_path):
     gate = Gate(tmp_path)
     gate.gate.grants.add(("command", "echo"))

@@ -304,6 +304,69 @@ def test_real_channel_with_fake_worker(qapp):
     assert not isValid(process) or not process.is_running()
 
 
+# ---------- 确认、撤销：走真的通道（QProcess + 一行一条 JSON），对面是假的子进程 ----------
+
+@pytest.fixture
+def real_session(qapp, monkeypatch):
+    monkeypatch.setattr(i18n, "_current", "zh")
+    from yunyun.assistant.process import AssistantProcess
+
+    def make(language, parent):
+        return AssistantProcess(language, parent, command=(sys.executable, [str(FAKE_WORKER)], None))
+
+    s = AssistantSession(make_process=make)
+    yield s
+    s.close(wait=True)
+
+
+def waiting_for_confirm(qapp, session, question="edit"):
+    session.ask(question)
+    assert wait_until(qapp, lambda: session.pending_permissions)
+    return session.pending_permissions[0]
+
+
+def test_real_channel_confirm_allow_then_undo(qapp, real_session):
+    request = waiting_for_confirm(qapp, real_session)
+    assert (request.tool, request.kind, request.tool_id, request.input["file_path"]) == ("Edit", "edit", "t1", "a.py")
+    real_session.answer_permission(request.request_id, True, remember=True)
+    assert wait_until(qapp, lambda: not real_session.busy)
+    turn = real_session.turns[0]
+    assert turn.answer == "改好了" and turn.files == ("a.py",) and turn.checkpoint == "cp-1"
+    assert [(a.tool, a.decision, a.ok) for a in turn.actions] == [("Edit", "remembered", True)]
+    results = []
+    real_session.rewind_finished.connect(lambda cp, ok, turns: results.append((cp, ok)))
+    assert real_session.rewind(turn.generation, "cp-1")
+    assert wait_until(qapp, lambda: results) and results == [("cp-1", True)] and turn.undone
+
+
+def test_real_channel_confirm_deny_with_reason(qapp, real_session):
+    request = waiting_for_confirm(qapp, real_session)
+    real_session.answer_permission(request.request_id, False, "先别改，我还没提交")
+    assert wait_until(qapp, lambda: not real_session.busy)
+    turn = real_session.turns[0]
+    assert turn.answer == "没改（先别改，我还没提交）"                 # 理由（中文）原样到了对面
+    assert turn.files == () and [a.decision for a in turn.actions] == ["denied"]
+
+
+def test_real_channel_stop_while_waiting(qapp, real_session):
+    waiting_for_confirm(qapp, real_session)
+    real_session.stop()
+    assert real_session.pending_permissions == []                  # 卡片马上收起
+    assert wait_until(qapp, lambda: not real_session.busy)
+    turn = real_session.turns[0]
+    assert turn.stopped and [a.decision for a in turn.actions] == ["stopped"]
+
+
+def test_real_channel_worker_crash_while_waiting(qapp, real_session):
+    errors, queue_sizes = [], []
+    real_session.error_occurred.connect(errors.append)
+    real_session.permissions_changed.connect(lambda: queue_sizes.append(len(real_session.pending_permissions)))
+    real_session.ask("edit-crash")
+    assert wait_until(qapp, lambda: errors and not real_session.busy)   # 不会一直等下去
+    assert queue_sizes == [1, 0]                                     # 来过一个确认，子进程没了就作废
+    assert [e.kind for e in errors] == ["worker"]
+
+
 def test_each_turn_is_recorded_in_the_ledger(session):
     from yunyun.assistant import ledger
     session.ask("一")

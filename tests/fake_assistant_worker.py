@@ -11,6 +11,9 @@ tests/test_assistant_process.py 用 AssistantProcess(command=...) 启动它。�
     slow             每 0.05 秒吐一个字，直到收到 Interrupt，然后"这一轮结束（停止）"
     garbage          先发一行不是 JSON 的乱码，再正常回答
     crash            直接退出（模拟子进程崩溃）
+    edit             想改 a.py：发确认请求，等 PermissionReply（允许 → 记成改了 a.py，检查点 cp-1；拒绝 → 没改；
+                     Interrupt → 停下）；之后的 Rewind 回 Rewound(ok)
+    edit-crash       发了确认请求就退出（模拟等确认时子进程崩溃）
 """
 import os
 import queue
@@ -55,10 +58,17 @@ def main():
             if "--ignore-quit" in flags:
                 continue
             return
+        if isinstance(command, protocol.Rewind):
+            send(protocol.Rewound(command.checkpoint, command.checkpoint == "cp-1"))
+            continue
         if not isinstance(command, protocol.Ask):
             continue
         if command.text == "crash":
             os._exit(3)
+        if command.text in ("edit", "edit-crash"):
+            if edit(send, commands, crash=command.text == "edit-crash") == "gone":
+                return
+            continue
         if command.text == "garbage":
             out.write(b"this is not json\n")
             out.flush()
@@ -81,6 +91,33 @@ def main():
         send(protocol.TextDelta("你好"))
         send(protocol.TextDelta("呀"))
         send(protocol.TurnFinished(0.001, 0.001, 10, 2))
+
+
+def edit(send, commands, crash=False):
+    """"edit" 的剧本：问能不能改 a.py，按回答结束这一轮。芸芸不在了返回 "gone"。"""
+    send(protocol.ToolStarted("t1", "Edit", "a.py"))
+    send(protocol.PermissionRequest(1, "Edit", {"file_path": "a.py", "old_string": "a", "new_string": "b"}, "edit",
+                                    True, "F:\\proj", False, "t1"))
+    if crash:
+        os._exit(3)
+    while True:
+        command = commands.get()
+        if command is None or isinstance(command, protocol.Quit):
+            return "gone"
+        if isinstance(command, protocol.Interrupt):
+            send(protocol.ToolDecision("t1", "Edit", "stopped", "a.py"))
+            send(protocol.ToolFinished("t1", ok=False))
+            send(protocol.TurnFinished(stopped=True))
+            return None
+        if isinstance(command, protocol.PermissionReply) and command.request_id == 1:
+            break
+    decision = ("remembered" if command.remember else "allowed") if command.allow else "denied"
+    send(protocol.ToolDecision("t1", "Edit", decision, "a.py"))
+    send(protocol.ToolFinished("t1", ok=command.allow))
+    send(protocol.TextDelta("改好了" if command.allow else f"没改（{command.reason}）"))
+    send(protocol.TurnFinished(0.001, 0.001, 10, 2, checkpoint="cp-1" if command.allow else "",
+                               files=("a.py",) if command.allow else ()))
+    return None
 
 
 if __name__ == "__main__":
