@@ -19,7 +19,8 @@ TEXTS = {
 
     # ---- 右键菜单 ----
     "menu_settings": {"zh": "设置…", "en": "Settings…", "ja": "設定…"},
-    "menu_assistant": {"zh": "助手模式…", "en": "Assistant mode…", "ja": "アシスタントモード…"},
+    "menu_assistant": {"zh": "✦ 助手模式", "en": "✦ Assistant mode", "ja": "✦ アシスタントモード"},
+    "menu_assistant_exit": {"zh": "退出助手模式", "en": "Exit assistant mode", "ja": "アシスタントモードを終了"},
     "menu_language": {"zh": "语言", "en": "Language", "ja": "言語"},
     "menu_always_on_top": {"zh": "始终在上", "en": "Always on Top", "ja": "常に最前面"},
     "menu_recent_mail": {"zh": "刚才的邮件", "en": "Recent Mail", "ja": "さっきのメール"},
@@ -525,17 +526,10 @@ TEXTS = {
         "ja": "プロバイダーにこのモデルがありません。モデル名を確認してください。",
     },
     "assistant_error_other": {"zh": "出错了。", "en": "Something went wrong.", "ja": "エラーが発生しました。"},
-    # ---- 助手模式的对话面板（pet/assistant_panel.py）----
-    "assistant_panel_title": {"zh": "芸芸 · 助手", "en": "Yunyun · Assistant", "ja": "芸芸 · アシスタント"},
-    "assistant_panel_model": {"zh": "模型：{}", "en": "Model: {}", "ja": "モデル：{}"},
-    "assistant_new_chat": {"zh": "新对话", "en": "New chat", "ja": "新しい会話"},
+    # ---- 助手模式的界面（pet/assistant_mode.py、assistant_input.py）----
     "assistant_send": {"zh": "发送", "en": "Send", "ja": "送信"},
     "assistant_stop": {"zh": "停止", "en": "Stop", "ja": "停止"},
-    "assistant_input_placeholder": {
-        "zh": "问芸芸点什么……（Enter 发送，Shift+Enter 换行）",
-        "en": "Ask Yunyun something… (Enter to send, Shift+Enter for a new line)",
-        "ja": "芸芸に聞いてみよう…（Enter で送信、Shift+Enter で改行）",
-    },
+    "assistant_input_placeholder": {"zh": "问芸芸点什么……", "en": "Ask Yunyun something…", "ja": "芸芸に聞いてみよう…"},
     "assistant_connecting": {"zh": "正在连接大脑……", "en": "Connecting…", "ja": "接続中…"},
     "assistant_thinking": {"zh": "芸芸在想……", "en": "Yunyun is thinking…", "ja": "芸芸が考え中…"},
     "assistant_tool_web_search": {"zh": "正在搜索网页……", "en": "Searching the web…", "ja": "ウェブを検索中…"},
@@ -552,16 +546,15 @@ TEXTS = {
         "en": "This reply {} / {} tokens (in / out)",
         "ja": "今回 {} / {} トークン（入力 / 出力）",
     },
-    "assistant_open_settings": {"zh": "去设置", "en": "Open settings", "ja": "設定を開く"},
+    "assistant_fix_in_settings": {
+        "zh": "可以在这里改：右键芸芸 → 设置… → 助手。",
+        "en": "You can change it in: right-click Yunyun → Settings… → Assistant.",
+        "ja": "ここで変更できます：芸芸を右クリック → 設定… → アシスタント。",
+    },
     "assistant_need_key": {
         "zh": "先帮我接上大脑吧：填好 API Key 就能用助手模式啦～",
         "en": "Connect my brain first: add an API key and assistant mode is ready!",
         "ja": "まず頭脳をつないでね：API キーを入れるとアシスタントモードが使えるよ～",
-    },
-    "assistant_error_bubble": {
-        "zh": "哎呀，出了点问题，对话框里写了原因～",
-        "en": "Oops, something went wrong. The chat window says why.",
-        "ja": "あれ、問題が起きたみたい。理由は会話ウィンドウに書いてあるよ。",
     },
 }
 

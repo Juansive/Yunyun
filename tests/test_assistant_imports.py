@@ -34,7 +34,7 @@ def test_shared_assistant_modules_import_neither_qt_nor_sdk():
 def test_settings_page_and_panel_stay_light():
     """设置窗口的"助手"页、对话面板在芸芸进程里：不能带进 Agent SDK，也不能带进 anthropic（它们只在小进程里用）。"""
     modules = top_level(modules_after(
-        "import yunyun.pet.assistant_page, yunyun.pet.assistant_panel, yunyun.assistant.process"))
+        "import yunyun.pet.assistant_page, yunyun.pet.assistant_mode, yunyun.assistant.process"))
     assert "claude_agent_sdk" not in modules
     assert "anthropic" not in modules
 

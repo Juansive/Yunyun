@@ -1,4 +1,4 @@
-"""端到端测试：右键"助手模式…" → 面板 → 发送 → 假大脑回答 → 芸芸思考 / 恢复 → 出错说一句 → 关闭。
+"""端到端测试：右键"✦ 助手模式" → 输入框展开 → 发问 → 芸芸思考、气泡逐字说 → 回答完恢复 → 收起 / 闲置退出 / 菜单退出。
 
 大脑用 tests/fake_assistant_process.py（不开子进程）；最后一个用真的 AssistantProcess + 假 worker 测"芸芸退出时等子进程退出"。
 """
@@ -7,14 +7,20 @@ import time
 from pathlib import Path
 
 import pytest
+from PySide6.QtCore import QEvent, Qt
+from PySide6.QtGui import QKeyEvent
+from PySide6.QtWidgets import QApplication
 from shiboken6 import isValid
 
 from fake_assistant_process import FakeProcess
 from yunyun import i18n
 from yunyun.assistant import protocol
+from yunyun.assistant import session as session_module
 from yunyun.assistant import settings as assistant_settings
 from yunyun.main import connect_assistant
-from yunyun.pet import assistant_panel
+from yunyun.pet.assistant_input import AssistantInput
+from yunyun.pet.assistant_mode import AssistantMode
+from yunyun.pet.menu import FancyAction
 from yunyun.pet.sprites import load_sprites
 from yunyun.pet.state import PetState, StateMachine
 from yunyun.pet.window import PetWindow
@@ -36,6 +42,9 @@ def world(qapp, tmp_path, monkeypatch):
     QSettings.setDefaultFormat(QSettings.Format.IniFormat)
     QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, str(tmp_path))
     monkeypatch.setattr(i18n, "_current", "zh")
+    monkeypatch.setattr(AssistantInput, "OPEN_MS", 20)
+    monkeypatch.setattr(AssistantInput, "CLOSE_MS", 20)
+    monkeypatch.setattr(AssistantMode, "BUBBLE_MS", 10)
     processes = []
 
     def make(language, parent):
@@ -43,10 +52,10 @@ def world(qapp, tmp_path, monkeypatch):
         processes.append(process)
         return process
 
-    monkeypatch.setattr(assistant_panel, "default_process", make)
+    monkeypatch.setattr(session_module, "default_process", make)
     pet = PetWindow(load_sprites())
     monkeypatch.setattr(pet, "_check_covered", lambda: None)
-    pet.move(600, 500)
+    pet.move(600, 300)
     pet.show()
     machine = StateMachine()
     machine.state_changed.connect(pet.set_state)
@@ -63,20 +72,35 @@ def has_key(monkeypatch, ready=True):
 
 
 def bubbles(pet):
-    return [b._text for b in pet._bubbles._bubbles]
+    return [b.text for b in pet._bubbles._bubbles]
 
 
-def test_menu_has_assistant_entry(world):
+def ask(pet, text):
+    box = pet.assistant.input
+    box.set_text(text)
+    QApplication.sendEvent(box._edit, QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Return, Qt.KeyboardModifier.NoModifier))
+
+
+def menu_texts(pet):
+    return [a.text() for a in pet._build_menu().actions() if not a.isSeparator()]
+
+
+def test_menu_puts_assistant_first_and_fancy(world, monkeypatch):
     pet, _, _ = world
-    texts = [a.text() for a in pet._build_menu().actions()]
-    assert texts.index("助手模式…") == texts.index("设置…") + 1   # 就在"设置…"下面
+    actions = pet._build_menu().actions()
+    assert isinstance(actions[0], FancyAction) and actions[0].text() == "✦ 助手模式"
+    assert "退出助手模式" not in menu_texts(pet)
+    has_key(monkeypatch)
+    pet.open_assistant()
+    texts = menu_texts(pet)
+    assert texts[1] == "退出助手模式"               # 开着时才有
 
 
 def test_without_key_opens_settings_and_says_so(world, monkeypatch):
     pet, _, processes = world
     has_key(monkeypatch, False)
     pet.open_assistant()
-    assert pet.assistant_panel is None and processes == []
+    assert pet.assistant is None and processes == []
     assert pet.settings_window is not None and pet.settings_window.current_page == "assistant"
     assert i18n.tr("assistant_need_key") in bubbles(pet)
 
@@ -85,75 +109,137 @@ def test_full_flow(qapp, world, monkeypatch):
     pet, machine, processes = world
     has_key(monkeypatch)
     pet.open_assistant()
-    panel = pet.assistant_panel
-    assert panel is not None and panel.isVisible()
-    assert panel.parent() is pet                  # 从属窗口
+    mode = pet.assistant
+    assert mode is not None and mode.input.is_open
+    assert mode.input.parent() is pet               # 从属窗口
     process = processes[0]
-    assert process.started                        # 一打开就启动大脑
-
-    pet.open_assistant()                          # 再点一次：还是同一个面板、同一个大脑
-    assert pet.assistant_panel is panel and len(processes) == 1
+    assert process.started                          # 一唤出就启动大脑
 
     process.say(protocol.Ready("anthropic", "claude-haiku-4-5"))
-    panel._input.setPlainText("你好")
-    panel.send()
-    assert machine.state is PetState.THINKING     # 发出问题 → 芸芸思考
-    process.say(protocol.TextDelta("你好呀"), protocol.TurnFinished(0.001, 0.001))
-    assert machine.state is PetState.IDLE         # 回答完 → 回到原来的样子
-    assert panel.transcript() == [("user", "你好"), ("reply", "你好呀")]
+    ask(pet, "你好")
+    assert process.asked == ["你好"] and mode.input.text == ""   # 发出去了才清空
+    assert machine.state is PetState.THINKING       # 发出问题 → 芸芸思考
+    assert mode.input._thinking and mode.input._button.stop_mode
+    assert bubbles(pet) == [i18n.tr("assistant_thinking")]       # 还没出字：气泡说进度
 
-    panel.close()
-    assert wait_until(qapp, lambda: pet.assistant_panel is None)
-    assert process.stopped                        # 关掉面板 = 退出助手模式
+    process.say(protocol.TextDelta("你好"), protocol.TextDelta("**呀**"))
+    assert wait_until(qapp, lambda: bubbles(pet) == ["你好呀"])  # 气泡里不显示 Markdown 符号
+    process.say(protocol.TurnFinished(0.001, 0.001))
+    assert machine.state is PetState.IDLE           # 回答完 → 回到原来的样子
+    assert not mode.input._thinking and not mode.input._button.stop_mode
+    assert pet._bubbles._bubbles[-1]._hide_timer.isActive()      # 说完了，过一会儿消失
 
-    pet.open_assistant()                          # 下次打开重新启动
-    assert len(processes) == 2 and processes[1].started
+    pet.open_assistant()                            # 再唤出：还是同一个助手
+    assert pet.assistant is mode and len(processes) == 1
+
+
+def test_long_answer_only_shows_the_beginning(qapp, world, monkeypatch):
+    pet, _, processes = world
+    has_key(monkeypatch)
+    pet.open_assistant()
+    processes[0].say(protocol.Ready("anthropic", "m"))
+    ask(pet, "讲个长故事")
+    processes[0].say(protocol.TextDelta("很久很久以前，" * 80), protocol.TurnFinished(0.01, 0.01))
+    text = bubbles(pet)[-1]
+    assert text.endswith("……") and len(text) < 200
+
+
+def test_stopped_answer_says_so(world, monkeypatch):
+    pet, _, processes = world
+    has_key(monkeypatch)
+    pet.open_assistant()
+    process = processes[0]
+    process.say(protocol.Ready("anthropic", "m"))
+    ask(pet, "slow")
+    process.say(protocol.TextDelta("写到一半"))
+    pet.assistant.input._button.click()             # 回答时按钮是"停止"
+    assert process.interrupts == 1
+    process.say(protocol.TurnFinished(0.001, 0.001, stopped=True))
+    assert bubbles(pet)[-1] == "写到一半\n" + i18n.tr("assistant_stopped")
+
+
+def test_error_makes_yunyun_say_why(world, monkeypatch):
+    pet, _, processes = world
+    has_key(monkeypatch)
+    pet.open_assistant()
+    process = processes[0]
+    process.say(protocol.Ready("anthropic", "m"))
+    ask(pet, "hi")
+    process.say(protocol.Error("auth", "invalid x-api-key"), protocol.TurnFinished(None, 0.0))
+    said = bubbles(pet)
+    error = [t for t in said if i18n.tr("assistant_error_auth") in t]
+    assert error and i18n.tr("assistant_fix_in_settings") in error[0]
 
 
 def test_mail_and_assistant_thinking_do_not_cancel_each_other(world, monkeypatch):
     pet, machine, processes = world
     has_key(monkeypatch)
     pet.open_assistant()
-    process = processes[0]
-    process.say(protocol.Ready("anthropic", "m"))
-    panel = pet.assistant_panel
-    panel._input.setPlainText("写首诗")
-    panel.send()
-    machine.start_thinking("mail")                # 同时点了小红点
-    machine.stop_thinking("mail")                 # 邮件先处理完
-    assert machine.state is PetState.THINKING     # 助手还在回答，继续想
-    process.say(protocol.TurnFinished(0.001, 0.001))
+    processes[0].say(protocol.Ready("anthropic", "m"))
+    ask(pet, "写首诗")
+    machine.start_thinking("mail")                  # 同时点了小红点
+    machine.stop_thinking("mail")                   # 邮件先处理完
+    assert machine.state is PetState.THINKING       # 助手还在回答，继续想
+    processes[0].say(protocol.TurnFinished(0.001, 0.001))
     assert machine.state is PetState.IDLE
 
 
-def test_closing_while_answering_stops_thinking(qapp, world, monkeypatch):
+def test_collapse_keeps_assistant_then_idle_exit(qapp, world, monkeypatch):
+    pet, _, processes = world
+    has_key(monkeypatch)
+    pet.open_assistant()
+    mode = pet.assistant
+    mode.input.collapse()
+    assert wait_until(qapp, lambda: not mode.input.isVisible())
+    assert pet.assistant is mode and not processes[0].stopped   # 收起 ≠ 退出
+    assert mode._idle_timer.isActive()
+
+    pet.open_assistant()                            # 唤出：停止计时
+    assert not mode._idle_timer.isActive() and mode.input.is_open
+    mode.input.collapse()
+    assert wait_until(qapp, lambda: not mode.input.isVisible())
+    mode._idle_timer.timeout.emit()                 # 闲置太久
+    assert processes[0].stopped
+    assert wait_until(qapp, lambda: pet.assistant is None)
+
+
+def test_idle_exit_waits_for_the_answer(qapp, world, monkeypatch):
+    pet, _, processes = world
+    has_key(monkeypatch)
+    pet.open_assistant()
+    mode = pet.assistant
+    processes[0].say(protocol.Ready("anthropic", "m"))
+    ask(pet, "slow")
+    mode.input.collapse()
+    assert wait_until(qapp, lambda: not mode.input.isVisible())
+    mode._on_idle()                                 # 时间到了但还在回答：不退出
+    assert pet.assistant is mode and not processes[0].stopped
+
+
+def test_exit_from_menu_while_answering(qapp, world, monkeypatch):
     pet, machine, processes = world
     has_key(monkeypatch)
     pet.open_assistant()
     processes[0].say(protocol.Ready("anthropic", "m"))
-    pet.assistant_panel._input.setPlainText("slow")
-    pet.assistant_panel.send()
+    ask(pet, "slow")
     assert machine.state is PetState.THINKING
-    pet.close_assistant()
+    pet.close_assistant()                           # 菜单"退出助手模式"
     assert machine.state is PetState.IDLE
-    assert pet.assistant_panel is None and processes[0].stopped
+    assert processes[0].stopped
+    assert wait_until(qapp, lambda: pet.assistant is None)
+    pet.open_assistant()                            # 下次唤出：重新启动
+    assert len(processes) == 2 and processes[1].started
 
 
-def test_error_makes_yunyun_say_something(world, monkeypatch):
-    pet, machine, processes = world
+def test_input_follows_yunyun(qapp, world, monkeypatch):
+    pet, _, _ = world
     has_key(monkeypatch)
+    pet.move(250, 100)                              # 测试用的屏幕不大：放中间，免得输入框贴着屏幕边
     pet.open_assistant()
-    processes[0].say(protocol.Error("no_key"))
-    assert i18n.tr("assistant_error_bubble") in bubbles(pet)
-
-
-def test_open_settings_from_error(world, monkeypatch):
-    pet, _, processes = world
-    has_key(monkeypatch)
-    pet.open_assistant()
-    processes[0].say(protocol.Error("auth"))
-    pet.assistant_panel.settings_requested.emit()
-    assert pet.settings_window is not None and pet.settings_window.current_page == "assistant"
+    box = pet.assistant.input
+    before = box.pos()
+    pet.move(pet.x() - 40, pet.y())
+    assert wait_until(qapp, lambda: box.pos().x() == before.x() - 40)
 
 
 def test_quit_waits_for_the_real_worker(qapp, world, monkeypatch):
@@ -168,7 +254,7 @@ def test_quit_waits_for_the_real_worker(qapp, world, monkeypatch):
         real.append(process)
         return process
 
-    monkeypatch.setattr(assistant_panel, "default_process", make)
+    monkeypatch.setattr(session_module, "default_process", make)
     pet.open_assistant()
     process = real[0]
     assert wait_until(qapp, lambda: process.ready)

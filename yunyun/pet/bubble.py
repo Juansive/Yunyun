@@ -16,10 +16,42 @@ Windows 会让从属窗口始终紧贴在主人正上方：芸芸被别的窗口
 芸芸被提到前面、设为置顶时，气泡也跟着一起。所以气泡自己不设"始终置顶"。
 """
 from PySide6.QtCore import QObject, QPointF, QRect, QRectF, QSize, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QFont, QGuiApplication, QPainter, QPainterPath, QPen
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QGuiApplication, QPainter, QPainterPath, QPen, QTextLayout, QTextOption
 from PySide6.QtWidgets import QWidget
 
 from yunyun.pet import winapi
+
+
+def bubble_font():
+    return QFont("Microsoft YaHei", 10)
+
+
+def elide_lines(text, font, width, max_lines):
+    """text 在 width 宽度里自动换行，超过 max_lines 行就截断，末尾加"……"（助手的长回答只在气泡里说开头）。"""
+    layout = QTextLayout(text.replace("\n", "\u2028"), font)   # QTextLayout 只认 U+2028 是换行
+    option = QTextOption()
+    option.setWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
+    layout.setTextOption(option)
+    layout.beginLayout()
+    start, end, lines = 0, len(text), 0
+    while True:
+        line = layout.createLine()
+        if not line.isValid():
+            break
+        line.setLineWidth(width)
+        lines += 1
+        if lines == max_lines:
+            start, end = line.textStart(), line.textStart() + line.textLength()
+            break
+    layout.endLayout()
+    if end >= len(text.rstrip()):
+        return text
+    # 最后一行：去掉几个字，直到加上"……"还放得下
+    metrics = QFontMetrics(font)
+    last = text[start:end].rstrip()
+    while last and metrics.horizontalAdvance(last + "……") > width:
+        last = last[:-1]
+    return (text[:start] + last).rstrip() + "……"
 
 
 class Bubble(QWidget):
@@ -32,7 +64,7 @@ class Bubble(QWidget):
 
     expired = Signal(object)  # 显示时间到了；参数是气泡自己，方便 BubbleStack 知道是哪个
 
-    def __init__(self, text, owner):
+    def __init__(self, text, owner, max_width=None):
         # owner：芸芸的窗口。有 parent 又带 Tool 标志的窗口，在 Windows 上就是 parent 的从属窗口
         super().__init__(owner)
         self.setWindowFlags(
@@ -41,21 +73,9 @@ class Bubble(QWidget):
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)  # 弹出时不抢走键盘焦点
-        self.setFont(QFont("Microsoft YaHei", 10))
-
-        self._text = text
-        # 先量一下：在最大宽度内自动换行时，这段文字需要多大的区域
-        self._text_rect = self.fontMetrics().boundingRect(
-            QRect(0, 0, self.MAX_TEXT_WIDTH, 10000),
-            Qt.TextFlag.TextWordWrap,
-            text,
-        )
-        # 窗口四周都留出尾巴的空间，这样尾巴朝哪个方向都画得下，窗口大小也不用变
-        t = self.TAIL
-        self.resize(
-            self._text_rect.width() + 2 * self.PADDING + 2 * t,
-            self._text_rect.height() + 2 * self.PADDING + 2 * t,
-        )
+        self.setFont(bubble_font())
+        self._max_width = max_width or self.MAX_TEXT_WIDTH
+        self._measure(text)
 
         self._anchor = QRect()     # 芸芸身体在屏幕上的区域（画尾巴时要知道往哪指）
         self._show_tail = False
@@ -75,6 +95,27 @@ class Bubble(QWidget):
     @property
     def text(self):
         return self._text
+
+    def set_text(self, text):
+        """换成新的文字（大小跟着变）。助手的回答逐字出现时用。"""
+        if text != self._text:
+            self._measure(text)
+            self.update()
+
+    def _measure(self, text):
+        self._text = text
+        # 先量一下：在最大宽度内自动换行时，这段文字需要多大的区域
+        self._text_rect = self.fontMetrics().boundingRect(
+            QRect(0, 0, self._max_width, 10000),
+            Qt.TextFlag.TextWordWrap,
+            text,
+        )
+        # 窗口四周都留出尾巴的空间，这样尾巴朝哪个方向都画得下，窗口大小也不用变
+        t = self.TAIL
+        self.resize(
+            self._text_rect.width() + 2 * self.PADDING + 2 * t,
+            self._text_rect.height() + 2 * self.PADDING + 2 * t,
+        )
 
     def body_size(self):
         """气泡主体（不含四周尾巴留白）的大小。"""
@@ -206,6 +247,7 @@ class BubbleStack(QObject):
         self._bubbles = []         # 当前显示的气泡，从旧到新
         self._anchor = QRect()     # 芸芸身体在屏幕上的区域
         self._placement = None     # 整组的方向："above" / "below" / "left" / "right"
+        self._live = None          # 正在"边说边改字"的气泡（助手回答时），没有就是 None
 
     def add(self, text, anchor, duration_ms=4000):
         """新增一个气泡。"""
@@ -231,6 +273,31 @@ class BubbleStack(QObject):
         with winapi.keep_z_order(int(self._owner.winId())):
             bubble.show()
         bubble.start_countdown(duration_ms)
+
+    def show_live(self, text, anchor, max_width=None):
+        """一直显示、可以随时改字的气泡（助手的回答逐字出现）。end_live() 之后才开始倒计时消失。"""
+        self._anchor = QRect(anchor)
+        live = self._live
+        if live is not None and live in self._bubbles:
+            live.set_text(text)
+            self._layout(new=live)   # 它自己直接对齐（变高时不要"滑"），别的气泡滑过去让位
+            return
+        if not self._bubbles:
+            self._placement = None
+        live = self._live = Bubble(text, self._owner, max_width)
+        live.expired.connect(self._remove)
+        self._bubbles.append(live)
+        if len(self._bubbles) > self.MAX_BUBBLES:
+            self._discard(self._bubbles[0])
+        self._layout(new=live)
+        with winapi.keep_z_order(int(self._owner.winId())):
+            live.show()
+
+    def end_live(self, duration_ms=4000):
+        """这句话说完了：duration_ms 毫秒后消失。"""
+        live, self._live = self._live, None
+        if live is not None and live in self._bubbles:
+            live.start_countdown(duration_ms)
 
     def follow(self, anchor):
         """芸芸移动了：整组重新排位，平滑地跟过去。"""
@@ -288,10 +355,11 @@ class BubbleStack(QObject):
         return x, y
 
 
-def place_block(anchor, bw, bh, gap, current=None, hysteresis=24):
+def place_block(anchor, bw, bh, gap, current=None, hysteresis=24, prefer_below=False):
     """在芸芸身体（anchor，屏幕坐标）旁边给一块 bw × bh 的区域找位置（气泡、卡片堆共用）。
 
     优先放在头顶；头顶放不下就去左/右侧；再不行去下方；最后保证整块绝不出屏。
+    prefer_below=True 时先试下方、再试头顶，最后才是左右（助手的输入框：放在芸芸脚下）。
     current 是上一次的方向（"above" / "below" / "left" / "right" / None）：
     不是当前方向的，需要多出 hysteresis 的空间才换过去，防止在临界处来回抖。
     返回 (x, y, 这次选的方向)。
@@ -324,7 +392,7 @@ def place_block(anchor, bw, bh, gap, current=None, hysteresis=24):
         sides.sort(key=lambda name: name != current)
     else:
         sides.sort(key=lambda name: room[name], reverse=True)
-    order = ["above", *sides, "below"]
+    order = ["below", "above", *sides] if prefer_below else ["above", *sides, "below"]
 
     # 按优先级挑第一个放得下的。不是当前方向的，需要多出 hysteresis 的空间才换过去
     chosen = max(room, key=room.get)  # 兜底：都放不下时，选空间最大的

@@ -3,8 +3,10 @@
 助手的"大脑"（Claude Agent SDK + Claude Code）放在单独的**助手子进程**里（方案 B）：
 
     芸芸进程（Qt，从不 import SDK）                              助手子进程（asyncio，不 import Qt）
-      对话面板 pet/assistant_panel.py                              worker.py
+      界面 pet/assistant_mode.py（输入框、气泡……）                  worker.py
             │ Qt 信号                                                 │
+      session.py（一次会话：每一轮问答）                                │
+            │                                                         │
       process.py（QProcess）◀── 标准输入 / 输出，JSON 一行一条 ──▶ claude_brain.py ──▶ claude.exe
       两边共用：protocol.py（命令和事件的格式）、settings.py、providers.py
 

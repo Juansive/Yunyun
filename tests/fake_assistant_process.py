@@ -1,6 +1,6 @@
 """假的 AssistantProcess（纯 Qt 对象，不开子进程）：测试自己决定它什么时候发什么事件。
 
-test_assistant_panel.py、test_assistant_flow.py 共用。
+test_assistant_session.py、test_assistant_flow.py 共用。
 """
 from PySide6.QtCore import QObject, Signal
 

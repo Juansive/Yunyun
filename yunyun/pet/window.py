@@ -21,7 +21,7 @@ from yunyun.pet import winapi
 from yunyun.pet.badge import Badge
 from yunyun.pet.bubble import BubbleStack
 from yunyun.pet.card_deck import CardDeck, MailCard
-from yunyun.pet.menu import KeepOpenMenu
+from yunyun.pet.menu import FancyAction, KeepOpenMenu
 from yunyun.pet.state import PetState
 from yunyun.pet.sway import Sway
 
@@ -78,7 +78,7 @@ class PetWindow(QWidget):
 
         self._bubbles = BubbleStack(self)
         self._settings_window = None  # 设置窗口（用到时才创建，关掉就销毁）
-        self._assistant_panel = None  # 助手模式的对话面板（同上）
+        self._assistant = None        # 助手模式（用到时才创建，退出就销毁）
         self._history = None          # 邮件提醒的历史记录（main 里设置）
         self._quiet_hours = None      # 免打扰时段（main 里设置）
 
@@ -331,6 +331,16 @@ class PetWindow(QWidget):
         """告诉用户现在没有新邮件（显示一小会儿）。"""
         self.say(i18n.tr("no_new_mail"), self.SHORT_SAY_MS)
 
+    def say_live(self, text, max_width=None):
+        """一直显示、可以随时改字的气泡（助手回答时逐字说）；end_live() 后才倒计时消失。"""
+        self._bubbles.show_live(text, self._body_rect(), max_width)
+
+    def end_live(self, duration_ms=4000):
+        self._bubbles.end_live(duration_ms)
+
+    def body_rect(self):
+        return self._body_rect()
+
     def _body_rect(self):
         """芸芸身体在屏幕上的大致区域，不含透明留白。"""
         m = self.MARGIN
@@ -341,6 +351,8 @@ class PetWindow(QWidget):
         self._bubbles.follow(self._body_rect())
         self._badge.follow(self._body_rect())
         self._deck.follow(self._body_rect())
+        if self._assistant is not None:
+            self._assistant.follow(self._body_rect())
         if self.isVisible():
             self._save_pos_timer.start()  # 每次移动都重新计时：停下半秒后才真正保存
 
@@ -630,10 +642,15 @@ class PetWindow(QWidget):
         """每次右键都重新创建菜单，这样菜单的语言、"暂停/开始"、勾选状态总是最新的。"""
         tr = i18n.tr
         menu = KeepOpenMenu(self)
+        # "✦ 助手模式"：第一项、蓝紫渐变的字，要醒目（2026-10-07 用户要求）；开着时下面多一项"退出助手模式"
+        assistant = FancyAction(tr("menu_assistant"), menu)
+        assistant.triggered.connect(self.open_assistant)
+        menu.addAction(assistant)
+        if self._assistant is not None:
+            menu.addAction(tr("menu_assistant_exit"), self.close_assistant)
+        menu.addSeparator()
         # "设置…"：所有设置都在设置窗口里（"…"表示点了会打开一个窗口，这是桌面软件的惯例）
         menu.addAction(tr("menu_settings"), self.open_settings)
-        # "助手模式…"：打开对话面板（还没填 Key 就先去设置页）
-        menu.addAction(tr("menu_assistant"), self.open_assistant)
         # 刚才的邮件：把最近一批卡片重新展开（没有历史、或正在处理邮件时变灰）
         recent = menu.addAction(tr("menu_recent_mail"), self.show_recent_mail)
         recent.setEnabled(self._history is not None and not self._history.is_empty() and not self._mail_processing)
@@ -666,42 +683,36 @@ class PetWindow(QWidget):
             self._settings_window.activateWindow()
 
     def open_assistant(self):
-        """右键"助手模式…"：还没填 Key → 翻到设置窗口的助手页，芸芸提醒一句；填好了 → 打开对话面板（开着就提到前面）。"""
+        """右键"✦ 助手模式"：还没填 Key → 翻到设置窗口的助手页，芸芸提醒一句；填好了 → 输入框从芸芸脚下展开。"""
         # 用到时才导入：节能模式下助手的代码一行都不加载
         from yunyun.assistant import settings as assistant_settings
         if not assistant_settings.is_ready():
             self.open_settings("assistant")
             self.say(i18n.tr("assistant_need_key"))
             return
-        if self._assistant_panel is None:
-            from yunyun.pet.assistant_panel import AssistantPanel
-            panel = AssistantPanel(self)   # parent = 芸芸：和设置窗口一样是从属窗口
-            panel.busy_changed.connect(self.assistant_busy_changed)
-            panel.error_occurred.connect(self._on_assistant_error)
-            panel.settings_requested.connect(lambda: self.open_settings("assistant"))
-            panel.closed.connect(self._on_assistant_closed)
-            self._assistant_panel = panel
-        self._assistant_panel.show_beside(self._body_rect())
+        if self._assistant is None:
+            from yunyun.pet.assistant_mode import AssistantMode
+            mode = AssistantMode(self)
+            mode.busy_changed.connect(self.assistant_busy_changed)
+            mode.closed.connect(self._on_assistant_closed)
+            self.language_changed.connect(mode.retranslate)
+            self._assistant = mode
+        self._assistant.summon()
 
     @property
-    def assistant_panel(self):
-        return self._assistant_panel
+    def assistant(self):
+        """助手模式（没开就是 None）。"""
+        return self._assistant
 
     def close_assistant(self, wait=False):
-        """关掉助手模式（面板 + 子进程）。芸芸退出时 wait=True：等子进程真的退出再返回（这时事件循环已经停了）。"""
-        panel = self._assistant_panel
-        if panel is None:
-            return
-        process = panel.process
-        panel.close()
-        if wait and process is not None:
-            process.stop_and_wait()
-
-    def _on_assistant_error(self, error):
-        self.say(i18n.tr("assistant_error_bubble"))   # 详细原因在面板里
+        """退出助手模式（输入框 + 子进程）。芸芸退出时 wait=True：等子进程真的退出再返回（这时事件循环已经停了）。"""
+        if self._assistant is not None:
+            self._assistant.exit(wait)
 
     def _on_assistant_closed(self):
-        self._assistant_panel = None
+        mode, self._assistant = self._assistant, None
+        if mode is not None:
+            mode.deleteLater()
 
     def open_mail_accounts(self):
         self.open_settings("mail")
