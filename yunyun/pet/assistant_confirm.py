@@ -3,7 +3,7 @@
     ┌──────────────────────────────────────────┐
     │ 芸芸想执行一条命令              还有 1 个 │
     │ 芸芸说：跑一下测试                         │
-    │ ┌──────────────────────────────────────┐ │   ← 命令全文 / 文件和改动（等宽字、可以选中复制）
+    │ ┌──────────────────────────────────────┐ │   ← 命令全文 / 文件和逐行对比（change_diff）（等宽字、可以选中复制）
     │ │ pytest -q                            │ │
     │ └──────────────────────────────────────┘ │
     │ [不同意的话可以写一句理由（Enter = 拒绝）] │
@@ -23,9 +23,9 @@ from PySide6.QtGui import QColor, QGuiApplication
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton, QTextBrowser, QVBoxLayout, QWidget
 
 from yunyun import i18n
+from yunyun.pet.change_diff import change_html, proposed_change
 from yunyun.pet.side_panel import SidePanel
 
-DETAIL_MAX_LINES = 40     # 写入的内容太长时只显示开头
 REMEMBER_SCOPE_CHARS = 24  # "这次对话 xxx 都允许"里 xxx 最多显示多长
 
 _ALLOW_STYLE = """
@@ -100,32 +100,25 @@ def note_key(request):
     return None
 
 
-def _lines(text, mark, color):
-    shown = text.splitlines() or [""]
-    more = len(shown) - DETAIL_MAX_LINES
-    rows = [f'<div style="background:{color};">{mark} {html.escape(line) or "&nbsp;"}</div>'
-            for line in shown[:DETAIL_MAX_LINES]]
-    if more > 0:
-        rows.append(f'<div style="color:#8A94A6;">{html.escape(i18n.tr("assistant_confirm_more_lines", more))}</div>')
-    return "".join(rows)
+MONO = 'style="font-family: Consolas, \'Microsoft YaHei\'; white-space: pre-wrap;"'
 
 
 def detail_html(request, workspace):
-    """详细内容（HTML）：命令全文；要读 / 搜索的位置；要改的文件 + 改前（红）改后（绿）；要写的文件 + 内容开头。"""
+    """详细内容（HTML）：命令全文；要读 / 搜索的位置；要改 / 写的文件 + 逐行对比（红删绿增，标题行写 +几 −几）。"""
     data = request.input or {}
-    mono = 'style="font-family: Consolas, \'Microsoft YaHei\'; white-space: pre-wrap;"'
     if request.kind == "command":
-        return f'<div {mono}>{html.escape(str(data.get("command", "")))}</div>'
+        return f'<div {MONO}>{html.escape(str(data.get("command", "")))}</div>'
     path = show_path(str(data.get("file_path") or data.get("notebook_path") or data.get("path") or ""), workspace)
-    head = f'<div {mono}><b>{html.escape(path)}</b></div>' if path else ""
+    head = f'<b>{html.escape(path)}</b>' if path else ""
     if request.tool in ("Glob", "Grep"):
-        return head + f'<div {mono}>{html.escape(str(data.get("pattern", "")))}</div>'
-    if request.tool == "Edit":
-        old, new = str(data.get("old_string", "")), str(data.get("new_string", ""))
-        return head + f'<div {mono}>{_lines(old, "−", "#FDECEC")}{_lines(new, "+", "#E8F6EC")}</div>'
-    if request.tool == "Write":
-        return head + f'<div {mono}>{_lines(str(data.get("content", "")), "+", "#E8F6EC")}</div>'
-    return head
+        return f'<div {MONO}>{head}</div><div {MONO}>{html.escape(str(data.get("pattern", "")))}</div>'
+    change = proposed_change(request.tool, data)
+    if change is None:
+        return f'<div {MONO}>{head}</div>' if head else ""
+    body, added, removed = change_html(change)
+    stats = (f'&nbsp;&nbsp;<span style="color:#2E7D32;">+{added}</span>'
+             f'&nbsp;<span style="color:#C62828;">−{removed}</span>')
+    return f'<div {MONO}>{head}{stats}</div><div {MONO}>{body}</div>'
 
 
 def remember_text(request):
@@ -149,8 +142,8 @@ class AssistantConfirm(SidePanel):
 
     PANEL_W = 470
     MIN_H = 170
-    MAX_H = 560
-    DETAIL_MAX_H = 260
+    MAX_H = 600
+    DETAIL_MAX_H = 330
     DANGER_BORDER = QColor("#F2B8B5")
 
     def __init__(self, owner):

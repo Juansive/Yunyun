@@ -617,6 +617,19 @@ TEXTS = {
     "assistant_confirm_said_by": {"zh": "芸芸说：{}", "en": "Yunyun says: {}", "ja": "芸芸：{}"},
     "assistant_confirm_more": {"zh": "还有 {} 个", "en": "{} more", "ja": "あと {} 件"},
     "assistant_confirm_more_lines": {"zh": "……还有 {} 行", "en": "…{} more lines", "ja": "…あと {} 行"},
+    # 改动对比（pet/change_diff.py）
+    "assistant_diff_new_file": {"zh": "新文件", "en": "New file", "ja": "新しいファイル"},
+    "assistant_diff_not_found": {
+        "zh": "在文件里没找到要改的那一段（可能会改失败），下面只对比这一段：",
+        "en": "Couldn't find the part to change in the file (the edit may fail); comparing just that part:",
+        "ja": "変更する部分がファイル内に見つかりません（失敗するかもしれません）。その部分だけ比べます：",
+    },
+    "assistant_diff_unreadable": {
+        "zh": "原文件太大或者不是文字，下面只显示改动的这一段：",
+        "en": "The original file is too big or isn't text; showing just the change:",
+        "ja": "元のファイルが大きすぎるかテキストではないため、変更部分だけ表示します：",
+    },
+    "assistant_diff_no_change": {"zh": "（内容没有变化）", "en": "(No actual change)", "ja": "（内容の変化なし）"},
     "assistant_confirm_reason": {
         "zh": "不同意的话，可以写一句理由告诉芸芸（Enter = 拒绝）",
         "en": "If not, you can tell Yunyun why (Enter = deny)",

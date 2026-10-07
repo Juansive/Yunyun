@@ -9,7 +9,6 @@ from PySide6.QtWidgets import QApplication, QWidget
 
 from yunyun import i18n
 from yunyun.assistant.protocol import PermissionRequest
-from yunyun.pet import assistant_confirm
 from yunyun.pet.assistant_confirm import AssistantConfirm, detail_html, note_key, remember_text, show_path, title_key
 
 WS = "F:\\proj"
@@ -91,21 +90,22 @@ def test_detail_shows_the_full_command_escaped():
     assert "echo &lt;b&gt;hi&lt;/b&gt; &amp;&amp; pytest" in html
 
 
-def test_detail_shows_edit_as_removed_and_added_lines():
-    req = request("Edit", {"file_path": "F:\\proj\\a.py", "old_string": "print('hi')", "new_string": "print('hello')"},
+def test_detail_shows_edit_as_a_diff_with_stats(tmp_path):
+    (tmp_path / "a.py").write_text("x = 1\nprint(x)\n", encoding="utf-8")
+    req = request("Edit", {"file_path": str(tmp_path / "a.py"), "old_string": "print(x)", "new_string": "print(x + 1)"},
                   "edit")
-    html = detail_html(req, WS)
-    assert "<b>a.py</b>" in html
-    assert "#FDECEC" in html and "print(&#x27;hi&#x27;)" in html     # 改前：红底
-    assert "#E8F6EC" in html and "print(&#x27;hello&#x27;)" in html  # 改后：绿底
+    html = detail_html(req, str(tmp_path))
+    assert "<b>a.py</b>" in html and "+1</span>" in html and "−1</span>" in html
+    assert "#FDECEC" in html and "#E8F6EC" in html                    # 改前红底、改后绿底
 
 
 def test_long_write_content_is_cut(monkeypatch):
     monkeypatch.setattr(i18n, "_current", "zh")
-    req = request("Write", {"file_path": "F:\\proj\\big.txt", "content": "\n".join(f"line {i}" for i in range(100))},
-                  "edit")
+    req = request("Write", {"file_path": "F:\\proj\\no-such-dir\\big.txt",
+                            "content": "\n".join(f"line {i}" for i in range(100))}, "edit")
     html = detail_html(req, WS)
-    assert "line 39" in html and "line 40" not in html and "还有 60 行" in html
+    assert "新文件" in html and "+100</span>" in html
+    assert "line 79" in html and "line 80" not in html and "还有 20 行" in html
 
 
 def test_remember_text(monkeypatch):
@@ -201,4 +201,3 @@ def test_every_language_has_the_texts():
     assert len(keys) > 15
     for key in keys:
         assert set(i18n.TEXTS[key]) >= {"zh", "en", "ja"}, key
-    assert assistant_confirm.DETAIL_MAX_LINES == 40
