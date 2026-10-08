@@ -80,6 +80,57 @@ def test_clear_deletes_cards_and_claude_code_records():
     assert (claude / "backups" / "x.json").exists()    # Claude Code 自己的设置备份不动
 
 
+# ---------- 一段段对话：存下的卡片 + 从 Claude Code 记录里找回来的 ----------
+
+def transcript(session_id, cwd, question, answer, ts, cost=None):
+    lines = [
+        {"type": "user", "sessionId": session_id, "cwd": cwd, "timestamp": ts, "promptSource": "sdk",
+         "message": {"role": "user", "content": question}},
+        {"type": "assistant", "sessionId": session_id, "cwd": cwd, "timestamp": ts,
+         "message": {"role": "assistant", "content": [{"type": "text", "text": answer}]}},
+    ]
+    if cost is not None:
+        lines.append({"type": "cost-state", "sessionId": session_id, "totalCostUSD": cost})
+    folder = assistant_history.claude_data_dir() / "projects" / "some-project"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / f"{session_id}.jsonl").write_text("\n".join(json.dumps(x, ensure_ascii=False) for x in lines),
+                                                encoding="utf-8")
+
+
+def iso(dt):
+    return dt.astimezone().astimezone(tz=None).isoformat()
+
+
+def test_conversations_merge_saved_cards_and_recovered_ones(monkeypatch):
+    from yunyun.assistant import transcripts
+    monkeypatch.setattr(transcripts, "_cache", {})
+    today = datetime.now().replace(microsecond=0)
+    yesterday, long_ago = today - timedelta(days=1), today - timedelta(days=40)
+    # 今天存下的卡片（会话 a），Claude Code 那边也有它的记录：用卡片（内容更全），花费用记录里的
+    saved = [AssistantCard("turn", today, "今天的问题", "今天的回答", "今天的回答", "$0.01", session_id="a",
+                           workspace="F:\\proj")]
+    assistant_history.save(saved)
+    transcript("a", "F:\\proj", "今天的问题", "记录里的回答", iso(today), cost=0.02)
+    # 昨天的对话：芸芸没存卡片，只有 Claude Code 的记录（只聊天）
+    transcript("b", str(assistant_history.chat_only_dir()), "昨天的问题", "**昨天**的回答", iso(yesterday), cost=0.005)
+    # 40 天前的：超过保留期，不列
+    transcript("c", "F:\\old", "很久以前", "……", iso(long_ago))
+    found = assistant_history.conversations()
+    assert [c.session_id for c in found] == ["a", "b"]                     # 最新的在前
+    a, b = found
+    assert (a.title, a.cards[0].answer, a.workspace, a.cost_usd, a.recovered) == (
+        "今天的问题", "今天的回答", "F:\\proj", 0.02, False)
+    assert (b.title, b.workspace, b.cost_usd, b.recovered) == ("昨天的问题", "", 0.005, True)   # 只聊天
+    assert b.cards[0].summary == "昨天的回答"                             # 卡片上不显示 Markdown 符号
+
+
+def test_cards_without_session_id_join_the_previous_conversation():
+    cards = [AssistantCard("turn", NOW, "一", session_id="a"), AssistantCard("turn", NOW, "出错的一问"),
+             AssistantCard("divider", NOW), AssistantCard("turn", NOW, "没有编号也没有前一张")]
+    groups = assistant_history._group_cards(cards)
+    assert {sid: [c.question for c in cs] for sid, cs in groups.items()} == {"a": ["一", "出错的一问"]}
+
+
 def test_old_claude_code_records_are_pruned(tmp_path):
     from yunyun.assistant import claude_brain
     config = tmp_path / "claude"

@@ -733,6 +733,7 @@ TEXTS = {
     "assistant_decision_denied": {"zh": "你拒绝了", "en": "You denied", "ja": "拒否しました"},
     "assistant_decision_blocked": {"zh": "不允许", "en": "Not allowed", "ja": "許可されていません"},
     "assistant_decision_stopped": {"zh": "停下了，没做", "en": "Stopped, not done", "ja": "停止したので未実行"},
+    "assistant_decision_unknown": {"zh": "（当时没记）", "en": "(not recorded)", "ja": "（記録なし）"},
     # 撤销（阅读框底部）
     "assistant_undo": {"zh": "↶ 撤销这次改动", "en": "↶ Undo these changes", "ja": "↶ この変更を取り消す"},
     "assistant_undo_confirm": {"zh": "确定撤销？再点一次", "en": "Sure? Click again", "ja": "本当に？もう一度クリック"},

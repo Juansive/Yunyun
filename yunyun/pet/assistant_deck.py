@@ -17,11 +17,14 @@
 - 窗口不拿键盘焦点（WindowDoesNotAcceptFocus）：看卡片时输入框照样能打字。
 - 所有卡片画在这一个窗口里，错位、缩放、淡化都按一个连续的"翻到第几张"来算，翻动画才顺。
 """
+import re
 from dataclasses import dataclass
 from datetime import datetime
 
 from PySide6.QtCore import QEasingCurve, QPoint, QPointF, QRect, QRectF, Qt, QVariantAnimation, Signal
-from PySide6.QtGui import QBrush, QColor, QFont, QFontMetrics, QLinearGradient, QPainter, QPainterPath, QPen
+from PySide6.QtGui import (
+    QBrush, QColor, QFont, QFontMetrics, QLinearGradient, QPainter, QPainterPath, QPen, QTextDocument,
+)
 from PySide6.QtWidgets import QApplication, QWidget
 
 from yunyun import i18n
@@ -51,6 +54,13 @@ class AssistantCard:
     @classmethod
     def divider(cls, folder=""):
         return cls("divider", datetime.now(), folder)
+
+
+def markdown_to_plain(markdown):
+    """Markdown → 纯文字（气泡和卡片上不显示 ** # ` 这些符号），多余的空行合并。"""
+    document = QTextDocument()
+    document.setMarkdown(markdown)
+    return re.sub(r"\n{3,}", "\n\n", document.toPlainText()).strip()
 
 
 def _font(size, bold=False):

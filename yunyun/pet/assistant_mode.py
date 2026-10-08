@@ -23,28 +23,20 @@
 pet 只需要提供：body_rect()、say(text, ms)、say_live(text, max_width)、end_live(ms)。
 """
 import os
-import re
 from datetime import datetime
 
 from PySide6.QtCore import QObject, QPoint, QRect, QTimer, Signal
-from PySide6.QtGui import QGuiApplication, QTextDocument
+from PySide6.QtGui import QGuiApplication
 
 from yunyun import i18n
 from yunyun.assistant import settings as assistant_settings
 from yunyun.assistant.session import SETTINGS_ERRORS, AssistantSession, error_text
 from yunyun.pet.assistant_confirm import AssistantConfirm
 from yunyun.pet import assistant_history
-from yunyun.pet.assistant_deck import AssistantCard, AssistantDeck
+from yunyun.pet.assistant_deck import AssistantCard, AssistantDeck, markdown_to_plain
 from yunyun.pet.assistant_input import AssistantInput, folder_name
 from yunyun.pet.assistant_reader import AssistantReader
 from yunyun.pet.bubble import bubble_font, elide_lines
-
-
-def markdown_to_plain(markdown):
-    """Markdown → 纯文字（气泡和卡片上不显示 ** # ` 这些符号），多余的空行合并。"""
-    document = QTextDocument()
-    document.setMarkdown(markdown)
-    return re.sub(r"\n{3,}", "\n\n", document.toPlainText()).strip()
 
 
 def card_from_turn(turn, workspace=""):

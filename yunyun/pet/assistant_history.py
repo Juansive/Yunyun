@@ -5,18 +5,22 @@
 Claude Code 自己的对话记录、撤销用的备份在 assistant\\claude\\ 里，按同样的天数由助手子进程清理（claude_brain.prune_old_sessions）。
 
 只有芸芸进程（界面那一头）用；助手模式第一次打开时才读（节能模式下不加载助手的代码）。
+
+历史对话面板用 conversations()：把这里存的卡片和 Claude Code 自己的对话记录（assistant/transcripts.py，
+芸芸开始存卡片之前的对话只有那里有）按会话编号合成一段段对话，最新的在前。
 """
 import json
 import logging
 import os
 import shutil
-from dataclasses import fields
+from dataclasses import dataclass, field, fields
 from datetime import datetime, timedelta
 
+from yunyun.assistant import transcripts
 from yunyun.assistant.session import Action
 from yunyun.assistant.settings import HISTORY_KEEP_DAYS, SESSION_DATA_DIRS
 from yunyun.paths import data_dir
-from yunyun.pet.assistant_deck import AssistantCard
+from yunyun.pet.assistant_deck import AssistantCard, markdown_to_plain
 
 log = logging.getLogger(__name__)
 
@@ -33,6 +37,11 @@ def history_path():
 def claude_data_dir():
     """Claude Code 自己的数据（对话记录、撤销用的备份），见 claude_brain.CONFIG_DIR。"""
     return data_dir() / "assistant" / "claude"
+
+
+def chat_only_dir():
+    """没选工作文件夹时 Claude Code 的工作目录（claude_brain.WORKSPACE）：在这里的对话算"只聊天"。"""
+    return data_dir() / "assistant" / "workspace"
 
 
 # ---------- 卡片 ↔ JSON ----------
@@ -117,3 +126,71 @@ def clear():
         log.warning("删不了助手的历史卡片（%s）", type(e).__name__)
     for name in SESSION_DATA_DIRS:
         shutil.rmtree(claude_data_dir() / name, ignore_errors=True)
+
+
+# ---------- 历史对话：一段段对话 ----------
+
+@dataclass
+class Conversation:
+    """一段对话（= Claude Code 的一个会话）。"""
+    session_id: str
+    workspace: str                       # 工作文件夹；"" = 只聊天
+    cards: list = field(default_factory=list)   # AssistantCard（一问一答，从旧到新）
+    cost_usd: float | None = None        # 一共花了多少（Claude Code 记的；不知道就是 None）
+    recovered: bool = False              # 是从 Claude Code 的记录里找回来的（没有每问的花费、操作是谁允许的）
+
+    @property
+    def title(self):
+        return self.cards[0].question if self.cards else ""
+
+    @property
+    def started(self):
+        return self.cards[0].time
+
+    @property
+    def updated(self):
+        return self.cards[-1].time
+
+
+def _same_folder(a, b):
+    return bool(a and b) and os.path.normcase(os.path.normpath(a)) == os.path.normcase(os.path.normpath(b))
+
+
+def _group_cards(cards):
+    """存下的卡片按会话编号分组（分隔卡是分界；没有会话编号的那张算前一张所在的对话）→ {会话编号: [卡片]}。"""
+    groups, current = {}, None
+    for card in cards:
+        if card.kind == "divider":
+            current = None
+            continue
+        current = card.session_id or current
+        if current:
+            groups.setdefault(current, []).append(card)
+    return groups
+
+
+def _card_from_transcript(turn, cwd):
+    actions = tuple(Action(t.time, t.tool, t.detail, "unknown", t.ok) for t in turn.tools)
+    return AssistantCard("turn", turn.time, turn.question, turn.answer,
+                         markdown_to_plain(turn.answer) if turn.answer else "", "", turn.stopped,
+                         actions=actions, workspace=cwd)
+
+
+def conversations(now=None):
+    """所有还在保留期里的对话（最新的在前）：存下的卡片 + Claude Code 的记录里找回来的。"""
+    cutoff = (now or datetime.now()) - timedelta(days=HISTORY_KEEP_DAYS)
+    found = {sid: Conversation(sid, next((c.workspace for c in cards if c.workspace), ""), cards)
+             for sid, cards in _group_cards(load(now)).items()}
+    chat_only = str(chat_only_dir())
+    for transcript in transcripts.list_transcripts(str(claude_data_dir() / "projects")):
+        workspace = "" if _same_folder(transcript.cwd, chat_only) else transcript.cwd
+        conversation = found.get(transcript.session_id)
+        if conversation is None:
+            if transcript.updated and transcript.updated < cutoff:
+                continue
+            cards = [_card_from_transcript(turn, workspace) for turn in transcript.turns]
+            conversation = found[transcript.session_id] = Conversation(
+                transcript.session_id, workspace, cards, recovered=True)
+        conversation.cost_usd = transcript.cost_usd
+        conversation.workspace = conversation.workspace or workspace
+    return sorted((c for c in found.values() if c.cards), key=lambda c: c.updated, reverse=True)

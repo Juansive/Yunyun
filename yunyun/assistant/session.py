@@ -31,7 +31,7 @@ from datetime import datetime
 from PySide6.QtCore import QCoreApplication, QObject, Signal
 
 from yunyun import i18n
-from yunyun.assistant import ledger, protocol
+from yunyun.assistant import ledger, protocol, transcripts
 
 log = logging.getLogger(__name__)
 
@@ -42,8 +42,7 @@ _TOOL_TEXT = {
     "Bash": "assistant_tool_command", "PowerShell": "assistant_tool_command",
 }
 SETTINGS_ERRORS = {"no_key", "auth", "model", "budget", "reply_budget"}   # 这几种错误在设置页能改好（界面可以给个"去设置"）
-UNDO_NOTE = ("[Note from Yunyun, not from the user: the user undid the file changes you made in earlier replies "
-             "({files}). Those files are back to how they were before your changes; read them again before editing.]")
+UNDO_NOTE = transcripts.UNDO_NOTE   # 历史对话读回来时要认出它、去掉它，所以放在 transcripts 里
 _generations = itertools.count(1)   # 子进程的编号：芸芸整个运行期间不重复（助手模式退出再唤出也不会撞号）
 
 

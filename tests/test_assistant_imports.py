@@ -25,7 +25,8 @@ def test_shared_assistant_modules_import_neither_qt_nor_sdk():
     """protocol / settings / providers / permissions 芸芸和子进程都要用：不能带进 Qt（子进程要轻），也不能带进 SDK（芸芸要轻）。"""
     modules = top_level(modules_after(
         "import yunyun.assistant.protocol, yunyun.assistant.settings, yunyun.assistant.providers, "
-        "yunyun.assistant.permissions, yunyun.assistant.environment, yunyun.assistant.check"))
+        "yunyun.assistant.permissions, yunyun.assistant.transcripts, yunyun.assistant.environment, "
+        "yunyun.assistant.check"))
     assert "claude_agent_sdk" not in modules
     assert "anthropic" not in modules        # check.py 到真的测试连接时才 import 官方 SDK
     assert "PySide6" not in modules
