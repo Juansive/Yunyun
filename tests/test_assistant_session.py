@@ -403,6 +403,40 @@ def test_each_turn_is_recorded_in_the_ledger(session):
     assert round(ledger.summary().today, 6) == 0.012
 
 
+# ---------- 对话太长时自动整理（阶段 10） ----------
+
+def test_compaction_is_shown_on_the_turn_it_followed(session):
+    from yunyun.assistant import ledger
+    changes = []
+    session.compact_changed.connect(lambda turn: changes.append(turn.compact))
+    session.ask("一")
+    process = session.processes[0]
+    process.say(protocol.Ready("anthropic", "m"),
+                protocol.TurnFinished(0.01, 0.01, checkpoint="cp-1", files=("a.py",), context_tokens=45_000,
+                                      context_limit=40_000),
+                protocol.Compacting())
+    turn = session.turns[-1]
+    assert (turn.context_tokens, turn.context_limit) == (45_000, 40_000)
+    assert session.compacting and turn.compact == "running" and changes == ["running"]
+    assert not session.can_rewind(turn.generation, "cp-1")          # 整理时不能撤销
+    assert session.ask("二")                                         # 照常能问：子进程整理完再问
+    assert process.asked[-1] == "二" and session.progress == i18n.tr("assistant_compacting")
+    process.say(protocol.Compacted(True, 45_000, 900, 0.002, 0.012))
+    assert not session.compacting and turn.compact == "done" and changes == ["running", "done"]
+    assert session.progress == i18n.tr("assistant_thinking")
+    assert session.turns[-1].compact == ""                           # 整理的是"一"之前的对话，不记在"二"上
+    assert round(ledger.summary().today, 6) == 0.012                 # 整理的花费也记账
+
+
+def test_compaction_counts_as_failed_when_the_brain_goes_away(session):
+    session.ask("一")
+    process = session.processes[0]
+    process.say(protocol.Ready("anthropic", "m"), protocol.TurnFinished(0.01, 0.01), protocol.Compacting())
+    turn = session.turns[-1]
+    session.new_conversation()
+    assert turn.compact == "failed" and not session.compacting
+
+
 # ---------- 撤销 ----------
 
 def answered(session, question, files=(), checkpoint=""):

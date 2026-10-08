@@ -493,6 +493,21 @@ TEXTS = {
         "ja": 'アカウント残高：{}。足りないため、<a href="{}">チャージ</a>してから使ってください。',
     },
     "assistant_conversation_budget": {"zh": "每段对话最多花", "en": "Max per chat", "ja": "1 つの会話の上限"},
+    # 对话太长时自动整理（阶段 10）
+    "assistant_compact": {"zh": "对话太长时自动整理", "en": "Tidy up long chats", "ja": "長い会話を自動で整理"},
+    "assistant_compact_off": {"zh": "不整理", "en": "Never", "ja": "整理しない"},
+    "assistant_compact_at": {"zh": "超过 {} token", "en": "Over {} tokens", "ja": "{} トークンを超えたら"},
+    "assistant_compact_recommended": {"zh": "（推荐）", "en": " (recommended)", "ja": "（おすすめ）"},
+    "assistant_compact_hint": {
+        "zh": "整理：芸芸把前面的对话写成一段摘要，之后每一问只带着摘要，不再带着全部前文——"
+              "聊久了也不容易变笨，也更省钱；个别细节可能会丢。卡片底部的\"对话 x/y\"是现在的长度。新对话开始生效。",
+        "en": "Tidying up: Yunyun condenses the earlier chat into a summary, and later questions carry only the summary "
+              "instead of the whole history — she stays sharp in long chats and it costs less, though some details "
+              "may be lost. \"Chat x/y\" at the bottom of a card shows the current length. Applies from the next chat.",
+        "ja": "整理：芸芸が前の会話を要約にまとめ、その後の質問では会話全体ではなく要約だけを送ります。"
+              "長く話しても賢さを保ちやすく、料金も節約できます（細かい点が少し抜けることがあります）。"
+              "カード下の「会話 x/y」が今の長さです。次の会話から有効です。",
+    },
     "assistant_budget_low": {
         "zh": "⚠ 每次回答的上限有点低：每问一次至少要 1 美分左右，低于 $0.05 时芸芸可能总是答到一半就停。",
         "en": "⚠ The per-reply limit is quite low: each question costs at least about 1 cent, "
@@ -593,6 +608,13 @@ TEXTS = {
     "assistant_input_placeholder": {"zh": "问芸芸点什么……", "en": "Ask Yunyun something…", "ja": "芸芸に聞いてみよう…"},
     "assistant_connecting": {"zh": "正在连接大脑……", "en": "Connecting…", "ja": "接続中…"},
     "assistant_thinking": {"zh": "芸芸在想……", "en": "Yunyun is thinking…", "ja": "芸芸が考え中…"},
+    # 对话太长时自动整理（阶段 10）：问的时候正在整理 → 进度行；卡片底行的对话长度、整理状态
+    "assistant_compacting": {"zh": "芸芸在整理前面的对话……", "en": "Yunyun is tidying up the earlier chat…",
+                             "ja": "芸芸が前の会話を整理しています…"},
+    "assistant_context": {"zh": "对话 {}/{}", "en": "Chat {}/{}", "ja": "会話 {}/{}"},
+    "assistant_context_plain": {"zh": "对话 {}", "en": "Chat {}", "ja": "会話 {}"},
+    "assistant_compact_running": {"zh": "正在整理对话…", "en": "Tidying up…", "ja": "会話を整理中…"},
+    "assistant_compact_done": {"zh": "前面的对话整理好了", "en": "Earlier chat tidied up", "ja": "前の会話を整理しました"},
     "assistant_tool_web_search": {"zh": "正在搜索网页……", "en": "Searching the web…", "ja": "ウェブを検索中…"},
     "assistant_tool_web_fetch": {"zh": "正在看网页……", "en": "Reading a web page…", "ja": "ウェブページを読んでいます…"},
     "assistant_tool_other": {"zh": "正在使用 {}……", "en": "Using {}…", "ja": "{} を使用中…"},

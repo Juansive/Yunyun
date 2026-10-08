@@ -189,6 +189,27 @@ def test_both_budgets_are_saved(fake_keyring):
     assert (loaded.budget_usd, loaded.conversation_budget_usd) == (0.2, 1.5)
 
 
+@pytest.mark.parametrize("saved, expected", [
+    (60_000, 60_000),
+    (0, 0),             # 0 = 不自动整理
+    (-5, 0),
+    (3_000, 10_000),    # 太小：按最小值（不然每问一次都要整理）
+    (10 ** 9, 200_000),
+    (None, 40_000),     # 以前的设置里没有这一项 / 看不懂：用默认值
+    ("abc", 40_000),
+])
+def test_compact_limit_is_kept_in_a_sane_range(fake_keyring, saved, expected):
+    cfg.save_config({"assistant": {"provider": "anthropic", "compact_tokens": saved}})
+    assert load_settings().compact_tokens == expected
+
+
+def test_compact_limit_defaults_to_40k_and_is_saved(fake_keyring):
+    cfg.save_config({"assistant": {"provider": "anthropic"}})
+    assert load_settings().compact_tokens == 40_000
+    save_settings(AssistantSettings(compact_tokens=0))
+    assert load_settings().compact_tokens == 0
+
+
 # ---------- 工作文件夹 ----------
 
 def folders(tmp_path, *names):

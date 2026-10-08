@@ -90,6 +90,9 @@ class Turn:
     undone: bool = False
     actions: list = field(default_factory=list)   # 操作记录：这一轮用过的工具（Action，按先后）
     session_id: str = ""       # Claude Code 的会话编号（历史对话"接着聊"用）
+    context_tokens: int = 0    # 答完这一轮时对话有多长（token）
+    context_limit: int = 0     # 超过多少自动整理（0 = 不整理）
+    compact: str = ""          # 这一轮答完后整理前面的对话："" 没整理、"running" 正在整理、"done" 整理好了、"failed" 没做成
 
     def action(self, tool_id):
         return next((a for a in self.actions if a.tool_id and a.tool_id == tool_id), None)
@@ -116,6 +119,7 @@ class AssistantSession(QObject):
     permissions_changed = Signal()    # pending_permissions 变了（来了新的 / 回答了 / 作废了）
     activity_changed = Signal(str)    # 助手在做什么变了（见 activity；芸芸的样子跟着变）
     rewind_finished = Signal(str, bool, object)   # 检查点、成没成、撤销掉的那几轮（[Turn]）
+    compact_changed = Signal(object)  # 某一轮答完后的"整理前面的对话"开始了 / 做完了（Turn.compact）
 
     def __init__(self, parent=None, make_process=None):
         """make_process(语言, parent, resume=会话编号) → 和 AssistantProcess 一样的对象；不传就用 default_process。"""
@@ -135,12 +139,18 @@ class AssistantSession(QObject):
         self.rewinding = ""           # 正在撤销的检查点（等 Rewound）
         self._undo_note = []          # 撤销过的文件：下一问发给大脑时附一句说明
         self._activity = ""           # 上次告诉外面的 activity
+        self._compact_turn = None     # 正在整理：是哪一轮答完后开始的（Turn）；None = 没在整理
 
     # ---------- 对外 ----------
 
     @property
     def busy(self):
         return self._turn is not None
+
+    @property
+    def compacting(self):
+        """大脑正在整理前面的对话（这时可以照常提问：子进程等整理完再问；不能撤销、不能释放大脑）。"""
+        return self._compact_turn is not None
 
     @property
     def activity(self):
@@ -204,7 +214,7 @@ class AssistantSession(QObject):
             self._undo_note = []
         if self._process.ready:
             self._process.ask(text)
-            self._set_progress(i18n.tr("assistant_thinking"))
+            self._set_progress(i18n.tr("assistant_compacting" if self.compacting else "assistant_thinking"))
         else:
             self._pending = text
             self._set_progress(i18n.tr("assistant_connecting"))
@@ -213,7 +223,7 @@ class AssistantSession(QObject):
     def can_rewind(self, generation, checkpoint):
         """能不能撤销这一轮：同一个子进程、它在运行、没在回答、没在撤销别的。"""
         return bool(checkpoint and generation == self.generation and self._process is not None
-                    and self._process.ready and not self.busy and not self.rewinding)
+                    and self._process.ready and not self.busy and not self.rewinding and not self.compacting)
 
     def rewind(self, generation, checkpoint):
         """撤销这一轮（和之后几轮）用 Edit / Write 做的改动。结果见 rewind_finished。"""
@@ -275,6 +285,7 @@ class AssistantSession(QObject):
         """不再管这个子进程：请它退出，退出后自己销毁。它之后发来的事件，_on_event 认出不是当前的就不理。"""
         process, self._process = self._process, None
         self._abandon_rewind()
+        self._abandon_compact()
         if process is not None:
             process.finished.connect(process.deleteLater)
             process.stop()
@@ -324,6 +335,8 @@ class AssistantSession(QObject):
         turn = self._turn
         if isinstance(event, protocol.Rewound):
             self._on_rewound(event)
+        elif isinstance(event, (protocol.Compacting, protocol.Compacted)):
+            self._on_compact(event)
         elif isinstance(event, protocol.Ready):
             self._model = event.model
             self.model_changed.emit(event.model)
@@ -370,6 +383,7 @@ class AssistantSession(QObject):
             turn.cost_usd, turn.session_cost_usd = event.cost_usd, event.session_cost_usd
             turn.input_tokens, turn.output_tokens = event.input_tokens, event.output_tokens
             turn.files, turn.checkpoint, turn.session_id = tuple(event.files), event.checkpoint, event.session_id
+            turn.context_tokens, turn.context_limit = event.context_tokens, event.context_limit
             self.session_id = event.session_id or self.session_id
             ledger.record(event.cost_usd)   # 记账：设置页显示今天 / 本月 / 一共花了多少
             self._end_turn(stopped=event.stopped)
@@ -404,11 +418,38 @@ class AssistantSession(QObject):
             checkpoint, self.rewinding = self.rewinding, ""
             self.rewind_finished.emit(checkpoint, False, [])
 
+    def _on_compact(self, event):
+        """整理前面的对话：开始时记在刚答完的那一轮上；做完了记账、报结果。整理时问的那一问，进度行跟着换。"""
+        if isinstance(event, protocol.Compacting):
+            target = next((t for t in reversed(self.turns) if t.finished), None)
+            if target is None:
+                return
+            self._compact_turn = target
+            target.compact = "running"
+            self.compact_changed.emit(target)
+            return
+        target, self._compact_turn = self._compact_turn, None
+        ledger.record(event.cost_usd)   # 整理也花钱：一样记账
+        log.info("整理前面的对话%s：约 %d → %d token", "好了" if event.ok else "没做成", event.before, event.after)
+        if self.busy and self._progress == i18n.tr("assistant_compacting"):
+            self._set_progress(i18n.tr("assistant_thinking"))
+        if target is not None:
+            target.compact = "done" if event.ok else "failed"
+            self.compact_changed.emit(target)
+
+    def _abandon_compact(self):
+        """子进程没了，整理等不到结果了：当作没做成。"""
+        target, self._compact_turn = self._compact_turn, None
+        if target is not None:
+            target.compact = "failed"
+            self.compact_changed.emit(target)
+
     def _on_process_finished(self, process):
         if process is not self._process:
             return
         self._process = None
         self._abandon_rewind()
+        self._abandon_compact()
         process.deleteLater()
         if self.busy:   # 回答到一半子进程没了（出错事件已经由 AssistantProcess 发过）
             self._pending = None

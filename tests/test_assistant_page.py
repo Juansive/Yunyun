@@ -106,6 +106,26 @@ def test_test_and_save_success(qapp, keys):
     assert page._save_button.isEnabled() and "已保存" in page._status.text()
 
 
+def test_compact_limit_choice(qapp, keys, monkeypatch):
+    monkeypatch.setattr(i18n, "_current", "zh")
+    page = make_page()
+    assert page._compact.currentData() == 40_000 and page._compact.currentText() == "超过 4万 token（推荐）"
+    assert page._compact.itemText(0) == "不整理"
+    page._compact.setCurrentIndex(page._compact.findData(0))
+    page._key.setText("sk-ant-new")
+    saved = []
+    page.settings_saved.connect(lambda: saved.append(True))
+    page._test_and_save()
+    assert wait_until(qapp, lambda: saved)
+    assert assistant_settings.load_settings().compact_tokens == 0
+
+
+def test_unusual_saved_compact_limit_is_listed(qapp, keys):
+    assistant_settings.save_settings(AssistantSettings(compact_tokens=50_000))   # 改过配置文件
+    page = make_page()
+    assert page._compact.currentData() == 50_000
+
+
 def test_empty_key_uses_the_saved_one(qapp, keys):
     keys["anthropic"] = "sk-ant-old"
     page = make_page()

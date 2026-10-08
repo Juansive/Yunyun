@@ -22,13 +22,15 @@ from yunyun.assistant import settings as assistant_settings
 from yunyun.assistant.process import KeyCheck
 from yunyun.assistant.providers import PROVIDERS
 from yunyun.assistant.settings import (
-    HISTORY_KEEP_DAYS, LOW_BUDGET_USD, MAX_BUDGET_USD, MAX_CONVERSATION_BUDGET_USD, MIN_BUDGET_USD,
-    MIN_CONVERSATION_BUDGET_USD, AssistantSettings,
+    DEFAULT_COMPACT_TOKENS, HISTORY_KEEP_DAYS, LOW_BUDGET_USD, MAX_BUDGET_USD, MAX_CONVERSATION_BUDGET_USD,
+    MIN_BUDGET_USD, MIN_CONVERSATION_BUDGET_USD, AssistantSettings,
 )
 from yunyun.pet import assistant_history
+from yunyun.pet.assistant_deck import token_amount
 
 log = logging.getLogger(__name__)
 _CURRENCY_SIGNS = {"CNY": "¥", "USD": "$"}
+COMPACT_CHOICES = (0, 20_000, 40_000, 60_000, 80_000, 120_000)   # 整理门槛下拉框里的几项（0 = 不整理）
 
 
 def balance_text(balance):
@@ -66,18 +68,24 @@ class AssistantSettingsPage(QWidget):
         self._key.returnPressed.connect(self._test_and_save)
         self._budget = _money_box(MIN_BUDGET_USD, MAX_BUDGET_USD, 0.05)                         # 每次回答
         self._conversation_budget = _money_box(MIN_CONVERSATION_BUDGET_USD, MAX_CONVERSATION_BUDGET_USD, 0.1)   # 每段对话
+        self._compact = QComboBox()   # 对话超过多长自动整理（阶段 10）
         form.addRow(tr("assistant_provider"), self._provider)
         form.addRow(tr("assistant_model"), self._model)
         form.addRow("", self._custom_model)
         form.addRow(tr("assistant_key"), self._key)
         form.addRow(tr("assistant_budget"), self._budget)
         form.addRow(tr("assistant_conversation_budget"), self._conversation_budget)
+        form.addRow(tr("assistant_compact"), self._compact)
         layout.addLayout(form)
 
         budget_hint = QLabel(tr("assistant_budget_hint"))
         budget_hint.setWordWrap(True)
         budget_hint.setStyleSheet("color: #666;")
         layout.addWidget(budget_hint)
+        compact_hint = QLabel(tr("assistant_compact_hint"))
+        compact_hint.setWordWrap(True)
+        compact_hint.setStyleSheet("color: #666;")
+        layout.addWidget(compact_hint)
         self._budget_warning = QLabel()   # 上限设得太低时的提醒（橙色），改数字时马上更新
         self._budget_warning.setWordWrap(True)
         self._budget_warning.setStyleSheet("color: #B26A00;")
@@ -128,6 +136,7 @@ class AssistantSettingsPage(QWidget):
         self._fill_models(saved.effective_model)
         self._budget.setValue(saved.budget_usd)
         self._conversation_budget.setValue(saved.conversation_budget_usd)
+        self._fill_compact(saved.compact_tokens)
         self._budget.valueChanged.connect(self._update_budget_warning)
         self._conversation_budget.valueChanged.connect(self._update_budget_warning)
         self._update_budget_warning()
@@ -259,7 +268,8 @@ class AssistantSettingsPage(QWidget):
             self._show_status(i18n.tr("assistant_empty_key"), error=True)
             return
         self._pending = (AssistantSettings(info.code, model, round(self._budget.value(), 2),
-                                           round(self._conversation_budget.value(), 2)), typed_key)
+                                           round(self._conversation_budget.value(), 2),
+                                           compact_tokens=self._compact.currentData()), typed_key)
         self._set_busy(True)
         self._show_status(i18n.tr("assistant_testing"))
         self._check = self._make_check(info.code, model, key)
@@ -290,8 +300,21 @@ class AssistantSettingsPage(QWidget):
 
     def _set_busy(self, busy):
         for widget in (self._save_button, self._provider, self._model, self._custom_model, self._key, self._budget,
-                       self._conversation_budget):
+                       self._conversation_budget, self._compact):
             widget.setEnabled(not busy)
+
+    def _fill_compact(self, current):
+        """整理门槛的下拉框：不整理 + 几个常用的长度（推荐的标出来）；存着的不在里面（改过配置文件）也加上。"""
+        values = sorted(set(COMPACT_CHOICES) | {current})
+        for value in values:
+            if not value:
+                text = i18n.tr("assistant_compact_off")
+            else:
+                text = i18n.tr("assistant_compact_at", token_amount(value))
+                if value == DEFAULT_COMPACT_TOKENS:
+                    text += i18n.tr("assistant_compact_recommended")
+            self._compact.addItem(text, value)
+        self._compact.setCurrentIndex(self._compact.findData(current))
 
     def _show_status(self, text, error=False):
         self._status.setStyleSheet("color: #C62828;" if error else "color: #2E7D32;")

@@ -24,6 +24,9 @@ MIN_BUDGET_USD, MAX_BUDGET_USD = 0.01, 10.0   # 每次回答的上限能设的�
 MIN_CONVERSATION_BUDGET_USD, MAX_CONVERSATION_BUDGET_USD = 0.05, 50.0   # 每段对话的上限
 LOW_BUDGET_USD = 0.05   # 每次回答的上限低于这个就提醒：每段对话的第一问就要 1 美分多（Claude Code 自带的说明很长）
 MAX_RECENT_WORKSPACES = 5
+# 对话超过多少 token 自动整理（Claude Code 的 /compact，见 docs/助手模式计划.md 阶段 10）；0 = 不自动整理
+DEFAULT_COMPACT_TOKENS = 40_000   # 2026-10-08 用户定
+MIN_COMPACT_TOKENS, MAX_COMPACT_TOKENS = 10_000, 200_000
 HISTORY_KEEP_DAYS = 30   # 历史对话（卡片、Claude Code 的对话记录、撤销用的备份）保留多久（2026-10-08 用户定）
 # Claude Code 自己的数据（在 claude_brain.CONFIG_DIR 里）中，按天数清理 / 清空历史时删掉的文件夹：对话记录、撤销用的备份……
 # backups（它的设置备份）不动。芸芸进程（清空历史）和子进程（按天数清理）都用，所以放这里（不 import SDK）
@@ -37,6 +40,7 @@ class AssistantSettings:
     budget_usd: float = DEFAULT_BUDGET_USD                            # 每次回答（芸芸自己按 token 估算）
     conversation_budget_usd: float = DEFAULT_CONVERSATION_BUDGET_USD  # 每段对话（Claude 官方交给 Claude Code 的 max_budget_usd）
     workspace: str = ""                   # 工作文件夹；空 = 没选（只聊天）。save_settings 不写它，见 set_workspace
+    compact_tokens: int = DEFAULT_COMPACT_TOKENS   # 对话超过这么长（token）就自动整理；0 = 不整理
 
     @property
     def info(self):
@@ -60,6 +64,7 @@ def load_settings():
     return AssistantSettings(
         provider, str(saved.get("model") or ""), _budget(saved.get("budget_usd")),
         _conversation_budget(saved.get("conversation_budget_usd")), workspace,
+        compact_tokens=_compact_tokens(saved.get("compact_tokens", DEFAULT_COMPACT_TOKENS)),
     )
 
 
@@ -70,6 +75,7 @@ def save_settings(settings):
         "model": settings.model,
         "budget_usd": _budget(settings.budget_usd),
         "conversation_budget_usd": _conversation_budget(settings.conversation_budget_usd),
+        "compact_tokens": _compact_tokens(settings.compact_tokens),
     })
 
 
@@ -121,6 +127,16 @@ def _budget(value):
 
 def _conversation_budget(value):
     return _clamp(value, DEFAULT_CONVERSATION_BUDGET_USD, MIN_CONVERSATION_BUDGET_USD, MAX_CONVERSATION_BUDGET_USD)
+
+
+def _compact_tokens(value):
+    """0（不自动整理）或者 MIN～MAX 之间的整数；看不懂的用默认值。"""
+    try:
+        if int(value) <= 0:
+            return 0
+    except (TypeError, ValueError, OverflowError):
+        return DEFAULT_COMPACT_TOKENS
+    return int(_clamp(value, DEFAULT_COMPACT_TOKENS, MIN_COMPACT_TOKENS, MAX_COMPACT_TOKENS))
 
 
 def _clamp(value, default, low, high):

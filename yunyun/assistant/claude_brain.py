@@ -18,7 +18,8 @@ from dataclasses import dataclass, field
 
 from claude_agent_sdk import (
     AssistantMessage, ClaudeAgentOptions, ClaudeSDKClient, CLINotFoundError, HookMatcher, PermissionResultAllow,
-    PermissionResultDeny, ResultMessage, ServerToolUseBlock, StreamEvent, ToolResultBlock, ToolUseBlock, UserMessage,
+    PermissionResultDeny, ResultMessage, ServerToolUseBlock, StreamEvent, SystemMessage, ToolResultBlock, ToolUseBlock,
+    UserMessage,
 )
 
 from yunyun.assistant import permissions, proctree, protocol, transcripts
@@ -39,6 +40,9 @@ PROJECT_NOTES_FILES = ("CLAUDE.md", os.path.join(".claude", "CLAUDE.md"))   # �
 PROJECT_NOTES_MAX_CHARS = 20_000   # 太长的只读开头（每一问都要带着它，太长费钱）
 CONFIG_DIR = data_dir() / "assistant" / "claude"   # Claude Code 的会话记录、设置放这里（里面有完整对话内容）
 WORKSPACE = data_dir() / "assistant" / "workspace"  # 用户没选工作文件夹时用的：一个空文件夹（只聊天）
+# 整理对话（Claude Code 的 /compact）时告诉模型要留下什么（阶段 10）。总结用对话的语言写
+COMPACT_COMMAND = ("/compact Keep: what the user asked for and their preferences, which files were changed and why, "
+                   "work not finished yet, and key conclusions. Write the summary in the language the user uses.")
 
 
 # ---------- 启动选项 ----------
@@ -266,6 +270,12 @@ class TurnState:
     checkpoint: str = ""               # 这一问（Claude Code 传回来的那条用户消息）的 uuid：撤销时 rewind 到它
     files: list = field(default_factory=list)          # 这一轮用 Edit / Write 改成功的文件
     _editing: dict = field(default_factory=dict)       # 正在改的：工具调用 id → 文件
+    # 对话长度：最近一次模型请求读的前文（输入 + 写缓存 + 读缓存）加上它写的输出 = 下一次请求至少要带着的
+    context_tokens: int = 0
+    context_limit: int = 0             # 超过多少自动整理（0 = 不整理；AssistantSettings.compact_tokens）
+    _context_input: int = 0
+    compact_meta: dict | None = None   # 整理做完了：Claude Code 报的 compact_metadata（pre_tokens、post_tokens……）
+    compact_error: str = ""            # 整理没做成：Claude Code 报的原因
 
     def new_turn(self):
         self.interrupted = False
@@ -287,8 +297,24 @@ class TurnState:
         """自己管每段对话上限时：已经花到上限了（新的一问不用再发出去）。"""
         return self.conversation_budget is not None and self.conversation_cost >= self.conversation_budget
 
+    def track_context(self, usage, new_message):
+        """对话长度跟着每次模型调用的用量走（不管知不知道价格）。"""
+        if not isinstance(usage, dict):
+            return
+        if new_message:
+            self._context_input = sum(int(usage.get(k) or 0) for k in
+                                      ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"))
+        self.context_tokens = self._context_input + int(usage.get("output_tokens") or 0)
+
+    @property
+    def needs_compact(self):
+        """这一轮好好答完了、对话也超过门槛了：该整理了。"""
+        return (bool(self.context_limit) and self.context_tokens >= self.context_limit and not self.interrupted
+                and not self.errored and not self.over_budget and not self.over_conversation)
+
     def add_usage(self, usage, new_message):
         """把一次模型调用的用量（流式事件里的 usage）算进这一轮的估算。"""
+        self.track_context(usage, new_message)
         if self.rates is None or not isinstance(usage, dict):
             return
         if new_message:   # message_start：输入（含读写缓存）只在开头报一次
@@ -383,6 +409,12 @@ def translate(message, state):
             path = state._editing.pop(block.tool_use_id, None)
             if path and not block.is_error and path not in state.files:
                 state.files.append(path)
+    elif isinstance(message, SystemMessage):
+        data = message.data if isinstance(message.data, dict) else {}
+        if message.subtype == "compact_boundary":     # 整理做完了（try_compact.py 实测的消息）
+            state.compact_meta = data.get("compact_metadata") or {}
+        elif data.get("compact_result") == "failed":
+            state.compact_error = str(data.get("compact_error") or "failed")
     elif isinstance(message, ResultMessage):
         events.extend(_turn_finished(message, state))
     return events
@@ -425,6 +457,8 @@ def _turn_finished(message, state):
         checkpoint=state.checkpoint if state.files else "",   # 没改文件就没什么可撤销的
         files=tuple(state.files),
         session_id=message.session_id or "",
+        context_tokens=state.context_tokens,
+        context_limit=state.context_limit,
     ))
     return events
 
@@ -456,7 +490,9 @@ class ClaudeBrain:
             reply_budget=settings.budget_usd,
             conversation_budget=settings.conversation_budget_usd if own else None,
             workspace=settings.workspace,
+            context_limit=settings.compact_tokens,
         )
+        self.compacting = False   # 正在整理前面的对话（worker 据此把这时来的提问排到整理之后）
         self.gate = PermissionGate(settings.workspace or WORKSPACE, emit)
         self._stderr = deque(maxlen=30)   # Claude Code 的错误输出：启动失败时看最后几行
 
@@ -525,6 +561,46 @@ class ClaudeBrain:
             log.exception("这一轮意外出错")
             self._emit(protocol.Error(error_kind(str(e)), f"{type(e).__name__}: {e}"[:500]))
             self._emit(protocol.TurnFinished(stopped=self._state.interrupted))
+            return
+        if self._state.needs_compact:
+            await self.compact()
+
+    async def compact(self):
+        """把前面的对话整理成摘要（Claude Code 的 /compact，阶段 10）：之后每一问只带着摘要，不再带着全部前文。
+        整理的花费算进这段对话；没做成只记日志（芸芸那边不提示出错）。"""
+        state = self._state
+        before = state.context_tokens
+        state.new_turn()
+        state.compact_meta, state.compact_error = None, ""
+        self.compacting = True
+        self._emit(protocol.Compacting())
+        log.info("对话长度约 %d token，超过了 %d，开始整理", before, state.context_limit)
+        started, finished = time.monotonic(), None
+        try:
+            await self._client.query(COMPACT_COMMAND)
+            async for message in self._client.receive_response():
+                for event in translate(message, state):   # 整理时模型写的总结、进度都不转给芸芸，只要花费
+                    if isinstance(event, protocol.TurnFinished):
+                        finished = event
+                    elif isinstance(event, protocol.Error):
+                        state.compact_error = state.compact_error or event.kind
+        except Exception as e:   # 子进程断了之类：这次不整理了，下一问照常
+            log.warning("整理对话时出错：%s: %s", type(e).__name__, e)
+            state.compact_error = state.compact_error or type(e).__name__
+        finally:
+            self.compacting = False
+        meta = state.compact_meta
+        ok = meta is not None and not state.compact_error and not state.interrupted
+        # post_tokens 只算整理后的对话本身（不含说明和工具列表，偏小）；下一问答完会按实际用量重新算
+        state.context_tokens = int(meta.get("post_tokens") or 0) if ok else before
+        log.info("整理%s：%d → %d token，%.1f 秒，花费 %s 美元%s", "好了" if ok else "没做成", before,
+                 state.context_tokens, time.monotonic() - started, finished.cost_usd if finished else None,
+                 f"（{state.compact_error}）" if state.compact_error else "")
+        self._emit(protocol.Compacted(
+            ok, before, state.context_tokens,
+            cost_usd=finished.cost_usd if finished else None,
+            session_cost_usd=finished.session_cost_usd if finished else state.conversation_cost,
+            detail=state.compact_error[:300]))
 
     def reply_permission(self, reply):
         self.gate.reply(reply)

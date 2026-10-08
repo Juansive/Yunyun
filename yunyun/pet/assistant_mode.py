@@ -75,6 +75,7 @@ def card_from_turn(turn, workspace=""):
         error_text(turn.error) if turn.error else "",
         tuple(turn.files), turn.checkpoint, turn.generation, turn.undone, tuple(turn.actions),
         turn.session_id, workspace,
+        context_tokens=turn.context_tokens, context_limit=turn.context_limit, compact=turn.compact,
     )
 
 
@@ -115,6 +116,7 @@ class AssistantMode(QObject):
         self.notice = AssistantNotice()   # 芸芸被挡住时的角落小条（独立窗口，见 _update_notice）
         self._done_notice = ""    # 芸芸被挡着时答完了：小条要说的（你看到芸芸 / 点了 / 又问了就清掉）
         self._confirm_count = 0   # 上次看到有几个等确认（多了才提醒）
+        self._last_turn = (None, None)   # 最近答完的一轮和它的卡片（整理前面的对话时更新这张卡片的底行）
         self._closed = False
 
         self.input.submitted.connect(self._on_submitted)
@@ -143,6 +145,7 @@ class AssistantMode(QObject):
         self.session.answer_changed.connect(self._on_answer_changed)
         self.session.progress_changed.connect(self._on_progress)
         self.session.turn_finished.connect(self._on_turn_finished)
+        self.session.compact_changed.connect(self._on_compact_changed)
         self.session.error_occurred.connect(self._on_error)
         self.notice.clicked.connect(self._on_notice_clicked)
         pet.cover_checked.connect(self._update_notice)   # 芸芸被挡住 / 露出来（约每 0.5 秒检查一次）
@@ -532,9 +535,21 @@ class AssistantMode(QObject):
     def _snippet(self, markdown, lines=None):
         return elide_lines(markdown_to_plain(markdown), bubble_font(), self.ANSWER_WIDTH, lines or self.ANSWER_LINES)
 
+    def _on_compact_changed(self, turn):
+        """大脑在整理 / 整理好了前面的对话：那一轮的卡片底行跟着变（整理的那一会儿不能撤销）。"""
+        last_turn, card = self._last_turn
+        if last_turn is turn and card in self.cards:
+            card.compact = turn.compact
+            if turn.compact != "running":   # 正在整理的状态不存（芸芸这时退出的话，历史里会一直是"正在整理"）
+                self._save_history()
+        self.deck.update()
+        self.reader.refresh_undo()
+
     def _on_turn_finished(self, turn):
         self._bubble_timer.stop()
-        self.cards.append(card_from_turn(turn, self.workspace))
+        card = card_from_turn(turn, self.workspace)
+        self._last_turn = (turn, card)   # 答完马上可能开始整理（compact_changed）：只记最近这一轮的
+        self.cards.append(card)
         self.deck.newest_added()
         self._save_history()
         if self._cards_shown:
@@ -570,7 +585,7 @@ class AssistantMode(QObject):
             self._idle_timer.start()
 
     def _on_idle(self):
-        if self.busy or self.session.rewinding:   # 还在回答 / 撤销：等它做完再算
+        if self.busy or self.session.rewinding or self.session.compacting:   # 还在回答 / 撤销 / 整理：等它做完再算
             self._idle_timer.start()
         elif not self.input.is_open and self.session.process is not None:
             # 只释放大脑（约 300 MB），卡片照常显示；再唤出时接着这段对话聊（resume）

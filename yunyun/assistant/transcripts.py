@@ -7,6 +7,8 @@
 - 提问：type=user、内容是字符串（或文字块）、带 promptSource；
 - 点了停止：type=user、文字块 "[Request interrupted…"、**没有** promptSource → 上一问标成"已停止"；
 - 工具结果：type=user、内容是 tool_result 块；
+- 整理前面的对话（/compact，阶段 10）：type=system 的 compact_boundary 之后跟几行 type=user：总结（isCompactSummary）、
+  命令本身（<command-name>/compact…）、命令的输出（<local-command-stdout>…）——都不是提问；
 - 回答：type=assistant，每行一个块（thinking / text / tool_use）；
 - cost-state：totalCostUSD（这段对话一共花了多少，按 Claude 的价格算）、modelUsage（各模型累计用了多少 token）。
 
@@ -26,6 +28,14 @@ UNDO_NOTE = ("[Note from Yunyun, not from the user: the user undid the file chan
              "({files}). Those files are back to how they were before your changes; read them again before editing.]")
 _UNDO_NOTE_RE = re.compile(r"^\[Note from Yunyun, not from the user:.*?\]\n\n", re.DOTALL)
 _INTERRUPTED = "[Request interrupted"
+_COMMAND_RE = re.compile(r"^\s*<(command-name|command-message|local-command-[a-z]+)>")   # 斜杠命令和它的输出
+
+
+def _not_a_question(data, content):
+    """Claude Code 自己加的 user 行（整理对话留下的总结、斜杠命令）：不是用户问的。"""
+    if data.get("isMeta") or data.get("isCompactSummary") or data.get("isVisibleInTranscriptOnly"):
+        return True
+    return isinstance(content, str) and bool(_COMMAND_RE.match(content))
 
 
 @dataclass
@@ -109,7 +119,7 @@ def read_transcript(path):
             model_usage = data.get("modelUsage") if isinstance(data.get("modelUsage"), dict) else model_usage
             continue
         content = (data.get("message") or {}).get("content") if isinstance(data.get("message"), dict) else None
-        if kind == "user" and not data.get("isMeta"):
+        if kind == "user" and not _not_a_question(data, content):
             if isinstance(content, str) or (isinstance(content, list) and data.get("promptSource") and _texts(content)):
                 question = content if isinstance(content, str) else "\n".join(_texts(content))
                 turns.append(TranscriptTurn(when or updated or datetime.now(), _UNDO_NOTE_RE.sub("", question)))

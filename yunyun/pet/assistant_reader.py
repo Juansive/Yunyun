@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
 from shiboken6 import isValid
 
 from yunyun import i18n
+from yunyun.pet.assistant_deck import context_status
 from yunyun.pet.side_panel import SidePanel
 
 CODE_BACKGROUND = QColor("#F3F5F9")
@@ -328,7 +329,10 @@ class AssistantReader(SidePanel):
 
     @staticmethod
     def _meta_text(card):
-        parts = [f"{card.time:%H:%M}"] + ([card.cost] if card.cost else [])
+        parts =[f"{card.time:%H:%M}"] + ([card.cost] if card.cost else [])
+        context, _ = context_status(card)
+        if context:
+            parts.append(context)
         if card.files:
             parts.append(i18n.tr("assistant_card_files", len(card.files)))
         if card.stopped:

@@ -59,6 +59,24 @@ def test_turns_answers_tools_and_cost(tmp_path):
     assert t.updated == second.time                                          # 最后一次有动静的时间
 
 
+def test_compaction_lines_are_not_questions(tmp_path):
+    """整理前面的对话（/compact）后 Claude Code 写的几行（try_compact.py 实测的样子）不算提问。"""
+    lines = [
+        line("user", "第一问", promptSource="sdk"),
+        line("assistant", [{"type": "text", "text": "第一答"}]),
+        line("system", subtype="compact_boundary", compactMetadata={"trigger": "manual", "preTokens": 45000}),
+        line("user", "This session is being continued from a previous conversation…", isCompactSummary=True,
+             isVisibleInTranscriptOnly=True),
+        line("user", "<local-command-caveat>The command below was run…</local-command-caveat>", isMeta=True),
+        line("user", "<command-name>/compact</command-name>\n<command-message>compact</command-message>"),
+        line("user", "<local-command-stdout>Compacted </local-command-stdout>"),
+        line("user", "第二问", promptSource="sdk"),
+        line("assistant", [{"type": "text", "text": "第二答"}]),
+    ]
+    t = read_transcript(write(tmp_path / "sess-1.jsonl", lines))
+    assert [(x.question, x.answer) for x in t.turns] == [("第一问", "第一答"), ("第二问", "第二答")]
+
+
 def test_no_question_means_no_transcript(tmp_path):
     assert read_transcript(write(tmp_path / "empty.jsonl", [line("attachment")])) is None
     assert read_transcript(tmp_path / "missing.jsonl") is None

@@ -194,6 +194,7 @@ class TurnFinished:
     cost_usd：这一轮花了多少美元（不知道时是 None；DeepSeek 这类是芸芸按它的价格算的，见 Provider.own_pricing）；
     session_cost_usd：这次打开助手以来一共花了多少；stopped：是不是用户点了"停止"；
     checkpoint：撤销这一轮的改动要用的标记（Rewind；没开检查点时是空的）；files：这一轮用 Edit / Write 改成功的文件。
+    context_tokens：对话长度（下一问要带着的前文有多少 token）；context_limit：超过多少自动整理（0 = 不整理）。
     """
     TYPE: ClassVar[str] = "turn_finished"
     cost_usd: float | None = None
@@ -204,9 +205,31 @@ class TurnFinished:
     checkpoint: str = ""
     files: tuple = ()
     session_id: str = ""   # Claude Code 的会话编号（历史对话"接着聊"时用它恢复）
+    context_tokens: int = 0
+    context_limit: int = 0
 
     def __post_init__(self):
         object.__setattr__(self, "files", tuple(self.files))   # JSON 读回来是列表：统一成元组
+
+
+@_message
+class Compacting:
+    """对话太长了，开始把前面的对话整理成摘要（紧跟在那一轮的 TurnFinished 后面；整理完发 Compacted）。"""
+    TYPE: ClassVar[str] = "compacting"
+
+
+@_message
+class Compacted:
+    """整理做完了（ok）或没做成（detail：原因，只进日志）。before / after：整理前后的对话长度（token；
+    after 是 Claude Code 估的、不含说明和工具列表，偏小，只进日志）；
+    cost_usd：整理花了多少；session_cost_usd：这段对话一共花了多少（和 TurnFinished 一样）。"""
+    TYPE: ClassVar[str] = "compacted"
+    ok: bool
+    before: int = 0
+    after: int = 0
+    cost_usd: float | None = None
+    session_cost_usd: float | None = None
+    detail: str = ""
 
 
 @_message
@@ -241,4 +264,5 @@ ERROR_KINDS = (
 )
 
 COMMANDS = (Ask, Interrupt, PermissionReply, Rewind, Quit)
-EVENTS = (Ready, TextDelta, ToolStarted, ToolFinished, PermissionRequest, ToolDecision, TurnFinished, Rewound, Error)
+EVENTS = (Ready, TextDelta, ToolStarted, ToolFinished, PermissionRequest, ToolDecision, TurnFinished, Compacting,
+          Compacted, Rewound, Error)

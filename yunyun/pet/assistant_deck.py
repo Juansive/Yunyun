@@ -52,10 +52,38 @@ class AssistantCard:
     session_id: str = ""    # Claude Code 的会话编号（历史对话"接着聊"用）
     workspace: str = ""     # 在哪个工作文件夹里问的（"接着聊"要在同一个文件夹里）
     card_id: str = field(default_factory=lambda: uuid.uuid4().hex)   # 存历史时按它合并（同一张不会存两份）
+    context_tokens: int = 0  # 答完这一问时对话有多长（token）
+    context_limit: int = 0   # 超过多少自动整理（0 = 不整理）
+    compact: str = ""        # 这一问答完后整理前面的对话：""、"running"、"done"、"failed"（session.Turn.compact）
 
     @classmethod
     def divider(cls, folder=""):
         return cls("divider", datetime.now(), folder)
+
+
+def token_amount(tokens):
+    """对话长度给人看：中文 / 日文按"万"（2.3万），英文按 k（23k）。"""
+    if i18n.current_language() == "en":
+        return f"{max(round(tokens / 1000), 1)}k"
+    return f"{max(tokens / 10000, 0.1):.1f}".rstrip("0").rstrip(".") + "万"
+
+
+CONTEXT_WARN = 0.8   # 对话长度到门槛的八成：底行的"对话 x / y"变橙色（到了门槛变红，接着就会自动整理）
+
+
+def context_status(card):
+    """卡片底行花费后面的一段：对话长度或者整理的状态 → (文字, 颜色)；什么都没有是 ("", None)。"""
+    if card.compact == "running":
+        return i18n.tr("assistant_compact_running"), QColor("#4F7BD8")
+    if card.compact == "done":
+        return i18n.tr("assistant_compact_done"), QColor("#2E7D32")
+    if not card.context_tokens:
+        return "", None
+    if not card.context_limit:
+        return i18n.tr("assistant_context_plain", token_amount(card.context_tokens)), QColor("#8A94A6")
+    ratio = card.context_tokens / card.context_limit
+    color = "#C62828" if ratio >= 1 else "#B7791F" if ratio >= CONTEXT_WARN else "#8A94A6"
+    return i18n.tr("assistant_context", token_amount(card.context_tokens), token_amount(card.context_limit)), QColor(color)
 
 
 def markdown_to_plain(markdown):
@@ -415,16 +443,28 @@ class AssistantDeck(QWidget):
 
         s = QFontMetrics(self._small)
         p.setFont(self._small)
-        parts = [f"{card.time:%H:%M}"] + ([card.cost] if card.cost else [])
+        gray = QColor("#8A94A6")
+        parts = [(f"{card.time:%H:%M}", gray)] + ([(card.cost, gray)] if card.cost else [])
+        context, color = context_status(card)
+        if context:   # 花费后面：对话长度 / 整理状态（2026-10-08 用户选的位置）
+            parts.append((context, color))
         if card.files:
-            parts.append(i18n.tr("assistant_card_files", len(card.files)))
-        p.setPen(QColor("#8A94A6"))
-        p.drawText(QRectF(x, y, w, s.height()), Qt.AlignmentFlag.AlignLeft, " · ".join(parts))
+            parts.append((i18n.tr("assistant_card_files", len(card.files)), gray))
         status = i18n.tr("assistant_card_stopped") if card.stopped else (
             i18n.tr("assistant_card_error") if card.error else i18n.tr("assistant_card_undone") if card.undone else "")
+        room = w - (s.horizontalAdvance(status) + 8 if status else 0)
+        for i, (text, color) in enumerate(parts):   # 一段段接着画（颜色可以不同），放不下的省略
+            text = (" · " if i else "") + text
+            fitted = s.elidedText(text, Qt.TextElideMode.ElideRight, int(room))
+            p.setPen(color)
+            p.drawText(QRectF(x, y, room, s.height()), Qt.AlignmentFlag.AlignLeft, fitted)
+            x += s.horizontalAdvance(fitted)
+            room -= s.horizontalAdvance(fitted)
+            if fitted != text or room <= 0:
+                break
         if status:
             p.setPen(QColor("#C62828") if card.error and not card.stopped else QColor("#B7791F"))
-            p.drawText(QRectF(x, y, w, s.height()), Qt.AlignmentFlag.AlignRight, status)
+            p.drawText(QRectF(rect.left() + self.PAD, y, w, s.height()), Qt.AlignmentFlag.AlignRight, status)
 
     # ---------- 鼠标 ----------
 

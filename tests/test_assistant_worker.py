@@ -38,6 +38,8 @@ class FakeBrain:
         self.fail_kind = fail_kind
         self.asked, self.interrupts, self.closed, self.replies = [], 0, False, []
         self._interrupted = None
+        self.compacting = False
+        self.compacted = asyncio.Event()   # 测试 set() 了，"long" 后面的整理才做完
 
     async def start(self):
         if self.fail_kind:
@@ -52,6 +54,14 @@ class FakeBrain:
             self._interrupted = asyncio.Event()
             await self._interrupted.wait()
             self.emit(protocol.TurnFinished(stopped=True))
+            return
+        if text == "long":   # 答完了，对话太长：接着整理前面的对话（和 ClaudeBrain.ask 一样在同一个任务里）
+            self.emit(protocol.TurnFinished(0.001, 0.001, 5, 1, context_tokens=50_000, context_limit=40_000))
+            self.compacting = True
+            self.emit(protocol.Compacting())
+            await self.compacted.wait()
+            self.compacting = False
+            self.emit(protocol.Compacted(True, 50_000, 9_000, 0.002, 0.003))
             return
         self.emit(protocol.TextDelta("好的"))
         self.emit(protocol.TurnFinished(0.001, 0.001, 5, 1))
@@ -213,6 +223,48 @@ def test_rewind_goes_to_the_brain_but_not_while_answering(key):
 
     events, _ = run(scenario)
     assert protocol.Rewound("cp-2", False, "busy") in events
+
+
+def test_ask_while_compacting_waits_until_it_is_done(key):
+    async def scenario(feed, events, brains):
+        assert await until(lambda: events)
+        feed.send(protocol.Ask("long"))
+        assert await until(lambda: protocol.Compacting() in events)
+        feed.send(protocol.Ask("下一问"))                  # 正在整理：排在整理后面
+        feed.send(protocol.Ask("再插一问"))                # 已经有一问在排队：不接
+        await asyncio.sleep(0.05)
+        assert brains[0].asked == ["long"]
+        feed.send(protocol.Rewind("cp-1"))                 # 整理时不撤销
+        assert await until(lambda: any(isinstance(e, protocol.Rewound) for e in events))
+        brains[0].compacted.set()
+        assert await until(lambda: len([e for e in events if isinstance(e, protocol.TurnFinished)]) == 2)
+        feed.send(protocol.Quit())
+
+    events, brains = run(scenario)
+    assert brains[0].asked == ["long", "下一问"]
+    kinds = [type(e).__name__ for e in events if not isinstance(e, (protocol.Ready, protocol.TextDelta))]
+    assert kinds == ["TurnFinished", "Compacting", "Rewound", "Compacted", "TurnFinished"]
+    assert protocol.Rewound("cp-1", False, "busy") in events
+
+
+def test_stop_while_waiting_for_compaction_drops_the_question_but_not_the_compaction(key):
+    async def scenario(feed, events, brains):
+        assert await until(lambda: events)
+        feed.send(protocol.Ask("long"))
+        assert await until(lambda: protocol.Compacting() in events)
+        feed.send(protocol.Ask("下一问"))
+        feed.send(protocol.Interrupt())                    # 这一问还没问出去：不问了
+        assert await until(lambda: protocol.TurnFinished(stopped=True) in events)
+        brains[0].compacted.set()
+        assert await until(lambda: any(isinstance(e, protocol.Compacted) for e in events))
+        feed.send(protocol.Ask("之后再问"))                 # 整理完了：照常问
+        assert await until(lambda: "之后再问" in brains[0].asked)
+        feed.send(protocol.Quit())
+
+    events, brains = run(scenario)
+    assert brains[0].asked == ["long", "之后再问"]
+    assert brains[0].interrupts == 0                       # 整理没被打断
+    assert any(isinstance(e, protocol.Compacted) and e.ok for e in events)
 
 
 def test_bad_command_lines_are_skipped(key):

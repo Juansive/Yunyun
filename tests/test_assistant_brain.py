@@ -6,8 +6,8 @@ import subprocess
 import anyio
 import pytest
 from claude_agent_sdk import (
-    AssistantMessage, ResultMessage, ServerToolUseBlock, StreamEvent, TextBlock, ToolResultBlock, ToolUseBlock,
-    UserMessage,
+    AssistantMessage, ResultMessage, ServerToolUseBlock, StreamEvent, SystemMessage, TextBlock, ToolResultBlock,
+    ToolUseBlock, UserMessage,
 )
 
 from yunyun.assistant import claude_brain, protocol
@@ -280,6 +280,114 @@ def test_brain_stops_the_reply_when_over_budget():
     anyio.run(run)
     assert brain._client.interrupted
     assert protocol.Error("reply_budget", "~$0.020") in emitted
+
+
+# ---------- 对话长度、太长时自动整理（阶段 10） ----------
+
+def test_context_length_follows_the_latest_model_request():
+    state = TurnState(rates=None, context_limit=40_000)   # 不知道价格也要记长度
+    translate(usage_event("start", {"input_tokens": 5, "cache_creation_input_tokens": 2_000,
+                                    "cache_read_input_tokens": 30_000}), state)
+    translate(usage_event("delta", {"output_tokens": 300}), state)
+    assert state.context_tokens == 32_305
+    translate(usage_event("start", {"input_tokens": 400, "cache_read_input_tokens": 32_305}), state)   # 用完工具再问
+    translate(usage_event("delta", {"output_tokens": 50}), state)
+    assert state.context_tokens == 32_755                  # 不是两次加起来，是最后一次的
+    finished = translate(result(total=0.01), state)[-1]
+    assert (finished.context_tokens, finished.context_limit) == (32_755, 40_000)
+
+
+def test_needs_compact_only_after_a_good_turn_over_the_limit():
+    state = TurnState(context_limit=40_000, context_tokens=39_999)
+    assert not state.needs_compact
+    state.context_tokens = 40_000
+    assert state.needs_compact
+    state.interrupted = True                               # 停下了：不整理
+    assert not state.needs_compact
+    assert not TurnState(context_limit=0, context_tokens=10 ** 6).needs_compact   # 0 = 不自动整理
+
+
+def test_compact_system_messages_are_remembered():
+    state = TurnState()
+    assert translate(SystemMessage("status", {"status": "compacting"}), state) == []
+    assert translate(SystemMessage("compact_boundary", {"compact_metadata": {"pre_tokens": 9, "post_tokens": 3}}),
+                     state) == []
+    assert state.compact_meta == {"pre_tokens": 9, "post_tokens": 3}
+    translate(SystemMessage("status", {"compact_result": "failed", "compact_error": "too_few_groups"}), state)
+    assert state.compact_error == "too_few_groups"
+
+
+class ScriptClient:
+    """假的 ClaudeSDKClient：每次 query 换下一段剧本（消息列表），记下问了什么。"""
+
+    def __init__(self, *scripts):
+        self.scripts, self.queries = list(scripts), []
+
+    async def query(self, text):
+        self.queries.append(text)
+
+    async def receive_response(self):
+        for message in self.scripts.pop(0):
+            await anyio.sleep(0)
+            yield message
+
+    async def interrupt(self):
+        pass
+
+
+LONG_TURN = [usage_event("start", {"input_tokens": 5, "cache_read_input_tokens": 45_000}), text_event("答"),
+             usage_event("delta", {"output_tokens": 300}), result(total=0.01)]
+
+
+def compact_script(ok=True):
+    """Claude Code 整理时传回来的消息（try_compact.py 实测的样子）。"""
+    if not ok:
+        return [SystemMessage("status", {"compact_result": "failed", "compact_error": "too_few_groups"}),
+                result(total=0.011)]
+    return [SystemMessage("status", {"status": "compacting"}),
+            usage_event("start", {"input_tokens": 50, "cache_read_input_tokens": 45_000}),
+            text_event("<summary>总结</summary>"),         # 整理时写的总结：不转给芸芸
+            SystemMessage("status", {"status": None, "compact_result": "success"}),
+            SystemMessage("compact_boundary", {"compact_metadata": {"trigger": "manual", "pre_tokens": 45_305,
+                                                                    "post_tokens": 900}}),
+            result(total=0.012)]
+
+
+def test_brain_compacts_after_a_long_turn():
+    emitted = []
+    brain = claude_brain.ClaudeBrain(AssistantSettings(compact_tokens=40_000), "k", "zh", emitted.append)
+    brain._client = ScriptClient(LONG_TURN, compact_script())
+    anyio.run(brain.ask, "hi")
+    assert brain._client.queries == ["hi", claude_brain.COMPACT_COMMAND]
+    assert [e for e in emitted if isinstance(e, protocol.TextDelta)] == [protocol.TextDelta("答")]
+    finished, compacting, compacted = emitted[-3:]
+    assert isinstance(finished, protocol.TurnFinished) and finished.context_tokens == 45_305
+    assert compacting == protocol.Compacting()
+    assert (compacted.ok, compacted.before, compacted.after, compacted.detail) == (True, 45_305, 900, "")
+    assert compacted.cost_usd == pytest.approx(0.002) and compacted.session_cost_usd == pytest.approx(0.012)
+    assert not brain.compacting
+
+
+def test_failed_compaction_keeps_the_length_and_only_reports_quietly():
+    emitted = []
+    brain = claude_brain.ClaudeBrain(AssistantSettings(compact_tokens=40_000), "k", "zh", emitted.append)
+    brain._client = ScriptClient(LONG_TURN, compact_script(ok=False))
+    anyio.run(brain.ask, "hi")
+    compacted = emitted[-1]
+    assert (compacted.ok, compacted.before, compacted.after, compacted.detail) == (False, 45_305, 45_305,
+                                                                                    "too_few_groups")
+    assert not any(isinstance(e, protocol.Error) for e in emitted)   # 不当成出错告诉芸芸
+    assert brain._state.context_tokens == 45_305
+
+
+def test_no_compaction_below_the_limit_or_when_turned_off():
+    for settings in (AssistantSettings(compact_tokens=50_000), AssistantSettings(compact_tokens=0)):
+        emitted = []
+        brain = claude_brain.ClaudeBrain(settings, "k", "zh", emitted.append)
+        brain._client = ScriptClient(LONG_TURN)
+        anyio.run(brain.ask, "hi")
+        assert brain._client.queries == ["hi"]
+        assert not any(isinstance(e, (protocol.Compacting, protocol.Compacted)) for e in emitted)
 
 
 def test_custom_model_has_no_price_so_no_reply_estimate():

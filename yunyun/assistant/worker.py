@@ -79,33 +79,56 @@ async def serve(stdin, write, language, make_brain, resume=""):
         return
     log.info("准备好了")
 
-    turn = None
+    turn = None     # 正在回答的一轮（答完后可能接着整理前面的对话，见 ClaudeBrain.compact）
+    queued = None   # 整理时来的提问：等整理完再问
+
+    def running(task):
+        return task is not None and not task.done()
+
     try:
         while True:
             command = await commands.get()
             if command is None or isinstance(command, protocol.Quit):
                 break
             if isinstance(command, protocol.Ask):
-                if turn is not None and not turn.done():
+                if running(queued) or (running(turn) and not getattr(brain, "compacting", False)):
                     log.warning("上一轮还没结束，不接新的提问")   # 界面上回答时不能发送，正常不会走到这里
-                    continue
-                turn = asyncio.create_task(brain.ask(command.text))
+                elif running(turn):
+                    log.info("正在整理前面的对话，整理完再问")
+                    queued = asyncio.create_task(_ask_after(turn, brain, command.text))
+                else:
+                    turn = asyncio.create_task(brain.ask(command.text))
             elif isinstance(command, protocol.Interrupt):
-                if turn is not None and not turn.done():
+                if running(queued) and running(turn):   # 这一问还在等整理：不问了（整理照常做完）
+                    queued.cancel()
+                    emit(protocol.TurnFinished(stopped=True))
+                elif running(queued) or running(turn):
                     await brain.interrupt()
             elif isinstance(command, protocol.PermissionReply):
                 brain.reply_permission(command)   # 大脑那边的 can_use_tool 正等着它
             elif isinstance(command, protocol.Rewind):
-                if turn is not None and not turn.done():   # 回答到一半不撤销（界面上这时按钮是灰的）
+                if running(turn) or running(queued):   # 回答到一半不撤销（界面上这时按钮是灰的）
                     emit(protocol.Rewound(command.checkpoint, False, "busy"))
                 else:
                     await brain.rewind(command.checkpoint)
     finally:
-        if turn is not None and not turn.done():
-            turn.cancel()
-            with contextlib.suppress(asyncio.CancelledError, Exception):
-                await turn
+        for task in (queued, turn):
+            if running(task):
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError, Exception):
+                    await task
         await brain.close()
+
+
+async def _ask_after(previous, brain, text):
+    """等上一轮（和它之后的整理）做完再问。shield：这一问被取消时不连累正在做的整理。"""
+    try:
+        await asyncio.shield(previous)
+    except asyncio.CancelledError:
+        raise
+    except Exception:   # 上一轮自己的错已经报过了（ClaudeBrain.ask 里），这里照常问
+        log.exception("等上一轮结束时出错")
+    await brain.ask(text)
 
 
 def main(argv=None):

@@ -8,7 +8,7 @@ from PySide6.QtGui import QGuiApplication, QMouseEvent, QWheelEvent
 from PySide6.QtWidgets import QWidget
 
 from yunyun import i18n
-from yunyun.pet.assistant_deck import AssistantCard, AssistantDeck
+from yunyun.pet.assistant_deck import AssistantCard, AssistantDeck, context_status, token_amount
 
 
 def wait_until(qapp, condition, timeout=5.0):
@@ -178,6 +178,10 @@ def test_paints_every_kind_of_card(qapp, deck):
         AssistantCard("turn", datetime.now(), "出错", error="API Key 不对"),
         turn("按 token", cost="120 / 30 token"),
         AssistantCard("turn", datetime.now(), "什么都没有"),
+        AssistantCard("turn", datetime.now(), "长对话", "答", "答", "$0.0040", files=("a.py", "b.py"),
+                      context_tokens=38_000, context_limit=40_000),
+        AssistantCard("turn", datetime.now(), "整理中", "答", "答", "$0.0040", stopped=True, files=("a.py",),
+                      context_tokens=45_000, context_limit=40_000, compact="running"),   # 底行放不下：省略
     ]
     deck.reset()
     deck.show_beside(column())
@@ -185,3 +189,31 @@ def test_paints_every_kind_of_card(qapp, deck):
         deck._pos = pos
         deck._shown = 0.6
         assert not deck.grab().isNull()
+
+
+# ---------- 对话长度、整理状态（阶段 10） ----------
+
+@pytest.mark.parametrize("language, tokens, text", [
+    ("zh", 40_000, "4万"), ("zh", 23_456, "2.3万"), ("zh", 300, "0.1万"), ("ja", 120_000, "12万"),
+    ("en", 23_456, "23k"), ("en", 300, "1k"),
+])
+def test_token_amount(monkeypatch, language, tokens, text):
+    monkeypatch.setattr(i18n, "_current", language)
+    assert token_amount(tokens) == text
+
+
+def test_context_status_colors_and_compaction(monkeypatch):
+    monkeypatch.setattr(i18n, "_current", "zh")
+
+    def status(**fields):
+        text, color = context_status(AssistantCard("turn", datetime.now(), "问", **fields))
+        return text, color.name() if color is not None else None
+
+    assert status() == ("", None)                                                  # 以前的卡片：没记长度
+    assert status(context_tokens=12_000, context_limit=40_000) == ("对话 1.2万/4万", "#8a94a6")
+    assert status(context_tokens=33_000, context_limit=40_000)[1] == "#b7791f"     # 快到门槛：橙色
+    assert status(context_tokens=41_000, context_limit=40_000)[1] == "#c62828"     # 过了门槛：红色
+    assert status(context_tokens=12_000) == ("对话 1.2万", "#8a94a6")               # 不自动整理：只说长度
+    assert status(context_tokens=41_000, context_limit=40_000, compact="running")[0] == "正在整理对话…"
+    assert status(context_tokens=41_000, context_limit=40_000, compact="done")[0] == "前面的对话整理好了"
+    assert status(context_tokens=41_000, context_limit=40_000, compact="failed")[0] == "对话 4.1万/4万"
