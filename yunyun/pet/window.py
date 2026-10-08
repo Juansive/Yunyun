@@ -28,14 +28,44 @@ from yunyun.pet.sway import Sway
 
 _ALWAYS_ON_TOP_KEY = "window/always_on_top"
 _POSITION_KEY = "window/position"
+_SCALE_KEY = "window/scale"   # 芸芸的大小（1.0 = 默认）
 _AI_OFFERED_KEY = "onboarding/ai_offered"  # 是否已经引导过"设置 AI"（只引导一次）
 
 log = logging.getLogger(__name__)
 
 
+def _clamp_scale(value):
+    return min(max(value, PetWindow.MIN_SCALE), PetWindow.MAX_SCALE)
+
+
+_FRAME_LISTS = ("idle", "working_down", "excited", "thinking", "sleeping", "lifted", "busy", "waiting")
+
+
+def _same_frames(old, new, frames):
+    """换了一套图（按新大小重新载入）：old 里的这一组 → new 里对应的那一组（找不到就原样）。"""
+    for name in _FRAME_LISTS:
+        if frames is getattr(old, name):
+            return getattr(new, name)
+    return frames
+
+
+def _same_frame(old, new, pixmap):
+    """old 里的这一张 → new 里对应的那一张（同一组、同一个编号；找不到就原样）。"""
+    if pixmap is old.working_up:
+        return new.working_up
+    for name in _FRAME_LISTS:
+        frames = getattr(old, name)
+        for i, frame in enumerate(frames):
+            if frame is pixmap and i < len(getattr(new, name)):
+                return getattr(new, name)[i]
+    return pixmap
+
+
 class PetWindow(QWidget):
-    SIZE = 160              # 窗口边长（逻辑像素）
-    MARGIN = 10             # 芸芸身体距离窗口边缘大约多远（气泡对齐、遮挡检测都用它）
+    SIZE = 160              # 默认的窗口边长（逻辑像素）；设置里可以按比例调（scale，2026-10-08 用户要求）
+    MARGIN = 10             # 默认大小时，芸芸身体距离窗口边缘大约多远（气泡对齐、遮挡检测都用它；跟着比例变）
+    MIN_SCALE, MAX_SCALE = 0.5, 2.0
+    SPRITE_RELOAD_MS = 300  # 调大小停下多久后，按新大小重新载入图片（拖滑块时先用现有的图缩放）
     TAP_MS = 90             # 工作状态：敲下的画面停留多久后抬手（毫秒）
     LOOP_MS = 400           # 待机/激动有多张图时，每张停留多久（毫秒）
     COVER_CHECK_MS = 500    # 多久检查一次有没有被挡住（毫秒）
@@ -65,7 +95,10 @@ class PetWindow(QWidget):
         # 让窗口背景透明，只有我们画出来的部分可见
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 
-        self.resize(self.SIZE, self.SIZE)
+        self._scale = self.saved_scale()
+        self.resize(self.pet_size, self.pet_size)
+        self._reload_timer = QTimer(self, singleShot=True, interval=self.SPRITE_RELOAD_MS)
+        self._reload_timer.timeout.connect(self._reload_sprites)
 
         # 记住位置：拖动停下半秒后才保存（不用每移动一个像素就写一次）
         self._save_pos_timer = QTimer(self)
@@ -159,13 +192,66 @@ class PetWindow(QWidget):
         self.set_state(PetState.IDLE)
 
     @classmethod
-    def sprite_pixels(cls):
-        """图片加载时缩小到多大（物理像素），给 load_sprites(max_size=...) 用。
+    def sprite_pixels(cls, scale=1.0):
+        """图片加载时缩小到多大（物理像素），给 load_sprites(max_size=...) 用。scale：芸芸的大小比例。
 
         要够"缩放比例最高的那块屏幕"用，并且至少按 200% 算——这样以后插上 4K 屏，芸芸也是清晰的。
         """
         ratio = max([2.0] + [screen.devicePixelRatio() for screen in QGuiApplication.screens()])
-        return math.ceil(cls.SIZE * ratio)
+        return math.ceil(cls.SIZE * scale * ratio)
+
+    @staticmethod
+    def saved_scale():
+        """上次调的大小比例（没调过是 1.0）。main 载入图片时也要用。"""
+        try:
+            return _clamp_scale(float(QSettings().value(_SCALE_KEY, 1.0)))
+        except (TypeError, ValueError):
+            return 1.0
+
+    # ---------- 大小 ----------
+
+    @property
+    def scale(self):
+        return self._scale
+
+    @property
+    def pet_size(self):
+        """窗口边长（逻辑像素）。"""
+        return round(self.SIZE * self._scale)
+
+    def _margin(self):
+        return round(self.MARGIN * self._scale)
+
+    def set_scale(self, scale):
+        """调芸芸的大小（设置 → 通用的滑块；1.0 = 默认）。脚下中间那一点不动（变大往上长），也不出屏幕。
+        只变芸芸：气泡、卡片、输入框大小不变，位置跟着走。"""
+        scale = _clamp_scale(scale)
+        if abs(scale - self._scale) < 1e-6:
+            return
+        self._scale = scale
+        QSettings().setValue(_SCALE_KEY, scale)
+        old, size = self.geometry(), self.pet_size
+        x, y = old.center().x() - size // 2, old.y() + old.height() - size
+        screen = QGuiApplication.screenAt(QPoint(old.center().x(), old.bottom())) or QGuiApplication.primaryScreen()
+        area, m = screen.availableGeometry(), self._margin()
+        x = max(area.left() - m, min(x, area.left() + area.width() - size + m))
+        y = max(area.top() - m, min(y, area.top() + area.height() - size + m))
+        self.setGeometry(x, y, size, size)
+        self._reload_timer.start()   # 拖滑块时先用现有的图缩放，停下来再按新大小载入（变大不糊、变小省内存）
+
+    def _reload_sprites(self):
+        from yunyun.pet.sprites import load_sprites
+        try:
+            sprites = load_sprites(max_size=self.sprite_pixels(self._scale))
+        except FileNotFoundError as e:
+            log.warning("按新大小重新载入图片失败，继续用原来的：%s", e)
+            return
+        old, self._sprites = self._sprites, sprites
+        self._current = _same_frame(old, sprites, self._current)
+        if self._loop_frames:
+            self._loop_frames = _same_frames(old, sprites, self._loop_frames)
+        self._scaled_cache.clear()
+        self.update()
 
     def _window_flags(self):
         flags = (
@@ -300,7 +386,7 @@ class PetWindow(QWidget):
         if self._always_on_top or not self.isVisible():
             self._occluded = False
         else:
-            inset = round(self.MARGIN * self.devicePixelRatioF())  # Windows API 用物理像素
+            inset = round(self._margin() * self.devicePixelRatioF())  # Windows API 用物理像素
             self._occluded = winapi.covered_ratio(int(self.winId()), inset) >= self.COVERED_RATIO
 
         if self._occluded:
@@ -350,18 +436,26 @@ class PetWindow(QWidget):
 
     def _body_rect(self):
         """芸芸身体在屏幕上的大致区域，不含透明留白。"""
-        m = self.MARGIN
+        m = self._margin()
         return self.geometry().adjusted(m, m, -m, -m)
 
     def moveEvent(self, event):
         # 窗口每次移动后 Qt 都会调用它：拖动时让气泡、小红点、卡片堆跟着走
+        self._follow_body()
+        if self.isVisible():
+            self._save_pos_timer.start()  # 每次移动都重新计时：停下半秒后才真正保存
+
+    def resizeEvent(self, event):
+        # 调了大小（set_scale）：缩放过的图作废，跟着的东西重新对齐
+        self._scaled_cache.clear()
+        self._follow_body()
+
+    def _follow_body(self):
         self._bubbles.follow(self._body_rect())
         self._badge.follow(self._body_rect())
         self._deck.follow(self._body_rect())
         if self._assistant is not None:
             self._assistant.follow(self._body_rect())
-        if self.isVisible():
-            self._save_pos_timer.start()  # 每次移动都重新计时：停下半秒后才真正保存
 
     # ---------- 记住位置 ----------
 
@@ -373,7 +467,7 @@ class PetWindow(QWidget):
         """回到上次的位置；上次的位置现在不在任何屏幕上（比如拔了外接显示器），就回右下角。"""
         saved = QSettings().value(_POSITION_KEY)
         if isinstance(saved, QPoint):
-            m = self.MARGIN
+            m = self._margin()
             body = QRect(saved, self.size()).adjusted(m, m, -m, -m)
             if QGuiApplication.screenAt(body.center()) is not None:
                 self.move(saved)
@@ -516,7 +610,7 @@ class PetWindow(QWidget):
     def _move_to_bottom_right(self):
         """把芸芸放在屏幕右下角（避开任务栏）。"""
         area = QGuiApplication.primaryScreen().availableGeometry()  # 可用区域，不含任务栏
-        self.move(area.right() - self.SIZE - 40, area.bottom() - self.SIZE - 40)
+        self.move(area.right() - self.pet_size - 40, area.bottom() - self.pet_size - 40)
 
     # ---------- 绘制 ----------
 
@@ -532,7 +626,7 @@ class PetWindow(QWidget):
         if self._lifted and self._sway.angle:
             # 绕"后颈"（头顶正中）转一个角度：先把原点挪到支点，转，再挪回来
             painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)   # 转动后边缘不出锯齿
-            pivot = QPointF(self.width() / 2, self.MARGIN)
+            pivot = QPointF(self.width() / 2, self._margin())
             painter.translate(pivot)
             painter.rotate(self._sway.angle)
             painter.translate(-pivot)

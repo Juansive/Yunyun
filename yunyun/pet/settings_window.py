@@ -14,9 +14,9 @@
 - 窗口是芸芸的从属窗口：芸芸置顶时它也在最上面。
 """
 from PySide6.QtCore import QEvent, Qt, QTime, QUrl, Signal
-from PySide6.QtGui import QDesktopServices, QGuiApplication
+from PySide6.QtGui import QDesktopServices, QFontMetrics, QGuiApplication
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QDialog, QFormLayout, QHBoxLayout, QLabel, QListWidget, QPushButton,
+    QCheckBox, QComboBox, QDialog, QFormLayout, QHBoxLayout, QLabel, QListWidget, QPushButton, QSlider,
     QStackedWidget, QTimeEdit, QVBoxLayout, QWidget,
 )
 
@@ -150,6 +150,20 @@ class GeneralPage(QWidget):
             self._language.addItem(name, code)  # 语言名始终用各自的母语显示
         form.addRow(tr("menu_language"), self._language)
 
+        # 芸芸大小：[────●────] 100%  [恢复默认]（拖的时候芸芸马上跟着变）
+        self._size = QSlider(Qt.Orientation.Horizontal)
+        self._size.setRange(round(pet.MIN_SCALE * 100), round(pet.MAX_SCALE * 100))
+        self._size.setSingleStep(5)
+        self._size.setPageStep(10)
+        self._size_label = QLabel()
+        self._size_label.setMinimumWidth(QFontMetrics(self._size_label.font()).horizontalAdvance("200%") + 4)
+        self._size_reset = QPushButton(tr("pet_size_reset"))
+        size_row = QHBoxLayout()
+        size_row.addWidget(self._size, 1)
+        size_row.addWidget(self._size_label)
+        size_row.addWidget(self._size_reset)
+        form.addRow(tr("pet_size"), size_row)
+
         self._on_top = QCheckBox(tr("menu_always_on_top"))
         self._autostart = QCheckBox(tr("menu_autostart"))
         form.addRow(self._on_top)
@@ -190,6 +204,8 @@ class GeneralPage(QWidget):
         self.refresh()
         # 先显示当前状态，再连接信号：避免设置初始值时就触发"修改"
         self._language.currentIndexChanged.connect(self._on_language)
+        self._size.valueChanged.connect(self._on_size)
+        self._size_reset.clicked.connect(lambda: self._size.setValue(100))
         self._on_top.toggled.connect(pet.set_always_on_top)
         self._autostart.toggled.connect(pet.set_autostart)
         self._shortcut_button.clicked.connect(pet.create_desktop_shortcut)
@@ -204,10 +220,12 @@ class GeneralPage(QWidget):
             (self._language, lambda: self._language.setCurrentIndex(self._language.findData(i18n.current_language()))),
             (self._on_top, lambda: self._on_top.setChecked(self._pet.always_on_top)),
             (self._autostart, lambda: self._autostart.setChecked(shortcut.is_autostart_enabled())),
+            (self._size, lambda: self._size.setValue(round(self._pet.scale * 100))),
         ):
             widget.blockSignals(True)   # 程序自己改状态时，不要当作用户在操作
             update()
             widget.blockSignals(False)
+        self._size_label.setText(f"{self._size.value()}%")
         if self._quiet is not None:
             for widget, update in (
                 (self._quiet_check, lambda: self._quiet_check.setChecked(self._quiet.enabled)),
@@ -230,6 +248,10 @@ class GeneralPage(QWidget):
         on = self._quiet_check.isChecked()
         self._quiet_start.setEnabled(on)   # 没开免打扰时，时间框变灰
         self._quiet_end.setEnabled(on)
+
+    def _on_size(self, percent):
+        self._size_label.setText(f"{percent}%")
+        self._pet.set_scale(percent / 100)
 
     def _on_language(self):
         self._pet.change_language(self._language.currentData())

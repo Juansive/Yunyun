@@ -43,7 +43,7 @@ def main():
     i18n.load_language()               # 恢复上次选择的语言
 
     # 必须在 QApplication 之后（QPixmap 需要它）；加载时就缩小到显示需要的大小，省内存
-    sprites = load_sprites(max_size=PetWindow.sprite_pixels())
+    sprites = load_sprites(max_size=PetWindow.sprite_pixels(PetWindow.saved_scale()))   # 按用户调的大小载入
     machine = StateMachine()
     pet = PetWindow(sprites)
     keyboard = KeyboardMonitor()

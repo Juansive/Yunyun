@@ -26,6 +26,8 @@ TEXTS = {
                                    "ja": "カードを芸芸のそばに戻す"},
     "menu_assistant_exit": {"zh": "退出助手模式", "en": "Exit assistant mode", "ja": "アシスタントモードを終了"},
     "menu_language": {"zh": "语言", "en": "Language", "ja": "言語"},
+    "pet_size": {"zh": "芸芸大小", "en": "Size", "ja": "芸芸の大きさ"},   # 设置 → 通用的滑块
+    "pet_size_reset": {"zh": "恢复默认", "en": "Reset", "ja": "元に戻す"},
     "menu_always_on_top": {"zh": "始终在上", "en": "Always on Top", "ja": "常に最前面"},
     "menu_recent_mail": {"zh": "刚才的邮件", "en": "Recent Mail", "ja": "さっきのメール"},
     "menu_dismiss_mail": {"zh": "全部标为已看", "en": "Mark All as Seen", "ja": "すべて確認済みにする"},
