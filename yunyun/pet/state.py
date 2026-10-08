@@ -10,6 +10,11 @@
     （思考按原因分开算："mail" 处理邮件、"assistant" 助手在回答；两件事都结束才不想了。
       思考期间来了新邮件不打断思考，只是小红点 +1）
 
+    助手模式（set_assistant，2026-10-08 用户定的优先级）：
+        等你确认 WAITING > 在干活 BUSY > 思考 THINKING（助手在想 / 写回答，或者在处理邮件）
+        > 激动 EXCITED > 工作 WORKING > 待机 IDLE / 睡觉 SLEEPING
+    助手在忙（前三种）时来了新邮件不激动，只是小红点 +1；你打字也不打断；免打扰时段照常显示（是你自己在用）。
+
     免打扰时段里，"休息"的样子从 待机 IDLE 换成 睡觉 SLEEPING：
     睡觉 SLEEPING ── 敲键盘 ──▶ 工作（醒来陪你打字）── 一段时间没敲 ──▶ 又睡着
     免打扰期间来了新邮件也不激动（只是小红点 +1）。
@@ -26,8 +31,14 @@ class PetState(Enum):
     IDLE = "idle"          # 待机：用户一段时间没敲键盘
     WORKING = "working"    # 工作：用户在敲键盘
     EXCITED = "excited"    # 激动：收到新邮件
-    THINKING = "thinking"  # 思考：正在用 AI 处理邮件
+    THINKING = "thinking"  # 思考：正在用 AI 处理邮件 / 助手在想
     SLEEPING = "sleeping"  # 睡觉：免打扰时段里的"休息"
+    BUSY = "busy"          # 在干活：助手在用工具（读文件、跑命令、读网页）
+    WAITING = "waiting"    # 等你确认：助手有确认卡片在等你
+
+
+_ASSISTANT_STATES = {"thinking": PetState.THINKING, "busy": PetState.BUSY, "waiting": PetState.WAITING}
+_FOREGROUND = (PetState.THINKING, PetState.BUSY, PetState.WAITING)   # 占着芸芸的样子、结束了才回到平时
 
 
 class StateMachine(QObject):
@@ -43,6 +54,7 @@ class StateMachine(QObject):
         self._state = PetState.IDLE
         self._quiet = False  # 是否在免打扰时段
         self._thinking = set()  # 芸芸在想哪些事（"mail" / "assistant"）
+        self._assistant = ""    # 助手在做什么（"" / "thinking" / "busy" / "waiting"，见 set_assistant）
 
         # 这个定时器在"运行中"就代表：用户最近 IDLE_AFTER_MS 内敲过键盘
         self._idle_timer = QTimer(self)
@@ -88,8 +100,8 @@ class StateMachine(QObject):
 
     def on_mail(self):
         """收到新邮件。"""
-        if self._state is PetState.THINKING or self._quiet:
-            return  # 正在处理邮件不打断思考；免打扰时不激动
+        if self._foreground() is not None or self._quiet:
+            return  # 正在想 / 助手在忙不打断（小红点 +1 就够了）；免打扰时不激动
         self._set_state(PetState.EXCITED)
         self._excited_timer.start()  # 连续来邮件会重新计时
 
@@ -101,13 +113,32 @@ class StateMachine(QObject):
     def start_thinking(self, reason="mail"):
         """开始想一件事："mail" 用 AI 处理邮件，"assistant" 助手在回答。"""
         self._thinking.add(reason)
-        self._excited_timer.stop()   # 如果正在激动，直接转入思考
-        self._set_state(PetState.THINKING)
+        self._refresh()
 
     def stop_thinking(self, reason="mail"):
         """这件事想完了。还有别的事在想就继续思考（比如邮件处理完了，助手还在回答）。"""
         self._thinking.discard(reason)
-        if not self._thinking and self._state is PetState.THINKING:
+        self._refresh()
+
+    def set_assistant(self, activity):
+        """助手在做什么："" 没事、"thinking" 在想 / 写回答、"busy" 在用工具、"waiting" 等你确认（session.activity）。"""
+        self._assistant = activity if activity in _ASSISTANT_STATES else ""
+        self._refresh()
+
+    def _foreground(self):
+        """助手和邮件处理占着的样子（等你确认 > 在干活 > 思考）；都没有就是 None。"""
+        if self._assistant in ("waiting", "busy"):
+            return _ASSISTANT_STATES[self._assistant]
+        if self._thinking or self._assistant == "thinking":
+            return PetState.THINKING
+        return None
+
+    def _refresh(self):
+        foreground = self._foreground()
+        if foreground is not None:
+            self._excited_timer.stop()   # 如果正在激动，直接换过去
+            self._set_state(foreground)
+        elif self._state in _FOREGROUND:
             self._back_to_normal()
 
     # ---------- 内部 ----------

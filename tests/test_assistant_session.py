@@ -190,6 +190,32 @@ def test_tool_events_while_waiting_do_not_hide_the_waiting_text(session):
     assert session.progress == i18n.tr("assistant_thinking")             # 等的时候工具结束了：答完显示最新的
 
 
+def test_activity_follows_tools_and_confirmations(session):
+    """芸芸的样子跟着它变：在想 → 用工具（在干活）→ 等你确认 → 接着干 → 在想 → 答完。"""
+    activities = []
+    session.activity_changed.connect(activities.append)
+    process, _ = asking(session)                          # 问了，接着开始用 Edit
+    process.say(edit_request(1))
+    assert session.activity == "waiting"
+    session.answer_permission(1, True)
+    assert session.activity == "busy"                     # 允许了：工具还在用
+    process.say(protocol.ToolFinished("t1"), protocol.TextDelta("改好了"))
+    assert session.activity == "thinking"
+    process.say(protocol.TurnFinished(0.001, 0.001))
+    assert activities == ["thinking", "busy", "waiting", "busy", "thinking", ""]
+
+
+def test_stop_while_waiting_clears_the_activity(session):
+    activities = []
+    session.activity_changed.connect(activities.append)
+    process, _ = asking(session)
+    process.say(edit_request(1))
+    session.stop()                                        # 等确认作废：大脑停下之前芸芸接着"干活"
+    assert session.activity == "busy"
+    process.say(protocol.TurnFinished(0.0, 0.0, stopped=True))
+    assert session.activity == "" and activities[-1] == ""
+
+
 def test_stop_drops_waiting_requests(session):
     process, changes = asking(session)
     process.say(edit_request(1))

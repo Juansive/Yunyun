@@ -114,6 +114,7 @@ class AssistantSession(QObject):
     turn_finished = Signal(object)    # Turn
     error_occurred = Signal(object)   # protocol.Error
     permissions_changed = Signal()    # pending_permissions 变了（来了新的 / 回答了 / 作废了）
+    activity_changed = Signal(str)    # 助手在做什么变了（见 activity；芸芸的样子跟着变）
     rewind_finished = Signal(str, bool, object)   # 检查点、成没成、撤销掉的那几轮（[Turn]）
 
     def __init__(self, parent=None, make_process=None):
@@ -133,12 +134,22 @@ class AssistantSession(QObject):
         self.session_id = ""          # 当前这段对话的 Claude Code 会话编号（闲置释放后再唤出时接着它聊）
         self.rewinding = ""           # 正在撤销的检查点（等 Rewound）
         self._undo_note = []          # 撤销过的文件：下一问发给大脑时附一句说明
+        self._activity = ""           # 上次告诉外面的 activity
 
     # ---------- 对外 ----------
 
     @property
     def busy(self):
         return self._turn is not None
+
+    @property
+    def activity(self):
+        """助手在做什么："" 没在回答、"waiting" 等你确认、"busy" 在用工具（读文件、跑命令、读网页）、"thinking" 在想 / 写回答。"""
+        if not self.busy:
+            return ""
+        if self.pending_permissions:
+            return "waiting"
+        return "busy" if self._tools else "thinking"
 
     @property
     def current_turn(self):
@@ -184,6 +195,7 @@ class AssistantSession(QObject):
         self.turns.append(self._turn)
         self._tools.clear()
         self.busy_changed.emit(True)
+        self._update_activity()
         self.turn_started.emit(self._turn)
         self.start()
         self._turn.generation = self.generation
@@ -234,6 +246,7 @@ class AssistantSession(QObject):
                  "拒绝" if not allow else "这次对话都允许" if remember else "允许一次")
         if not self.pending_permissions:
             self._set_progress(self._progress_before_wait)
+        self._update_activity()
         self.permissions_changed.emit()
         return True
 
@@ -271,6 +284,12 @@ class AssistantSession(QObject):
             self._progress = text
             self.progress_changed.emit(text)
 
+    def _update_activity(self):
+        activity = self.activity
+        if activity != self._activity:
+            self._activity = activity
+            self.activity_changed.emit(activity)
+
     def _set_activity(self, text):
         """工具 / 文字带来的进度：等确认时先记着（进度行一直显示"等你确认"），答完再换上。"""
         if self.pending_permissions:
@@ -281,6 +300,7 @@ class AssistantSession(QObject):
     def _drop_permissions(self):
         if self.pending_permissions:
             self.pending_permissions = []
+            self._update_activity()
             self.permissions_changed.emit()
 
     def _end_turn(self, stopped=False):
@@ -290,12 +310,17 @@ class AssistantSession(QObject):
         self._drop_permissions()
         self._tools.clear()
         self._set_progress("")
+        self._update_activity()
         self.busy_changed.emit(False)
         self.turn_finished.emit(turn)
 
     def _on_event(self, process, event):
         if process is not self._process:
             return
+        self._handle_event(process, event)
+        self._update_activity()   # 用起 / 用完工具、来了确认请求……芸芸的样子跟着变
+
+    def _handle_event(self, process, event):
         turn = self._turn
         if isinstance(event, protocol.Rewound):
             self._on_rewound(event)

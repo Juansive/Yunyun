@@ -60,7 +60,8 @@ def card_from_turn(turn, workspace=""):
 
 
 class AssistantMode(QObject):
-    busy_changed = Signal(bool)   # 开始 / 结束回答（芸芸思考）
+    busy_changed = Signal(bool)   # 开始 / 结束回答
+    activity_changed = Signal(str)   # 助手在做什么（session.activity）：芸芸的样子跟着变
     closed = Signal()             # 助手模式退出了（子进程在关）
 
     IDLE_EXIT_MS = 10 * 60_000    # 收起后多久没用就释放大脑（卡片还在）
@@ -117,6 +118,7 @@ class AssistantMode(QObject):
         self.reader.undo_requested.connect(self._undo)
         self.session.rewind_finished.connect(self._on_rewound)
         self.session.busy_changed.connect(self._on_busy)
+        self.session.activity_changed.connect(self.activity_changed)
         self.session.answer_changed.connect(self._on_answer_changed)
         self.session.progress_changed.connect(self._on_progress)
         self.session.turn_finished.connect(self._on_turn_finished)

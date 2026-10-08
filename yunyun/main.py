@@ -105,15 +105,9 @@ def main():
 
 
 def connect_assistant(pet, machine):
-    """助手模式和芸芸连起来：助手回答时芸芸思考（和处理邮件各算各的）。
+    """助手模式和芸芸连起来：助手在想 / 干活 / 等你确认，芸芸就是那个样子（优先级见 StateMachine.set_assistant）。
     面板本身由 pet.open_assistant() 管；这里不 import 助手的代码（芸芸平时不加载它）。"""
-    def on_busy(busy):
-        if busy:
-            machine.start_thinking("assistant")
-        else:
-            machine.stop_thinking("assistant")
-
-    pet.assistant_busy_changed.connect(on_busy)
+    pet.assistant_activity_changed.connect(machine.set_assistant)
 
 
 def connect_mail(mail, pet, machine, history=None, quiet=None):

@@ -4,8 +4,11 @@
 素材要求见 assets/pet/README.md。
 
 运行（在项目根目录）：
-    .\\.venv\\Scripts\\python tools\\make_placeholders.py
+    .\\.venv\\Scripts\\python tools\\make_placeholders.py                 # 只补上还没有的图（不覆盖已有的）
+    .\\.venv\\Scripts\\python tools\\make_placeholders.py busy waiting    # 只生成这几种（文件名开头）
+    .\\.venv\\Scripts\\python tools\\make_placeholders.py --force ...     # 覆盖已有的（小心：会冲掉画师的图）
 """
+import math
 import sys
 from pathlib import Path
 
@@ -242,6 +245,67 @@ def sleeping(frame):
     return img
 
 
+def draw_gear(p, x, y, angle):
+    """齿轮（转动的角度 angle，度）：表示"在干活"。"""
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(QColor("#8A96A3"))
+    for i in range(8):
+        a = math.radians(angle + i * 45)
+        p.drawEllipse(QPointF(x + 30 * math.cos(a), y + 30 * math.sin(a)), 9, 9)   # 齿
+    p.drawEllipse(QPointF(x, y), 26, 26)
+    p.setBrush(QColor("#FFFFFF"))
+    p.drawEllipse(QPointF(x, y), 10, 10)
+
+
+def draw_question(p, x, y, size):
+    """用线条画一个问号（不依赖字体）：上面半圈 + 往下一竖 + 一个点。"""
+    p.setPen(pen(max(8, size // 6), QColor("#E07A2E")))
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    r = size * 0.32
+    p.drawArc(QRectF(x - r, y, 2 * r, 2 * r), 180 * 16, -270 * 16)   # 从左边顺时针绕到下面
+    p.drawLine(QPointF(x, y + 2 * r), QPointF(x, y + size * 0.78))
+    p.drawPoint(QPointF(x, y + size))
+
+
+def busy(frame):
+    """在干活（助手读文件、跑命令）：低头看着手里的文件，头顶的齿轮在转（frame = 1/2/3）。"""
+    img, p = new_canvas()
+    draw_body(p)
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(INK)
+    p.drawEllipse(QPointF(204, 248), 13, 14)    # 眼睛往下看
+    p.drawEllipse(QPointF(308, 248), 13, 14)
+    p.setPen(pen(6))
+    p.drawLine(QPointF(242, 284), QPointF(270, 284))   # 认真地抿着嘴
+    p.setPen(pen(5))                            # 手里的一张纸（带几行字）
+    p.setBrush(QColor("#FFFFFF"))
+    p.drawRoundedRect(QRectF(176, 318, 160, 110), 10, 10)
+    p.setPen(pen(5, QColor("#9AA5B1")))
+    for i, width in enumerate((110, 90, 120)):
+        p.drawLine(QPointF(196, 344 + i * 26), QPointF(196 + width, 344 + i * 26))
+    draw_hand(p, 170, 380)
+    draw_hand(p, 342, 380)
+    draw_gear(p, 440, 70, frame * 15)
+    p.end()
+    return img
+
+
+def waiting(frame):
+    """等你确认：看着你、举起一只手招呼，头顶冒个问号（frame = 1/2 手的高度、问号上下跳一下）。"""
+    img, p = new_canvas()
+    draw_body(p)
+    draw_hand(p, 120, 360)
+    draw_hand(p, 410, 200 if frame == 1 else 176)   # 举手招呼
+    draw_open_eyes(p)
+    p.setPen(pen(6))
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    p.drawEllipse(QPointF(256, 276), 10, 12)    # o 形小嘴："嗯？"
+    draw_blush(p)
+    draw_question(p, 440, 20 if frame == 1 else 30, 90)
+    p.end()
+    return img
+
+
 def lifted(frame):
     """被拎起来：后颈的皮被捏住，身体垂下来变长，手垂着、脚悬空乱蹬，一脸懵（frame = 1/2 脚的位置不同）。
 
@@ -290,10 +354,23 @@ def main():
         "sleeping_2.png": sleeping(2),
         "lifted_1.png": lifted(1),
         "lifted_2.png": lifted(2),
+        "busy_1.png": busy(1),
+        "busy_2.png": busy(2),
+        "busy_3.png": busy(3),
+        "waiting_1.png": waiting(1),
+        "waiting_2.png": waiting(2),
     }
+    args = [a for a in sys.argv[1:] if a != "--force"]
+    force = "--force" in sys.argv[1:]
     for name, img in images.items():
-        img.save(str(OUT / name))
-        print("已生成", OUT / name)
+        if args and not any(name.startswith(prefix) for prefix in args):
+            continue
+        path = OUT / name
+        if path.exists() and not force:
+            print("已有，跳过（要覆盖加 --force）", path)
+            continue
+        img.save(str(path))
+        print("已生成", path)
 
 
 if __name__ == "__main__":

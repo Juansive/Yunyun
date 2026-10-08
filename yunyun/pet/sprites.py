@@ -8,6 +8,8 @@
     excited_1.png  [excited_2.png ...]            激动（多张时循环播放）
     thinking_1.png [thinking_2.png ...]           思考（多张时循环播放）
     sleeping_1.png [sleeping_2.png ...]           睡觉（免打扰时段，多张时循环播放）
+    [busy_1.png    busy_2.png ...]                助手在干活（读文件、跑命令；没有就用思考的图）
+    [waiting_1.png waiting_2.png ...]             助手等你确认（没有就用思考的图）
     [lifted_1.png  lifted_2.png ...]              被拎起来（拖动时；没有就保持原来的画面）
     [tray.png]                                    托盘图标（没有就用 idle_1.png）
 
@@ -36,6 +38,8 @@ class Sprites:
     sleeping: list[QPixmap]
     lifted: list[QPixmap]   # 可选：可能是空列表
     tray: QPixmap
+    busy: list[QPixmap]     # 可选：没有就是思考的图
+    waiting: list[QPixmap]  # 可选：没有就是思考的图
 
 
 def load_sprites(folder=ASSET_DIR, max_size=None):
@@ -50,16 +54,19 @@ def load_sprites(folder=ASSET_DIR, max_size=None):
         return _load_series(folder, prefix, required, max_size)
 
     idle = series("idle")
+    thinking = series("thinking")
     tray_path = folder / "tray.png"
     return Sprites(
         idle=idle,
         working_up=load(folder / "working_up.png"),
         working_down=series("working_down"),
         excited=series("excited"),
-        thinking=series("thinking"),
+        thinking=thinking,
         sleeping=series("sleeping"),
         lifted=series("lifted", required=False),
         tray=load(tray_path) if tray_path.exists() else idle[0],
+        busy=series("busy", required=False) or thinking,          # 助手模式（阶段 4）加的，画师的图到之前可能没有
+        waiting=series("waiting", required=False) or thinking,
     )
 
 

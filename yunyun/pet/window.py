@@ -51,7 +51,7 @@ class PetWindow(QWidget):
     mail_accounts_changed = Signal()  # 用户添加 / 删除了邮箱账号
     mail_badge_clicked = Signal()     # 用户左键点了小红点：要处理邮件
     dismiss_mail_requested = Signal() # 用户拖走了小红点 / 点了"全部标为已看"：这批邮件不处理
-    assistant_busy_changed = Signal(bool)  # 助手开始 / 结束回答（main 里接到状态机：芸芸思考）
+    assistant_activity_changed = Signal(str)  # 助手在做什么（"" / thinking / busy / waiting；main 里接到状态机）
     _task_done = Signal(object, object, object)  # 后台线程 → 主线程：(成功时说的话, 失败时的文字 key, 错误信息或 None)
 
     def __init__(self, sprites):
@@ -195,6 +195,8 @@ class PetWindow(QWidget):
             PetState.EXCITED: self._sprites.excited,
             PetState.THINKING: self._sprites.thinking,
             PetState.SLEEPING: self._sprites.sleeping,
+            PetState.BUSY: self._sprites.busy,
+            PetState.WAITING: self._sprites.waiting,
         }[state])
 
     def tap(self):
@@ -709,7 +711,7 @@ class PetWindow(QWidget):
         if self._assistant is None:
             from yunyun.pet.assistant_mode import AssistantMode
             mode = AssistantMode(self, self._assistant_cards, state=self._assistant_state)
-            mode.busy_changed.connect(self.assistant_busy_changed)
+            mode.activity_changed.connect(self.assistant_activity_changed)
             mode.closed.connect(self._on_assistant_closed)
             self.language_changed.connect(mode.retranslate)
             self._assistant = mode

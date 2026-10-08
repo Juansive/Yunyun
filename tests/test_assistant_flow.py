@@ -187,6 +187,27 @@ def test_mail_and_assistant_thinking_do_not_cancel_each_other(world, monkeypatch
     assert machine.state is PetState.IDLE
 
 
+def test_yunyun_looks_busy_and_waiting(world, monkeypatch):
+    """芸芸跟着助手变样子：用工具 = 在干活，有确认卡片 = 等你确认；这期间来了邮件不激动。"""
+    pet, machine, processes = world
+    has_key(monkeypatch)
+    pet.open_assistant()
+    process = processes[0]
+    process.say(protocol.Ready("anthropic", "m"))
+    ask(pet, "改一下")
+    assert machine.state is PetState.THINKING
+    process.say(protocol.ToolStarted("t1", "Edit", "a.py"))
+    assert machine.state is PetState.BUSY and pet._state is PetState.BUSY
+    process.say(protocol.PermissionRequest(1, "Edit", {"file_path": "a.py"}, "edit", True, "F:\\proj"))
+    assert machine.state is PetState.WAITING
+    machine.on_mail()
+    assert machine.state is PetState.WAITING                 # 新邮件只让小红点 +1
+    pet.assistant.session.answer_permission(1, True)
+    assert machine.state is PetState.BUSY
+    process.say(protocol.ToolFinished("t1"), protocol.TurnFinished(0.001, 0.001))
+    assert machine.state is PetState.IDLE
+
+
 def test_collapse_keeps_assistant_then_idle_releases_only_the_brain(qapp, world, monkeypatch):
     pet, _, processes = world
     has_key(monkeypatch)
@@ -665,7 +686,7 @@ def test_confirm_card_asks_and_the_answer_goes_to_the_brain(qapp, working):
     process.say(protocol.ToolStarted("t1", "Bash", "pytest -q"), permission())
     assert wait_until(qapp, lambda: mode.confirm.is_open and mode.confirm._shown == 1.0)
     assert mode.confirm.parent() is pet                          # 从属窗口
-    assert machine.state is PetState.THINKING                    # 等你确认时芸芸一直在"想"
+    assert machine.state is PetState.WAITING                     # 等你确认时芸芸是"等你确认"的样子（阶段 4）
     assert bubbles(pet)[-1] == i18n.tr("assistant_waiting_confirm")
     mode.confirm._remember_button.click()
     assert process.sent == [protocol.PermissionReply(1, True, "", True)]
