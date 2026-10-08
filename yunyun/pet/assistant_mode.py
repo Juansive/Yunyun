@@ -4,6 +4,7 @@
   这一列旁边淡入（上次开着的阅读框也回来）。
 - 发问：芸芸思考（光晕流动），头顶气泡先说进度（"芸芸在想……" / "正在搜索网页……"），出字后逐字说回答的开头几行。
 - 答完：这一问一答变成一张卡片，滑到卡片堆最前面；卡片堆开着时气泡很快收起（全文在卡片里）。
+  输入框收起着（你去忙别的了）时，气泡第一行先报"做完啦 · 改了 2 个文件 · $0.0040"，多留一会儿（免打扰时也说：是你发起的）。
 - 单击卡片：阅读框从卡片堆旁边滑出，显示全文；开着时翻卡片堆，阅读框跟着换；再点同一张就关掉。
 - **卡片堆只放当前这段对话**（2026-10-08 用户选的）：新对话（卡片堆右上角 / 输入框里 Ctrl+N / 换工作文件夹）时清空，
   上一段在历史对话里（卡片答完就存硬盘，pet/assistant_history）。重启芸芸后卡片堆是空的。
@@ -11,7 +12,7 @@
   工作文件夹、用它的会话编号重新启动大脑（Claude Code 的 resume），那段的卡片放回卡片堆。
 - 闲置释放大脑 / 退出助手模式后再唤出（芸芸没重启）：自动接着同一段对话（用最后的会话编号 resume），用户感觉不到。
 - 工作文件夹（输入框左边的按钮）：存进设置，子进程启动时读；换文件夹 = 新对话（Claude Code 的工作目录启动后就不能改）。
-- 确认（改文件、执行命令……）：确认卡片放在阅读框的位置（阅读框先让开），一次一个；等确认时芸芸一直在"思考"。
+- 确认（改文件、执行命令……）：确认卡片放在阅读框的位置（阅读框先让开），一次一个；等确认时芸芸是"等你确认"的样子。
   收起着的时候来了确认：芸芸用气泡提醒，唤出时卡片再出来。停止 / 新对话 / 退出 = 等着的都算拒绝。
 - 撤销：改了文件的那一问，阅读框里有"撤销这次改动"（点两次）。只有同一个大脑会话里的能撤销（换了对话 / 闲置退出过就不行了），
   撤销会连之后几问的改动一起恢复；做完芸芸说一句，卡片标上"已撤销"。用命令改的东西撤销不了。
@@ -42,14 +43,28 @@ from yunyun.pet.assistant_reader import AssistantReader
 from yunyun.pet.bubble import bubble_font, elide_lines
 
 
+def turn_cost(turn):
+    """这一轮花了多少（卡片上、"做完啦"气泡里）：美元；不知道就是 token 数；都没有是空的。"""
+    if turn.cost_usd is not None:
+        return f"${turn.cost_usd:.4f}"
+    if turn.input_tokens or turn.output_tokens:
+        return i18n.tr("assistant_card_tokens", turn.input_tokens, turn.output_tokens)
+    return ""
+
+
+def done_header(turn):
+    """输入框收起着时答完，气泡第一行："做完啦 · 改了 2 个文件 · $0.0040"。"""
+    parts = [i18n.tr("assistant_done_said")]
+    if turn.files:
+        parts.append(i18n.tr("assistant_card_files", len(turn.files)))
+    if turn_cost(turn):
+        parts.append(turn_cost(turn))
+    return " · ".join(parts)
+
+
 def card_from_turn(turn, workspace=""):
     """一轮问答（session.Turn）→ 卡片。"""
-    if turn.cost_usd is not None:
-        cost = f"${turn.cost_usd:.4f}"
-    elif turn.input_tokens or turn.output_tokens:
-        cost = i18n.tr("assistant_card_tokens", turn.input_tokens, turn.output_tokens)
-    else:
-        cost = ""
+    cost = turn_cost(turn)
     return AssistantCard(
         "turn", datetime.now(), turn.question, turn.answer,
         markdown_to_plain(turn.answer) if turn.answer else "", cost, turn.stopped,
@@ -466,8 +481,8 @@ class AssistantMode(QObject):
         if turn is not None and turn.answer:
             self._pet.say_live(self._snippet(turn.answer), self.ANSWER_WIDTH)
 
-    def _snippet(self, markdown):
-        return elide_lines(markdown_to_plain(markdown), bubble_font(), self.ANSWER_WIDTH, self.ANSWER_LINES)
+    def _snippet(self, markdown, lines=None):
+        return elide_lines(markdown_to_plain(markdown), bubble_font(), self.ANSWER_WIDTH, lines or self.ANSWER_LINES)
 
     def _on_turn_finished(self, turn):
         self._bubble_timer.stop()
@@ -478,12 +493,17 @@ class AssistantMode(QObject):
             self._place_deck()
             self.deck.show_animated()
 
-        text = self._snippet(turn.answer) if turn.answer else ""
+        # 输入框收起着（你去忙别的了）：先报一句"做完啦 · 改了几个文件 · 花费"（2026-10-08 用户选的；免打扰时也说）
+        header = done_header(turn) if not self.input.is_open and not turn.stopped and turn.error is None else ""
+        lines = self.ANSWER_LINES - 1 if header else self.ANSWER_LINES
+        text = self._snippet(turn.answer, lines) if turn.answer else ""
         if turn.stopped:
             text = f"{text}\n{i18n.tr('assistant_stopped')}".strip()
+        text = "\n".join(part for part in (header, text) if part)
         if text:
             self._pet.say_live(text, self.ANSWER_WIDTH)
-            self._pet.end_live(self.DONE_SAY_WITH_DECK_MS if self.deck.isVisible() else self.DONE_SAY_MS)
+            quick = self.deck.isVisible() and not header   # 你看着卡片堆：卡片里已经有了，气泡早点收
+            self._pet.end_live(self.DONE_SAY_WITH_DECK_MS if quick else self.DONE_SAY_MS)
         else:
             self._pet.end_live(0)   # 只说过"芸芸在想……"：收掉（出错的话下面另说一句）
 

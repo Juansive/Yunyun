@@ -402,6 +402,50 @@ def finish_turn(pet, process, question, answer="答案", cost=0.0012, session_id
     process.say(protocol.TextDelta(answer), protocol.TurnFinished(cost, cost, session_id=session_id))
 
 
+def ask_then_collapse(qapp, pet, process, question):
+    """问完就收起输入框（去忙别的了）。"""
+    ask(pet, question)
+    pet.assistant.input.collapse()
+    assert wait_until(qapp, lambda: not pet.assistant.input.isVisible())
+
+
+def test_done_while_collapsed_says_done_with_files_and_cost(qapp, world, monkeypatch):
+    """输入框收起着时答完：气泡第一行"做完啦 · 改了 N 个文件 · 花费"，下面是回答开头（2026-10-08 用户选的）。"""
+    pet, _, processes = world
+    has_key(monkeypatch)
+    pet.open_assistant()
+    process = processes[0]
+    process.say(protocol.Ready("anthropic", "m"))
+    ask_then_collapse(qapp, pet, process, "修 bug")
+    process.say(protocol.TextDelta("3 个 bug 都修好了"),
+                protocol.TurnFinished(0.004, 0.004, files=("F:\\p\\a.py", "F:\\p\\b.py"), checkpoint="cp"))
+    assert bubbles(pet)[-1] == "做完啦 · 改了 2 个文件 · $0.0040\n3 个 bug 都修好了"
+
+
+def test_done_while_open_shows_only_the_answer(qapp, world, monkeypatch):
+    pet, _, processes = world
+    has_key(monkeypatch)
+    pet.open_assistant()
+    processes[0].say(protocol.Ready("anthropic", "m"))
+    finish_turn(pet, processes[0], "你好", answer="你好呀")
+    assert bubbles(pet)[-1] == "你好呀"                         # 你一直看着：不用报"做完啦"
+
+
+@pytest.mark.parametrize("ending", ["stopped", "error"])
+def test_no_done_when_stopped_or_failed(qapp, world, monkeypatch, ending):
+    pet, _, processes = world
+    has_key(monkeypatch)
+    pet.open_assistant()
+    process = processes[0]
+    process.say(protocol.Ready("anthropic", "m"))
+    ask_then_collapse(qapp, pet, process, "修 bug")
+    if ending == "stopped":
+        process.say(protocol.TextDelta("写到一半"), protocol.TurnFinished(0.001, 0.001, stopped=True))
+    else:
+        process.say(protocol.Error("network", "offline"), protocol.TurnFinished(None, 0.0))
+    assert not any(text.startswith("做完啦") for text in bubbles(pet))
+
+
 def test_each_turn_becomes_a_card(qapp, world, monkeypatch):
     pet, _, processes = world
     has_key(monkeypatch)
