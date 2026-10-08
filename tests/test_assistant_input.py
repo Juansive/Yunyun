@@ -272,3 +272,49 @@ def test_every_thumbnail_keeps_its_colors(qapp, box):
     for i, color in enumerate(("#ff9183", "#6f92ff")):
         center = box._thumbs._rect(i).center()
         assert QColor(grab.pixel(int(center.x() * ratio), int(center.y() * ratio))).name() == color
+
+
+# ---------- 点到别的程序时收不收（2026-10-08 用户要求：拖文件进来时别收起） ----------
+
+@pytest.fixture
+def focus_elsewhere(monkeypatch):
+    """焦点去了别的程序（芸芸没有一个窗口是活动的）。"""
+    monkeypatch.setattr(QApplication, "activeWindow", staticmethod(lambda: None))
+
+
+def test_stays_open_with_text_or_images(qapp, box, focus_elsewhere):
+    opened(qapp, box)
+    box.set_text("打了一半的字")
+    box._check_focus_lost()
+    assert box.is_open                                           # 打了字：留着
+    box.set_text("")
+    box.add_image(picture())
+    box._check_focus_lost()
+    assert box.is_open                                           # 带着图片：留着
+    press(box._edit, Qt.Key.Key_Escape)
+    assert not box.is_open                                       # Esc 照样收
+
+
+def test_empty_box_waits_while_the_left_button_is_held(qapp, box, focus_elsewhere, monkeypatch):
+    from yunyun.pet import winapi
+    monkeypatch.setattr(AssistantInput, "BUTTON_POLL_MS", 10)
+    held = [True]
+    monkeypatch.setattr(winapi, "left_button_down", lambda: held[0])
+    opened(qapp, box)
+    box._check_focus_lost()                                      # 在资源管理器里按着左键（正要拖文件过来）
+    qapp.processEvents()
+    assert box.is_open
+    box._edit.insertFromMimeData(mime_with(picture()))           # 拖进来放下了
+    held[0] = False
+    assert not wait_until(qapp, lambda: not box.is_open, timeout=0.2)   # 有了图片：松开以后也留着
+
+
+def test_empty_box_collapses_after_the_button_is_released(qapp, box, focus_elsewhere, monkeypatch):
+    from yunyun.pet import winapi
+    monkeypatch.setattr(AssistantInput, "BUTTON_POLL_MS", 10)
+    held = [True]
+    monkeypatch.setattr(winapi, "left_button_down", lambda: held[0])
+    opened(qapp, box)
+    box._check_focus_lost()
+    held[0] = False                                              # 只是点了别的程序（或者没拖进来）
+    assert wait_until(qapp, lambda: not box.is_open)

@@ -60,6 +60,22 @@ if IS_WINDOWS:
     dwmapi.DwmGetWindowAttribute.restype = ctypes.c_long  # HRESULT，0 表示成功
     shell32.SHQueryUserNotificationState.argtypes = [ctypes.POINTER(ctypes.c_int)]
     shell32.SHQueryUserNotificationState.restype = ctypes.c_long
+    user32.GetAsyncKeyState.argtypes = [ctypes.c_int]
+    user32.GetAsyncKeyState.restype = ctypes.c_short
+    user32.GetSystemMetrics.argtypes = [ctypes.c_int]
+    user32.GetSystemMetrics.restype = ctypes.c_int
+
+VK_LBUTTON, VK_RBUTTON = 0x01, 0x02
+SM_SWAPBUTTON = 23   # 左右键对调了（左撇子设置）：物理的"左键"在系统里是 VK_RBUTTON
+
+
+def left_button_down():
+    """鼠标左键现在是不是按着（不管在哪个程序里）。只看鼠标按钮，不碰键盘。
+    用处：输入框失去焦点时，你可能正按着左键从资源管理器里拖文件过来——松开之前别收起。"""
+    if not IS_WINDOWS:
+        return False
+    button = VK_RBUTTON if user32.GetSystemMetrics(SM_SWAPBUTTON) else VK_LBUTTON
+    return bool(user32.GetAsyncKeyState(button) & 0x8000)
 
 
 # ---------- 置顶 ----------

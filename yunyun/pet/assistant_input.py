@@ -12,7 +12,8 @@
 - Enter 发送，Shift+Enter 换行，Ctrl+N 新对话，最多长到 MAX_LINES 行；回答时按钮变成"停止"，可以先打字但发不出去。
 - 粘贴 / 拖进来（阶段 5.5）：图片（剪贴板里的图、图片文件）在输入条最上面排成一排缩略图（× 去掉，最多 MAX_IMAGES 张），
   发送时一起发（只有图片没有字也能发）；别的文件插入路径。大脑看不了图片时不收（image_refused，总管说一声）。
-- Esc 或者点到别的程序 → 收起（collapsed 信号）；点芸芸自己的窗口不收起。
+- Esc 或者点到别的程序 → 收起（collapsed 信号）；点芸芸自己的窗口不收起。打了字 / 带着图片时点到别的程序不收起
+  （只有 Esc 收）；空的时候在别的程序里按着左键（正要拖文件过来）先不收，松开再看（2026-10-08 用户要求）。
 - 是芸芸的从属窗口（parent = 芸芸）：芸芸被挡住时它也被挡住。
 """
 import math
@@ -28,7 +29,7 @@ from PySide6.QtWidgets import (
 )
 
 from yunyun import i18n
-from yunyun.pet import screen_capture
+from yunyun.pet import screen_capture, winapi
 from yunyun.pet.bubble import place_block
 
 # 光晕的颜色：天蓝 → 淡紫 → 青（思考时三种颜色绕着边框转）
@@ -76,6 +77,11 @@ class _Edit(QTextEdit):
     escape = Signal()
     new_chat = Signal()
     image_pasted = Signal(QImage)
+    dropped = Signal()   # 有东西拖进来放下了（输入框要把键盘焦点拿回来：拖之前焦点在资源管理器）
+
+    def dropEvent(self, event):
+        super().dropEvent(event)
+        self.dropped.emit()
 
     def canInsertFromMimeData(self, source):
         return source.hasImage() or source.hasUrls() or super().canInsertFromMimeData(source)
@@ -319,6 +325,7 @@ class AssistantInput(QWidget):
     WIDTH = 420        # 输入条宽度
     MAX_IMAGES = 5     # 一问最多带几张图片
     THUMB_PAD = 8      # 缩略图那一排离输入条上边多远
+    BUTTON_POLL_MS = 200   # 焦点去了别的程序、左键还按着：隔多久再看一次松开了没有
     GLOW = 26          # 光晕向外延伸多远（窗口四周留出这么多透明边）
     DOT = 46           # 一行时输入条的高度，也是展开前"小圆点"的直径
     PAD_X = 8          # 文件夹按钮到左边框
@@ -356,6 +363,7 @@ class AssistantInput(QWidget):
         self._thumbs = _Thumbs(self)
         self._thumbs.removed.connect(self._remove_image)
         self._edit.image_pasted.connect(self.add_image)
+        self._edit.dropped.connect(self.focus)
         self.setAcceptDrops(True)      # 拖到输入条别的地方（不只是文字那一块）也收
 
         self._t = 0.0                  # 展开进度：0 = 小圆点（看不见），1 = 完全展开
@@ -569,7 +577,7 @@ class AssistantInput(QWidget):
     def dropEvent(self, event):
         self._edit.insertFromMimeData(event.mimeData())
         event.acceptProposedAction()
-        self._edit.setFocus()
+        self.focus()
 
     def _on_button(self):
         if self._busy:
@@ -584,8 +592,17 @@ class AssistantInput(QWidget):
         super().changeEvent(event)
 
     def _check_focus_lost(self):
-        if self.is_open and not self._picking and QApplication.activeWindow() is None:   # 焦点去了别的程序
-            self.collapse()
+        """焦点去了别的程序：一般就收起。但这几种情况留着（2026-10-08 用户要求：拖文件进来时输入框别收起）：
+        - 打了字、带着图片：一直留着，按 Esc 才收；
+        - 空的、但你在别的程序里按着左键（可能正要拖文件过来）：等你松开再看——拖进来了就有了图片 / 路径，留着。"""
+        if not self.is_open or self._picking or QApplication.activeWindow() is not None:
+            return
+        if self.text.strip() or self._attachments:
+            return
+        if winapi.left_button_down():
+            QTimer.singleShot(self.BUTTON_POLL_MS, self._check_focus_lost)
+            return
+        self.collapse()
 
     def showEvent(self, event):
         super().showEvent(event)

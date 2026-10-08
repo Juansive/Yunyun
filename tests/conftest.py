@@ -52,8 +52,10 @@ def no_real_assistant(monkeypatch, tmp_path):
     monkeypatch.setattr(assistant_history, "claude_data_dir", lambda: tmp_path / "assistant_claude")
     monkeypatch.setattr(memory, "memory_path", lambda: tmp_path / "assistant_memory.json")   # 记事本也一样
     # 截图（阶段 5）：GDI 截图在 offscreen 平台下也会真的截到你的屏幕——测试里一律换成假截图（一张 4x2 的灰图）
-    from yunyun.pet import screen_capture
+    from yunyun.pet import screen_capture, winapi
     monkeypatch.setattr(screen_capture, "take", lambda target, near: (target, FAKE_SCREENSHOT, 4, 2))
+    # 鼠标左键按没按着：测试里不看你真的鼠标（跑测试时你在点东西，结果就会变）
+    monkeypatch.setattr(winapi, "left_button_down", lambda: False)
     real_get = keyring.get_password
     monkeypatch.setattr(keyring, "get_password", lambda service, user: None
                         if service == assistant_settings.KEYRING_SERVICE else real_get(service, user))
