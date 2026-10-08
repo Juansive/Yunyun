@@ -14,6 +14,8 @@
 - 工作文件夹（输入框左边的按钮）：存进设置，子进程启动时读；换文件夹 = 新对话（Claude Code 的工作目录启动后就不能改）。
 - 确认（改文件、执行命令……）：确认卡片放在阅读框的位置（阅读框先让开），一次一个；等确认时芸芸是"等你确认"的样子。
   收起着的时候来了确认：芸芸用气泡提醒，唤出时卡片再出来。停止 / 新对话 / 退出 = 等着的都算拒绝。
+- 芸芸被别的窗口挡住时（气泡也看不到）：要你确认 / 做完了，任务栏时钟上方弹出角落小条（pet/assistant_notice.py），
+  点一下芸芸出来、卡片展开；全屏时不弹。做完的那条留到你看到芸芸 / 点它 / 又问了新问题。
 - 撤销：改了文件的那一问，阅读框里有"撤销这次改动"（点两次）。只有同一个大脑会话里的能撤销（换了对话 / 闲置退出过就不行了），
   撤销会连之后几问的改动一起恢复；做完芸芸说一句，卡片标上"已撤销"。用命令改的东西撤销不了。
 - 收起（Esc / 点到别的程序）：只有输入框缩回去；卡片堆、阅读框、确认卡片**一直留着**（2026-10-08 用户要求：边看文档边看回答），
@@ -34,11 +36,13 @@ from PySide6.QtGui import QGuiApplication
 from yunyun import i18n
 from yunyun.assistant import settings as assistant_settings
 from yunyun.assistant.session import SETTINGS_ERRORS, AssistantSession, error_text
-from yunyun.pet.assistant_confirm import AssistantConfirm
-from yunyun.pet import assistant_history
+from yunyun.assistant.transcripts import tool_detail
+from yunyun.pet import assistant_history, winapi
+from yunyun.pet.assistant_confirm import AssistantConfirm, title_key
 from yunyun.pet.assistant_deck import AssistantCard, AssistantDeck, markdown_to_plain
 from yunyun.pet.assistant_history_panel import AssistantHistoryPanel
 from yunyun.pet.assistant_input import AssistantInput, folder_name
+from yunyun.pet.assistant_notice import AssistantNotice
 from yunyun.pet.assistant_reader import AssistantReader
 from yunyun.pet.bubble import bubble_font, elide_lines
 
@@ -108,6 +112,8 @@ class AssistantMode(QObject):
         self.reader = AssistantReader(pet)
         self.confirm = AssistantConfirm(pet)
         self.history = AssistantHistoryPanel(pet)
+        self.notice = AssistantNotice()   # 芸芸被挡住时的角落小条（独立窗口，见 _update_notice）
+        self._done_notice = ""    # 芸芸被挡着时答完了：小条要说的（你看到芸芸 / 点了 / 又问了就清掉）
         self._confirm_count = 0   # 上次看到有几个等确认（多了才提醒）
         self._closed = False
 
@@ -138,6 +144,8 @@ class AssistantMode(QObject):
         self.session.progress_changed.connect(self._on_progress)
         self.session.turn_finished.connect(self._on_turn_finished)
         self.session.error_occurred.connect(self._on_error)
+        self.notice.clicked.connect(self._on_notice_clicked)
+        pet.cover_checked.connect(self._update_notice)   # 芸芸被挡住 / 露出来（约每 0.5 秒检查一次）
 
         self._bubble_timer = QTimer(self, singleShot=True, interval=self.BUBBLE_MS)
         self._bubble_timer.timeout.connect(self._update_bubble)
@@ -272,6 +280,8 @@ class AssistantMode(QObject):
         self.reader.deleteLater()
         self.confirm.deleteLater()
         self.history.deleteLater()
+        self.notice.hide()
+        self.notice.deleteLater()   # 没有主人的独立窗口：要自己删
         self.closed.emit()
 
     # ---------- 内部 ----------
@@ -412,6 +422,7 @@ class AssistantMode(QObject):
         if new_request and not self._cards_shown and len(pending) == 1:
             self._pet.say(i18n.tr("assistant_confirm_waiting_said"), self.CONFIRM_SAY_MS)   # 卡片藏着：提醒一下
         self._show_confirm()
+        self._update_notice()
         if not pending and self._cards_shown and self._reader_card is not None:   # 确认完了：刚才看的那张回来
             card, self._reader_card = self._reader_card, None
             if card in self.cards:
@@ -464,8 +475,45 @@ class AssistantMode(QObject):
         self.input.set_thinking(busy)
         self.busy_changed.emit(busy)
         self.reader.refresh_undo()   # 回答时不能撤销
+        if busy and self._done_notice:   # 又问了新问题：上一个"做完啦"不用再提醒
+            self._done_notice = ""
+            self._update_notice()
         if not busy and not self.input.is_open:
             self._idle_timer.start()
+
+    # ---------- 角落小条（芸芸被挡住时） ----------
+
+    def _notice_message(self):
+        """角落小条该说什么：(种类, 文字)；没什么要说的是 None。等你确认优先。"""
+        pending = self.session.pending_permissions
+        if pending:
+            request = pending[0]
+            detail = tool_detail(request.input, self.workspace)
+            title = i18n.tr(title_key(request))
+            return "confirm", i18n.tr("assistant_notice_confirm", title, detail) if detail else title
+        if self._done_notice:
+            return "done", self._done_notice
+        return None
+
+    def _update_notice(self):
+        """芸芸被挡住（或藏起来了）、又有事要告诉你、不在全屏：弹出角落小条；芸芸露出来了就收起（做完的事算你看到了）。"""
+        if self._closed:
+            return
+        visible = self._pet.is_visible_to_user()
+        if visible:
+            self._done_notice = ""
+        message = self._notice_message()
+        if message is None or visible or winapi.is_user_busy():   # 全屏（看视频、演示）时不弹，退出全屏再出来
+            self.notice.hide()
+        else:
+            self.notice.show_message(*message)
+
+    def _on_notice_clicked(self):
+        """点了角落小条：芸芸出来、输入框和卡片展开（确认卡片也就出来了）。"""
+        self._done_notice = ""
+        self.notice.hide()
+        self._pet.bring_to_front()
+        self.summon()
 
     def _on_progress(self, text):
         turn = self.session.current_turn
@@ -506,6 +554,10 @@ class AssistantMode(QObject):
             self._pet.end_live(self.DONE_SAY_WITH_DECK_MS if quick else self.DONE_SAY_MS)
         else:
             self._pet.end_live(0)   # 只说过"芸芸在想……"：收掉（出错的话下面另说一句）
+        if not turn.stopped and turn.error is None and not self._pet.is_visible_to_user():
+            # 芸芸被挡着：气泡你看不到，角落小条提醒（一直留到你看到芸芸 / 点它 / 又问了）
+            self._done_notice = i18n.tr("assistant_notice_done", done_header(turn))
+            self._update_notice()
 
     def _on_error(self, error):
         text = error_text(error)

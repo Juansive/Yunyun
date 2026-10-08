@@ -52,6 +52,7 @@ class PetWindow(QWidget):
     mail_badge_clicked = Signal()     # 用户左键点了小红点：要处理邮件
     dismiss_mail_requested = Signal() # 用户拖走了小红点 / 点了"全部标为已看"：这批邮件不处理
     assistant_activity_changed = Signal(str)  # 助手在做什么（"" / thinking / busy / waiting；main 里接到状态机）
+    cover_checked = Signal()   # 刚检查完有没有被挡住（约每 0.5 秒）：助手据此决定角落小条显不显示
     _task_done = Signal(object, object, object)  # 后台线程 → 主线程：(成功时说的话, 失败时的文字 key, 错误信息或 None)
 
     def __init__(self, sprites):
@@ -309,6 +310,7 @@ class PetWindow(QWidget):
                 self._update_frozen()
         elif self._auto_paused and not self._resume_timer.isActive():
             self._resume_timer.start()  # 露出来了：先定格半秒，再恢复
+        self.cover_checked.emit()
 
         # 小红点的角落模式：芸芸露出来了，就飞回芸芸身边；
         # 还被挡着，就顺便检查一下用户是不是进入 / 退出了全屏

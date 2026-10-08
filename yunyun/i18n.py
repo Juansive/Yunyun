@@ -676,6 +676,9 @@ TEXTS = {
     },
     "assistant_stopped": {"zh": "（已停止）", "en": "(Stopped)", "ja": "（停止しました）"},
     "assistant_done_said": {"zh": "做完啦", "en": "All done", "ja": "できたよ"},   # 输入框收起着时答完：气泡第一行
+    # 芸芸被挡住时，任务栏上方的角落小条（pet/assistant_notice.py）
+    "assistant_notice_confirm": {"zh": "{}：{}", "en": "{}: {}", "ja": "{}：{}"},   # 确认卡片的标题：目标
+    "assistant_notice_done": {"zh": "芸芸：{}", "en": "Yunyun: {}", "ja": "芸芸：{}"},
     "assistant_cost": {   # 这一轮花费、这次对话累计（美元）
         "zh": "这一轮 ${:.4f} · 这次对话共 ${:.4f}",
         "en": "This reply ${:.4f} · This chat ${:.4f}",

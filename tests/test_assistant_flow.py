@@ -446,6 +446,85 @@ def test_no_done_when_stopped_or_failed(qapp, world, monkeypatch, ending):
     assert not any(text.startswith("做完啦") for text in bubbles(pet))
 
 
+# ---------- 芸芸被挡住时的角落小条（4.4） ----------
+
+@pytest.fixture
+def covered(world, monkeypatch):
+    """助手开着、芸芸被别的窗口挡住（不在全屏）。返回 (pet, process, 设置挡没挡住的函数, 全屏开关)。"""
+    from yunyun.pet import assistant_mode
+    pet, _, processes = world
+    has_key(monkeypatch)
+    fullscreen = {"on": False}
+    monkeypatch.setattr(assistant_mode.winapi, "is_user_busy", lambda: fullscreen["on"])
+    pet.open_assistant()
+    process = processes[0]
+    process.say(protocol.Ready("anthropic", "m"))
+
+    def set_covered(value):
+        pet._occluded = value
+        pet.cover_checked.emit()               # 平时约每 0.5 秒检查一次
+    set_covered(True)
+    return pet, process, set_covered, fullscreen
+
+
+def test_notice_asks_for_confirmation_while_covered(covered):
+    pet, process, set_covered, _ = covered
+    ask(pet, "跑一下测试")
+    process.say(protocol.ToolStarted("t1", "Bash", "pytest -q"), permission())
+    notice = pet.assistant.notice
+    assert notice.isVisible() and notice.kind == "confirm"
+    assert notice.text == "芸芸想执行一条命令：pytest -q"
+    assert notice.parent() is None             # 独立窗口：显示不会把芸芸带出来
+    pet.assistant.session.answer_permission(1, True)
+    assert not notice.isVisible()              # 答了就收起
+
+
+def test_notice_says_done_until_you_see_yunyun(covered):
+    pet, process, set_covered, _ = covered
+    finish_turn(pet, process, "修 bug", answer="修好了", cost=0.004)
+    notice = pet.assistant.notice
+    assert notice.isVisible() and notice.kind == "done" and notice.text == "芸芸：做完啦 · $0.0040"
+    set_covered(True)
+    assert notice.isVisible()                  # 一直留着
+    set_covered(False)                         # 芸芸露出来了：算你看到了
+    assert not notice.isVisible()
+    set_covered(True)
+    assert not notice.isVisible()              # 不会再冒出来
+
+
+def test_notice_done_goes_away_when_you_ask_again(covered):
+    pet, process, _, _ = covered
+    finish_turn(pet, process, "一")
+    assert pet.assistant.notice.isVisible()
+    ask(pet, "二")
+    assert not pet.assistant.notice.isVisible()
+
+
+def test_no_notice_in_fullscreen_or_when_visible(covered):
+    pet, process, set_covered, fullscreen = covered
+    fullscreen["on"] = True
+    finish_turn(pet, process, "一")
+    assert not pet.assistant.notice.isVisible()      # 全屏（看视频、演示）时不弹
+    fullscreen["on"] = False
+    set_covered(True)
+    assert pet.assistant.notice.isVisible()          # 退出全屏后出来
+    set_covered(False)
+    finish_turn(pet, process, "二")                  # 芸芸看得见：气泡就够了
+    assert not pet.assistant.notice.isVisible()
+
+
+def test_clicking_the_notice_brings_yunyun_and_the_cards(covered, monkeypatch):
+    pet, process, _, _ = covered
+    raised = []
+    monkeypatch.setattr(pet, "bring_to_front", lambda: raised.append(True))
+    mode = pet.assistant
+    finish_turn(pet, process, "一")
+    mode.input.close_now()
+    assert mode.notice.isVisible()
+    mode.notice.clicked.emit()
+    assert raised and not mode.notice.isVisible() and mode.input.is_open
+
+
 def test_each_turn_becomes_a_card(qapp, world, monkeypatch):
     pet, _, processes = world
     has_key(monkeypatch)
