@@ -81,7 +81,7 @@ def tool_detail(tool_input, cwd=""):
     """给人看的目标：命令、文件（工作目录里的显示相对路径）、网址、搜索词。"""
     if not isinstance(tool_input, dict):
         return ""
-    for key in ("command", "file_path", "notebook_path", "path", "url", "query", "pattern"):
+    for key in ("command", "file_path", "notebook_path", "path", "url", "query", "pattern", "name"):
         value = tool_input.get(key)
         if isinstance(value, str) and value:
             if key in ("file_path", "notebook_path", "path") and cwd and os.path.isabs(value):

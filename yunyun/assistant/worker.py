@@ -106,8 +106,8 @@ async def serve(stdin, write, language, make_brain, resume=""):
                     await brain.interrupt()
             elif isinstance(command, protocol.PermissionReply):
                 brain.reply_permission(command)   # 大脑那边的 can_use_tool 正等着它
-            elif isinstance(command, protocol.ScreenshotReply):
-                brain.reply_screenshot(command)   # 截图工具正等着它（tools/screen.py）
+            elif isinstance(command, (protocol.ScreenshotReply, protocol.OpenAppReply)):
+                brain.reply_bridge(command)   # 截图 / 打开软件的工具正等着它（tools/bridge.py）
             elif isinstance(command, protocol.Rewind):
                 if running(turn) or running(queued):   # 回答到一半不撤销（界面上这时按钮是灰的）
                     emit(protocol.Rewound(command.checkpoint, False, "busy"))

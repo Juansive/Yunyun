@@ -22,7 +22,7 @@ from claude_agent_sdk import (
     UserMessage,
 )
 
-from yunyun.assistant import memory, permissions, proctree, protocol, transcripts
+from yunyun.assistant import apps, memory, permissions, proctree, protocol, transcripts
 from yunyun.assistant.environment import (   # noqa: F401（clean_environment、hide_child_consoles 也从这里用）
     clean_environment, hide_child_consoles, prepare_process, system_proxy_env,
 )
@@ -30,7 +30,7 @@ from yunyun.assistant.persona import persona
 from yunyun.assistant.providers import Provider, Rates, launch_env, usable_tools, usage_cost
 from yunyun.assistant.settings import HISTORY_KEEP_DAYS, SESSION_DATA_DIRS
 from yunyun.assistant.tools import SERVER as TOOL_SERVER
-from yunyun.assistant.tools import ScreenBridge, yunyun_server
+from yunyun.assistant.tools import Bridge, yunyun_server
 from yunyun.paths import data_dir
 
 log = logging.getLogger(__name__)
@@ -109,10 +109,12 @@ def read_project_notes(workspace):
     return text
 
 
-def build_options(settings, api_key, language, stderr=None, gate=None, resume="", screen=None):
+def build_options(settings, api_key, language, stderr=None, gate=None, resume="", bridge=None):
     """启动 Claude Code 的全部选项。gate：PermissionGate（每次用工具前拍板）；测试里可以不传。
-    resume：接着哪一段对话聊（Claude Code 的会话编号；空 = 新对话）；screen：ScreenBridge（有它才有截图工具）。"""
+    resume：接着哪一段对话聊（Claude Code 的会话编号；空 = 新对话）；
+    bridge：tools.Bridge（请芸芸进程截图、打开软件；有它才有这些工具，截图还要服务商能看图片）。"""
     provider = settings.info
+    screen = bridge is not None and provider.images
     env = {
         **launch_env(provider, api_key, settings.effective_model),
         "CLAUDE_CONFIG_DIR": str(CONFIG_DIR),
@@ -124,7 +126,7 @@ def build_options(settings, api_key, language, stderr=None, gate=None, resume=""
     tools = usable_tools(provider, wanted_tools(settings))
     # 记事本（阶段 10）：目录接在人设后面（这段对话里不变，命中缓存），细节和写入用芸芸自己的工具（进程内 MCP）
     notebook = memory.index_lines(memory.load(), settings.workspace) if settings.notebook else None
-    server = yunyun_server(settings.workspace, notebook=settings.notebook, screen=screen)
+    server = yunyun_server(settings.workspace, notebook=settings.notebook, bridge=bridge, screen=screen)
     return ClaudeAgentOptions(
         resume=resume or None,            # 历史对话"接着聊"：Claude Code 读回那段对话的记录
         # 撤销（2.7）：Claude Code 改文件前先备份（放在 CLAUDE_CONFIG_DIR 里），每一问传回一个 uuid，rewind_files 到它
@@ -141,7 +143,7 @@ def build_options(settings, api_key, language, stderr=None, gate=None, resume=""
         strict_mcp_config=True,           # 不加载别处配置的 MCP 服务器
         system_prompt={"type": "preset", "preset": "claude_code",
                        "append": persona(language, working, notes, web_search="WebSearch" in tools, notebook=notebook,
-                                         screen=screen is not None)},
+                                         screen=screen, apps=bridge is not None)},
         include_partial_messages=True,    # 逐字显示
         # 每段对话的上限：Claude Code 按整段对话累计算；但它只认 Claude 的价格，自己算钱的服务商由 TurnState 管。
         # 每次回答的上限都由 TurnState 估算
@@ -173,7 +175,8 @@ class PermissionGate:
         self._next_id = 1
 
     def decide(self, tool, tool_input):
-        return permissions.decide(tool, tool_input, self.workspace, self.grants, self.ask_screenshot)
+        known = apps.names() if tool == protocol.OPEN_APP_TOOL else None   # 打开软件：只认开始菜单里有的名字
+        return permissions.decide(tool, tool_input, self.workspace, self.grants, self.ask_screenshot, known)
 
     def _record(self, tool_id, tool, tool_input, decision):
         """操作记录：这次工具调用最后怎么定的（protocol.DECISIONS），给芸芸发一条 ToolDecision。"""
@@ -186,6 +189,8 @@ class PermissionGate:
     async def pre_tool_use(self, hook_input, tool_use_id, context):
         """PreToolUse hook：所有工具调用都先经过这里。"""
         tool, tool_input = hook_input.get("tool_name", ""), hook_input.get("tool_input")
+        if tool == protocol.OPEN_APP_TOOL:
+            await asyncio.to_thread(apps.list_apps)   # 软件列表第一次要读 1 秒多：先在别的线程读好，decide 里就不卡了
         decision = self.decide(tool, tool_input)
         log.info("工具 %s：%s%s", tool, decision.action, f"（{decision.kind}）" if decision.kind else "")
         output = {"hookEventName": "PreToolUse", "permissionDecision": decision.action}
@@ -370,7 +375,8 @@ def error_kind(text, sdk_error=None):
 
 def _tool_detail(name, tool_input, workspace=""):
     """给人看的线索：搜索的关键词、读的网址、文件（工作文件夹里的显示相对路径）……没有就是空的。"""
-    for key in ("query", "url", "file_path", "notebook_path", "path", "pattern", "command", "title", "id", "target"):
+    for key in ("query", "url", "file_path", "notebook_path", "path", "pattern", "command", "title", "id", "target",
+                "name"):
         value = tool_input.get(key) if isinstance(tool_input, dict) else None
         if isinstance(value, str) and value:
             if key in ("file_path", "notebook_path", "path") and workspace and os.path.isabs(value):
@@ -520,7 +526,7 @@ class ClaudeBrain:
         )
         self.compacting = False   # 正在整理前面的对话（worker 据此把这时来的提问排到整理之后）
         self.gate = PermissionGate(settings.workspace or WORKSPACE, emit, ask_screenshot=settings.screenshot_ask)
-        self.screen = ScreenBridge(emit) if settings.info.images else None   # 服务商看不了图片就没有截图工具
+        self.bridge = Bridge(emit)   # 请芸芸进程截图、打开软件（服务商看不了图片就没有截图工具，见 build_options）
         self._stderr = deque(maxlen=30)   # Claude Code 的错误输出：启动失败时看最后几行
 
     async def start(self):
@@ -537,7 +543,7 @@ class ClaudeBrain:
         if removed:
             log.info("清理了 %d 个 %d 天以前的对话记录 / 备份文件", removed, HISTORY_KEEP_DAYS)
         options = build_options(self._settings, self._api_key, self._language, stderr=self._stderr.append,
-                                gate=self.gate, resume=self._resume, screen=self.screen)
+                                gate=self.gate, resume=self._resume, bridge=self.bridge)
         if self._resume:
             # 接着聊：Claude Code 报的花费会接着那段对话的累计往上加（try_resume.py 实测），先把以前花的当起点，
             # 不然第一问会把以前的钱再算一遍
@@ -638,9 +644,9 @@ class ClaudeBrain:
     def reply_permission(self, reply):
         self.gate.reply(reply)
 
-    def reply_screenshot(self, reply):
-        if self.screen is not None:
-            self.screen.reply(reply)
+    def reply_bridge(self, reply):
+        """芸芸进程做完了请它做的事（ScreenshotReply / OpenAppReply）。"""
+        self.bridge.reply(reply)
 
     async def rewind(self, checkpoint):
         """撤销：用 Edit / Write 改过的文件恢复到 checkpoint 那一问之前（之后几问的改动也一起撤销）。"""
@@ -655,8 +661,7 @@ class ClaudeBrain:
 
     async def interrupt(self):
         self.gate.deny_all(PermissionGate.STOPPED)   # 等着确认的先拒绝掉，不然停不下来
-        if self.screen is not None:
-            self.screen.cancel_all()                  # 等着截图的也一样
+        self.bridge.cancel_all()                      # 等着截图、打开软件的也一样
         if self._client is not None:
             self._state.interrupted = True
             running = proctree.before_stop()
@@ -665,8 +670,7 @@ class ClaudeBrain:
 
     async def close(self):
         self.gate.deny_all(PermissionGate.STOPPED)
-        if self.screen is not None:
-            self.screen.cancel_all()
+        self.bridge.cancel_all()
         if self._client is not None:
             client, self._client = self._client, None
             running = proctree.before_stop()

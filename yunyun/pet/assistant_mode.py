@@ -17,6 +17,8 @@
 - 芸芸被别的窗口挡住时（气泡也看不到）：要你确认 / 做完了，任务栏时钟上方弹出角落小条（pet/assistant_notice.py），
   点一下芸芸出来、卡片展开；全屏时不弹。做完的那条留到你看到芸芸 / 点它 / 又问了新问题。
 - 看屏幕（阶段 5）：大脑要截图时（session.screenshot_requested）气泡说"我看一下屏幕哦"，pet/screen_capture 截好交回去。
+- 打开软件（阶段 6）：你同意后大脑发来 OpenAppRequest（session.open_app_requested），在这里打开（assistant/apps.launch），
+  气泡说"帮你打开「计算器」啦"。
 - 撤销：改了文件的那一问，阅读框里有"撤销这次改动"（点两次）。只有同一个大脑会话里的能撤销（换了对话 / 闲置退出过就不行了），
   撤销会连之后几问的改动一起恢复；做完芸芸说一句，卡片标上"已撤销"。用命令改的东西撤销不了。
 - 收起（Esc / 点到别的程序）：只有输入框缩回去；卡片堆、阅读框、确认卡片**一直留着**（2026-10-08 用户要求：边看文档边看回答），
@@ -36,7 +38,7 @@ from PySide6.QtCore import QObject, QPoint, QRect, QTimer, Signal
 from PySide6.QtGui import QGuiApplication
 
 from yunyun import i18n
-from yunyun.assistant import protocol
+from yunyun.assistant import apps, protocol
 from yunyun.assistant import settings as assistant_settings
 from yunyun.assistant.session import SETTINGS_ERRORS, AssistantSession, error_text
 from yunyun.assistant.transcripts import tool_detail
@@ -98,6 +100,7 @@ class AssistantMode(QObject):
     DONE_SAY_WITH_DECK_MS = 3000  # 卡片堆开着时：卡片里已经有了，气泡早点收
     CONFIRM_SAY_MS = 15000        # 收起着时来了确认请求：气泡提醒多久
     SCREENSHOT_SAY_MS = 2500      # "我看一下屏幕哦"说多久
+    OPEN_APP_SAY_MS = 3000        # "帮你打开「计算器」啦"说多久
 
     def __init__(self, pet, cards, make_process=None, state=None):
         """cards：当前这段对话的卡片（从旧到新）；state：要记着的东西（"offset"：卡片组相对芸芸的偏移）。
@@ -157,6 +160,7 @@ class AssistantMode(QObject):
         self.session.turn_finished.connect(self._on_turn_finished)
         self.session.compact_changed.connect(self._on_compact_changed)
         self.session.screenshot_requested.connect(self._on_screenshot_requested)
+        self.session.open_app_requested.connect(self._on_open_app_requested)
         self.session.error_occurred.connect(self._on_error)
         self.notice.clicked.connect(self._on_notice_clicked)
         pet.cover_checked.connect(self._update_notice)   # 芸芸被挡住 / 露出来（约每 0.5 秒检查一次）
@@ -571,6 +575,14 @@ class AssistantMode(QObject):
             target, data, width, height = result
             reply = protocol.ScreenshotReply(request.request_id, True, data, "image/jpeg", width, height, target)
         self.session.answer_screenshot(reply)
+
+    def _on_open_app_requested(self, request):
+        """打开软件（阶段 6，你已经在确认卡片上同意了）：在芸芸进程里打开（不在助手子进程里，见 assistant/apps.py），
+        气泡说一声。打开要不了多久（实测 0.1～0.3 秒），就在这里直接做。"""
+        ok, detail = apps.launch(request.app_id)
+        if ok:
+            self._pet.say(i18n.tr("assistant_open_app_said", request.name), self.OPEN_APP_SAY_MS)
+        self.session.answer_open_app(protocol.OpenAppReply(request.request_id, ok, detail))
 
     def _on_compact_changed(self, turn):
         """大脑在整理 / 整理好了前面的对话：那一轮的卡片底行跟着变（整理的那一会儿不能撤销）。"""

@@ -61,7 +61,7 @@ async def run(label, provider=None, ask=False):
         events.append(event)
         if isinstance(event, protocol.ScreenshotRequest):   # 假装芸芸截好了
             reply = protocol.ScreenshotReply(event.request_id, True, FAKE_JPEG, "image/jpeg", 800, 500, event.target)
-            loop.call_soon(brain.reply_screenshot, reply)
+            loop.call_soon(brain.reply_bridge, reply)
         elif isinstance(event, protocol.PermissionRequest):   # "截图前先问我"：假装你点了"允许一次"
             loop.call_soon(brain.reply_permission, protocol.PermissionReply(event.request_id, True))
 

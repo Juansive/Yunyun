@@ -12,6 +12,8 @@
 - 芸芸的记事本（记一条、查、删一条，阶段 10）：不用问——只动芸芸自己的记事本，你在设置 → 记事本里随时能看、改、删；
 - 截图（阶段 5）：不用问（2026-10-06 用户定的；截之前芸芸会在气泡里说一声，芸芸自己的窗口不截）；
   设置里选了"截图前先问我"（ask_screenshot）就每次问，可以选"这次对话都允许截图"；
+- 打开软件（阶段 6，2026-10-09 用户定的）：按名字找不用问；打开每次问，可以选"这次对话都允许打开它"（按软件记）；
+  只能打开开始菜单里有的（名字对不上直接拒绝，叫模型先找）；
 - 别的工具一律拒绝（本来也没开，这里是兜底）。
 
 拿不准的时候一律往"问你"那边靠：多问一次只是麻烦一点，少问一次可能出事。
@@ -22,7 +24,7 @@ import shlex
 from dataclasses import dataclass
 
 from yunyun.assistant.memory import NOTEBOOK_TOOLS
-from yunyun.assistant.protocol import SCREENSHOT_TOOL
+from yunyun.assistant.protocol import FIND_APP_TOOL, OPEN_APP_TOOL, SCREENSHOT_TOOL
 
 ALLOW, ASK, DENY = "allow", "ask", "deny"
 
@@ -32,7 +34,7 @@ EDIT_TOOLS = ("Edit", "Write", "NotebookEdit")
 SHELL_TOOLS = ("Bash", "PowerShell")   # Windows 上有 Git Bash 时 Claude Code 用 Bash，没有就用 PowerShell
 
 # 要问你的几种情况（界面按它显示说明）
-KINDS = ("read_outside", "edit", "edit_sensitive", "write_outside", "command", "screenshot")
+KINDS = ("read_outside", "edit", "edit_sensitive", "write_outside", "command", "screenshot", "open_app")
 
 SENSITIVE_DIRS = (".git", ".claude")   # 工作文件夹里这些文件夹里的东西，改了可能让程序以后自动运行别的东西
 
@@ -48,14 +50,15 @@ class Decision:
     by_grant: bool = False  # ALLOW 是因为你之前选了"这次对话都允许"（操作记录里区分开）
 
 
-def decide(tool, tool_input, workspace, grants=frozenset(), ask_screenshot=False):
+def decide(tool, tool_input, workspace, grants=frozenset(), ask_screenshot=False, apps=None):
     """Claude 想用 tool（参数 tool_input），工作文件夹是 workspace，这次对话里你已经"都允许"了 grants → Decision。
 
     grants 里的每一项是 decide 以前给出的 Decision.grant 里的一项：("edit",)、("read", 文件夹)、("command", 命令开头)、
-    ("screenshot",)。ask_screenshot：设置里选了"截图前先问我"。
+    ("screenshot",)、("open_app", 软件名)。ask_screenshot：设置里选了"截图前先问我"；
+    apps：开始菜单里的软件名（小写，assistant/apps.names()），打开软件时查名字；None = 不查。
     """
     tool_input = tool_input if isinstance(tool_input, dict) else {}
-    if tool in WEB_TOOLS or tool in NOTEBOOK_TOOLS:
+    if tool in WEB_TOOLS or tool in NOTEBOOK_TOOLS or tool == FIND_APP_TOOL:
         return Decision(ALLOW)
     if tool == SCREENSHOT_TOOL:
         if not ask_screenshot:
@@ -63,6 +66,8 @@ def decide(tool, tool_input, workspace, grants=frozenset(), ask_screenshot=False
         if ("screenshot",) in grants:
             return Decision(ALLOW, by_grant=True)
         return Decision(ASK, "screenshot", (("screenshot",),))
+    if tool == OPEN_APP_TOOL:
+        return _decide_open_app(str(tool_input.get("name") or "").strip(), grants, apps)
     if tool in READ_TOOLS:
         return _decide_read(tool, tool_input, os.path.realpath(workspace), grants)
     if tool in EDIT_TOOLS:
@@ -70,6 +75,16 @@ def decide(tool, tool_input, workspace, grants=frozenset(), ask_screenshot=False
     if tool in SHELL_TOOLS:
         return _decide_command(str(tool_input.get("command") or ""), grants)
     return Decision(DENY, reason=f"Yunyun does not allow the {tool} tool.")
+
+
+def _decide_open_app(name, grants, apps):
+    key = name.casefold()
+    if not name or (apps is not None and key not in apps):
+        return Decision(DENY, reason=f"There is no app named \"{name}\" in the Start menu. "
+                                     "Use find_app to get the exact name first.")
+    if ("open_app", key) in grants:
+        return Decision(ALLOW, by_grant=True)
+    return Decision(ASK, "open_app", (("open_app", key),), name)
 
 
 # ---------- 文件 ----------

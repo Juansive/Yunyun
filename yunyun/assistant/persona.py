@@ -79,22 +79,34 @@ _WORKING = {
 }
 
 # 能不能看屏幕（阶段 5：服务商能看图片时有截图工具，见 tools/screen.py）：(能, 不能)
-_LIMITS = {
+_SCREEN = {
     "zh": ("- 你能用 screenshot 工具看用户的屏幕：用户说\"看看这个报错\"\"我屏幕上的……\"时先截图再回答。"
-           "优先截用户刚才用的窗口（target=window），需要看全局时才截整块屏幕（screen）；用户没提到屏幕时不要截。\n"
-           "- 你还不能操作其他软件。",
-           "- 你还不能操作其他软件、不能看屏幕（现在用的大脑看不了图片）。"),
+           "优先截用户刚才用的窗口（target=window），需要看全局时才截整块屏幕（screen）；用户没提到屏幕时不要截。",
+           "- 你不能看屏幕（现在用的大脑看不了图片）。"),
     "en": ("- You can see the user's screen with the screenshot tool: when they say \"look at this error\" or mention "
            "something on their screen, take a screenshot before answering. Prefer the window they were using "
            "(target=window); take the whole screen only when you need the bigger picture. Don't take screenshots "
-           "when the user hasn't mentioned their screen.\n"
-           "- You can't operate other programs yet.",
-           "- You can't operate other programs or see the screen yet (the current model can't read images)."),
+           "when the user hasn't mentioned their screen.",
+           "- You can't see the screen (the current model can't read images)."),
     "ja": ("- screenshot ツールでユーザーの画面を見られます。「このエラーを見て」「画面の……」と言われたら、"
            "先にスクリーンショットを撮ってから答えてください。ユーザーが直前に使っていたウィンドウ（target=window）を優先し、"
-           "全体が必要なときだけ画面全体（screen）を撮ります。画面の話が出ていないときは撮らないでください。\n"
-           "- ほかのソフトの操作はまだできません。",
-           "- ほかのソフトの操作や画面を見ることはまだできません（今のモデルは画像を読めません）。"),
+           "全体が必要なときだけ画面全体（screen）を撮ります。画面の話が出ていないときは撮らないでください。",
+           "- 画面を見ることはできません（今のモデルは画像を読めません）。"),
+}
+
+# 能不能打开软件（阶段 6：tools/apps.py）：(能, 不能)
+_APPS = {
+    "zh": ("- 你能打开用户电脑上的软件：先用 find_app 按名字找到准确的名字，再用 open_app 打开（芸芸会先问用户）。"
+           "只能打开开始菜单里有的；打开以后你看不到、也不能操作软件里面（点按钮、打字），需要的话请用户自己操作。",
+           "- 你还不能操作其他软件。"),
+    "en": ("- You can open apps on the user's computer: look up the exact name with find_app, then open it with "
+           "open_app (Yunyun asks the user first). Only apps in the Start menu can be opened. Once it's open you can't "
+           "see or operate inside it (click buttons, type); ask the user to do that part.",
+           "- You can't operate other programs yet."),
+    "ja": ("- ユーザーのパソコンのソフトを開けます。find_app で正確な名前を調べてから open_app で開きます（芸芸が先にユーザーに確認します）。"
+           "開けるのはスタートメニューにあるものだけです。開いた後のソフトの中は見ることも操作（ボタンを押す、入力する）"
+           "もできないので、必要ならユーザーに操作してもらってください。",
+           "- ほかのソフトの操作はまだできません。"),
 }
 
 # 能不能搜索网页（服务商不支持时没有 WebSearch 工具，见 providers.usable_tools）：(能, 不能)
@@ -167,14 +179,14 @@ _NOTEBOOK_HEADINGS = {   # (关于用户, 这个项目, 还没有)
 }
 
 
-def persona(language, working=False, project_notes="", web_search=True, notebook=None, screen=False):
+def persona(language, working=False, project_notes="", web_search=True, notebook=None, screen=False, apps=False):
     """这种语言的人设（不认识的语言用中文）。working：选了工作文件夹；project_notes：工作文件夹里 CLAUDE.md 的内容；
     web_search：有没有网页搜索工具（DeepSeek 这类没有）；notebook：记事本的目录 (关于用户的几行, 这个项目的几行)，
-    None = 不用记事本；screen：有没有截图工具。"""
+    None = 不用记事本；screen：有没有截图工具；apps：有没有打开软件的工具。"""
     if language not in _BASE:
         language = "zh"
     web = _WEB[language][0 if web_search else 1]
-    limits = _LIMITS[language][0 if screen else 1]
+    limits = _SCREEN[language][0 if screen else 1] + "\n" + _APPS[language][0 if apps else 1]
     text = _BASE[language] + (_WORKING if working else _CHAT_ONLY)[language].format(web=web, limits=limits)
     if not web_search:
         text += _NO_WEB_SEARCH[language]

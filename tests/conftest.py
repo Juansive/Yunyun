@@ -62,6 +62,26 @@ def no_real_assistant(monkeypatch, tmp_path):
     real_get = keyring.get_password
     monkeypatch.setattr(keyring, "get_password", lambda service, user: None
                         if service == assistant_settings.KEYRING_SERVICE else real_get(service, user))
+    # 打开软件（阶段 6）：不读你真的开始菜单（换成 FAKE_APPS），绝不真的打开软件（打开的都记在 apps.opened 里）
+    from yunyun.assistant import apps
+    apps.clear_cache()
+    opened = []
+    monkeypatch.setattr(apps, "_query_start_apps", lambda: [dict(item) for item in FAKE_APPS])
+    monkeypatch.setattr(apps, "_startfile", opened.append)
+    monkeypatch.setattr(apps, "opened", opened, raising=False)
+    yield
+    apps.clear_cache()
+
+
+FAKE_APPS = [   # 假的开始菜单（Get-StartApps 的样子）
+    {"Name": "计算器", "AppID": "Microsoft.WindowsCalculator_8wekyb3d8bbwe!App"},
+    {"Name": "记事本", "AppID": "Microsoft.WindowsNotepad_8wekyb3d8bbwe!App"},
+    {"Name": "Visual Studio Code", "AppID": "Microsoft.VisualStudioCode"},
+    {"Name": "Visual Studio Installer", "AppID": "{6D809377-6AF0-444B-8957-A3773F02200E}\\VSInstaller.exe"},
+    {"Name": "7-Zip File Manager", "AppID": "D:\\Program Files (x86)\\7-Zip\\7zFM.exe"},
+    {"Name": "微信", "AppID": "{7C5A40EF-A0FB-4BFC-874A-C0F2E0B9FA8E}\\Tencent\\WeChat\\WeChat.exe"},
+    {"Name": "坏的", "AppID": "..\\..\\Windows\\System32\\cmd.exe"},   # 看起来不对劲的：列表里不要
+]
 
 
 @pytest.fixture(autouse=True)

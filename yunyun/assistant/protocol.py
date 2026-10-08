@@ -127,6 +127,15 @@ class ScreenshotReply:
 
 
 @_message
+class OpenAppReply:
+    """芸芸打开软件的结果（OpenAppRequest 的回答）。没打开（ok=False）时 detail 是原因（给模型看的英文）。"""
+    TYPE: ClassVar[str] = "open_app_reply"
+    request_id: int
+    ok: bool
+    detail: str = ""
+
+
+@_message
 class Quit:
     """关掉助手：子进程收拾好就退出。"""
     TYPE: ClassVar[str] = "quit"
@@ -206,6 +215,20 @@ class ScreenshotRequest:
 
 SCREENSHOT_TOOL = "mcp__yunyun__screenshot"   # 截图工具在 Claude Code 里的名字（assistant/tools/screen.py）
 SCREENSHOT_TARGETS = ("window", "screen")
+
+
+@_message
+class OpenAppRequest:
+    """模型要打开一个软件（阶段 6，你已经同意了）：请芸芸打开（在助手子进程里打开的话，停止时会被作业对象一起结束），
+    等 OpenAppReply。name：开始菜单里的名字（给人看）；app_id：Windows 的 AppID（apps.launch 用）。"""
+    TYPE: ClassVar[str] = "open_app_request"
+    request_id: int
+    name: str
+    app_id: str
+
+
+FIND_APP_TOOL = "mcp__yunyun__find_app"   # 打开软件的两个工具（assistant/tools/apps.py）
+OPEN_APP_TOOL = "mcp__yunyun__open_app"
 
 
 DECISIONS = (
@@ -297,6 +320,6 @@ ERROR_KINDS = (
     "other",
 )
 
-COMMANDS = (Ask, Interrupt, PermissionReply, Rewind, ScreenshotReply, Quit)
-EVENTS = (Ready, TextDelta, ToolStarted, ToolFinished, PermissionRequest, ToolDecision, ScreenshotRequest, TurnFinished,
-          Compacting, Compacted, Rewound, Error)
+COMMANDS = (Ask, Interrupt, PermissionReply, Rewind, ScreenshotReply, OpenAppReply, Quit)
+EVENTS = (Ready, TextDelta, ToolStarted, ToolFinished, PermissionRequest, ToolDecision, ScreenshotRequest,
+          OpenAppRequest, TurnFinished, Compacting, Compacted, Rewound, Error)

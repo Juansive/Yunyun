@@ -42,6 +42,7 @@ _TOOL_TEXT = {
     "Bash": "assistant_tool_command", "PowerShell": "assistant_tool_command",
     memory.REMEMBER_TOOL: "assistant_tool_remember", memory.RECALL_TOOL: "assistant_tool_recall",
     memory.FORGET_TOOL: "assistant_tool_forget", protocol.SCREENSHOT_TOOL: "assistant_tool_screenshot",
+    protocol.FIND_APP_TOOL: "assistant_tool_find_app", protocol.OPEN_APP_TOOL: "assistant_tool_open_app",
 }
 SETTINGS_ERRORS = {"no_key", "auth", "model", "budget", "reply_budget"}   # 这几种错误在设置页能改好（界面可以给个"去设置"）
 UNDO_NOTE = transcripts.UNDO_NOTE   # 历史对话读回来时要认出它、去掉它，所以放在 transcripts 里
@@ -125,6 +126,7 @@ class AssistantSession(QObject):
     rewind_finished = Signal(str, bool, object)   # 检查点、成没成、撤销掉的那几轮（[Turn]）
     compact_changed = Signal(object)  # 某一轮答完后的"整理前面的对话"开始了 / 做完了（Turn.compact）
     screenshot_requested = Signal(object)   # 大脑要看屏幕（protocol.ScreenshotRequest）：界面截好后调 answer_screenshot
+    open_app_requested = Signal(object)     # 大脑要打开软件（protocol.OpenAppRequest，你已同意）：打开后调 answer_open_app
 
     def __init__(self, parent=None, make_process=None):
         """make_process(语言, parent, resume=会话编号) → 和 AssistantProcess 一样的对象；不传就用 default_process。"""
@@ -274,6 +276,11 @@ class AssistantSession(QObject):
         if self._process is not None:
             self._process.send(reply)
 
+    def answer_open_app(self, reply):
+        """打开软件的结果（protocol.OpenAppReply）交给大脑。"""
+        if self._process is not None:
+            self._process.send(reply)
+
     def new_conversation(self, resume=""):
         """换一个新的子进程：忘掉现在的对话（resume 为空），或者接着以前的某一段聊（resume = 那段的会话编号）。"""
         self._retire_process()
@@ -356,6 +363,11 @@ class AssistantSession(QObject):
                 process.send(protocol.ScreenshotReply(event.request_id, False, detail="The user stopped the task."))
             else:
                 self.screenshot_requested.emit(event)
+        elif isinstance(event, protocol.OpenAppRequest):
+            if turn is None:   # 停下之后迟到的：不打开了
+                process.send(protocol.OpenAppReply(event.request_id, False, "The user stopped the task."))
+            else:
+                self.open_app_requested.emit(event)
         elif isinstance(event, protocol.Ready):
             self._model = event.model
             self.model_changed.emit(event.model)

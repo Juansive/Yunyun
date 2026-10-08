@@ -115,6 +115,35 @@ def test_failed_screenshot_tells_the_brain(world, monkeypatch):
     assert process.sent[-1] == protocol.ScreenshotReply(2, False, detail="Yunyun could not take a screenshot.")
 
 
+def test_open_app_request_opens_it_in_yunyun_and_says_so(world, monkeypatch):
+    """你同意打开软件后：芸芸进程里打开（conftest 记在 apps.opened，不真的打开），气泡说一声，告诉大脑打开了。"""
+    from yunyun.assistant import apps
+    pet, _, processes = world
+    has_key(monkeypatch)
+    pet.open_assistant()
+    process = processes[0]
+    process.say(protocol.Ready("anthropic", "m"))
+    ask(pet, "帮我打开计算器")
+    process.say(protocol.OpenAppRequest(1, "计算器", "Microsoft.WindowsCalculator_8wekyb3d8bbwe!App"))
+    assert apps.opened == ["shell:AppsFolder\\Microsoft.WindowsCalculator_8wekyb3d8bbwe!App"]
+    assert "帮你打开「计算器」啦" in bubbles(pet)
+    assert process.sent[-1] == protocol.OpenAppReply(1, True)
+
+
+def test_failed_open_app_tells_the_brain(world, monkeypatch):
+    from yunyun.assistant import apps
+    pet, _, processes = world
+    has_key(monkeypatch)
+    pet.open_assistant()
+    process = processes[0]
+    process.say(protocol.Ready("anthropic", "m"))
+    ask(pet, "打开它")
+    process.say(protocol.OpenAppRequest(2, "坏的", "..\\cmd.exe"))
+    assert apps.opened == [] and "帮你打开「坏的」啦" not in bubbles(pet)
+    reply = process.sent[-1]
+    assert isinstance(reply, protocol.OpenAppReply) and not reply.ok and reply.request_id == 2
+
+
 def test_menu_puts_assistant_first_and_fancy(world, monkeypatch):
     pet, _, _ = world
     actions = pet._build_menu().actions()

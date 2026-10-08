@@ -94,6 +94,7 @@ _ACTION_VERBS = {
     "WebFetch": "assistant_action_web_fetch",
     memory.REMEMBER_TOOL: "assistant_action_remember", memory.RECALL_TOOL: "assistant_action_recall",
     memory.FORGET_TOOL: "assistant_action_forget", protocol.SCREENSHOT_TOOL: "assistant_action_screenshot",
+    protocol.FIND_APP_TOOL: "assistant_action_find_app", protocol.OPEN_APP_TOOL: "assistant_action_open_app",
 }
 _DECISION_COLORS = {"auto": "#8A94A6", "granted": "#2E7D32", "allowed": "#2E7D32", "remembered": "#2E7D32",
                     "denied": "#C62828", "blocked": "#C62828", "stopped": "#B7791F"}

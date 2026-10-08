@@ -418,17 +418,23 @@ def test_notebook_goes_into_the_options(monkeypatch):
 def test_screenshot_tool_only_when_the_provider_can_read_images(monkeypatch):
     from dataclasses import replace
     brain = claude_brain.ClaudeBrain(AssistantSettings(), "k", "zh", lambda e: None)
-    assert brain.screen is not None
     calls = []
     real_server = claude_brain.yunyun_server
     monkeypatch.setattr(claude_brain, "yunyun_server", lambda *a, **kw: calls.append(kw) or real_server(*a, **kw))
-    options = claude_brain.build_options(AssistantSettings(), "k", "zh", screen=brain.screen)
-    assert calls[-1]["screen"] is brain.screen and "yunyun" in options.mcp_servers   # 截图工具挂上了
+    options = claude_brain.build_options(AssistantSettings(), "k", "zh", bridge=brain.bridge)
+    assert calls[-1]["bridge"] is brain.bridge and calls[-1]["screen"] and "yunyun" in options.mcp_servers
     assert "screenshot" in options.system_prompt["append"]                # 芸芸知道自己能看屏幕了
+    assert "open_app" in options.system_prompt["append"]                  # 也知道能打开软件
     monkeypatch.setitem(PROVIDERS, "anthropic", replace(PROVIDERS["anthropic"], images=False))
-    blind = claude_brain.ClaudeBrain(AssistantSettings(), "k", "zh", lambda e: None)
-    assert blind.screen is None                                           # 看不了图片：没有截图工具
-    assert "看不了图片" in claude_brain.build_options(AssistantSettings(), "k", "zh").system_prompt["append"]
+    blind = claude_brain.build_options(AssistantSettings(), "k", "zh", bridge=brain.bridge)
+    assert calls[-1]["screen"] is False                                   # 看不了图片：没有截图工具
+    assert "看不了图片" in blind.system_prompt["append"] and "open_app" in blind.system_prompt["append"]
+
+
+def test_app_tools_are_on_the_yunyun_server():
+    from yunyun.assistant.tools import Bridge, yunyun_server
+    assert yunyun_server("", notebook=False, bridge=Bridge(print), screen=False) is not None   # 打开软件的两个工具
+    assert yunyun_server("", notebook=False) is None                    # 没有 bridge、不用记事本：一个工具都没有
 
 
 def test_gate_asks_before_screenshots_when_set():
@@ -442,7 +448,9 @@ def test_stopping_cancels_a_waiting_screenshot():
     brain = claude_brain.ClaudeBrain(AssistantSettings(), "k", "zh", lambda e: None)
 
     async def main():
-        waiting = asyncio.create_task(brain.screen.request("window"))
+        waiting = asyncio.create_task(brain.bridge.request(
+            lambda request_id: protocol.ScreenshotRequest(request_id, "window"),
+            lambda request_id, detail: protocol.ScreenshotReply(request_id, False, detail=detail)))
         await asyncio.sleep(0)
         await brain.interrupt()                                           # 还没连上 Claude Code 也能停
         return await waiting

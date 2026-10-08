@@ -70,7 +70,7 @@ class FakeBrain:
     def reply_permission(self, reply):
         self.replies.append(reply)
 
-    def reply_screenshot(self, reply):
+    def reply_bridge(self, reply):
         self.replies.append(reply)
 
     async def rewind(self, checkpoint):
@@ -214,16 +214,18 @@ def test_permission_replies_go_to_the_brain(key):
     assert brains[0].replies == [protocol.PermissionReply(3, True, "", True)]
 
 
-def test_screenshot_replies_go_to_the_brain(key):
+def test_screenshot_and_open_app_replies_go_to_the_brain(key):
     async def scenario(feed, events, brains):
         assert await until(lambda: events)
         feed.send(protocol.Ask("slow"))
         feed.send(protocol.ScreenshotReply(1, True, "QUJD", "image/jpeg", 8, 6, "window"))
-        assert await until(lambda: brains[0].replies)
+        feed.send(protocol.OpenAppReply(2, True))
+        assert await until(lambda: len(brains[0].replies) == 2)
         feed.send(protocol.Quit())
 
     events, brains = run(scenario)
-    assert brains[0].replies == [protocol.ScreenshotReply(1, True, "QUJD", "image/jpeg", 8, 6, "window")]
+    assert brains[0].replies == [protocol.ScreenshotReply(1, True, "QUJD", "image/jpeg", 8, 6, "window"),
+                                 protocol.OpenAppReply(2, True)]
 
 
 def test_rewind_goes_to_the_brain_but_not_while_answering(key):

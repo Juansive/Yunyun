@@ -12,8 +12,9 @@ from fake_assistant_process import FakeProcess
 from yunyun import i18n
 from yunyun.assistant import protocol
 from yunyun.assistant.session import Action, AssistantSession
-from yunyun.assistant.tools import screen
-from yunyun.assistant.tools.screen import ScreenBridge, screen_tools
+from yunyun.assistant.tools import bridge as bridge_module
+from yunyun.assistant.tools.bridge import Bridge
+from yunyun.assistant.tools.screen import screen_tools
 from yunyun.pet import screen_capture
 from yunyun.pet.assistant_reader import actions_html
 
@@ -24,7 +25,7 @@ def run_tool(bridge_reply):
     """调一次截图工具；芸芸那边由 bridge_reply(request) → ScreenshotReply 或 None（不回答）。"""
     async def main():
         emitted = []
-        bridge = ScreenBridge(emitted.append)
+        bridge = Bridge(emitted.append)
         tool = screen_tools(bridge)[0]
         task = asyncio.create_task(tool.handler({"target": "window"}))
         await asyncio.sleep(0)
@@ -59,18 +60,21 @@ def test_failed_or_stopped_screenshot_is_an_error_for_the_model():
 
 
 def test_no_answer_times_out(monkeypatch):
-    monkeypatch.setattr(screen, "TIMEOUT_S", 0.01)
+    monkeypatch.setattr(bridge_module, "TIMEOUT_S", 0.01)
 
     async def main():
-        bridge = ScreenBridge(lambda event: None)
-        reply = await bridge.request("screen")
+        bridge = Bridge(lambda event: None)
+        reply = await bridge.request(lambda request_id: protocol.ScreenshotRequest(request_id, "screen"),
+                                     lambda request_id, detail: protocol.ScreenshotReply(request_id, False,
+                                                                                         detail=detail))
         bridge.reply(protocol.ScreenshotReply(reply.request_id, True))   # 迟到的回答：不理
         return reply
-    assert not asyncio.run(main()).ok
+    reply = asyncio.run(main())
+    assert not reply.ok and "in time" in reply.detail
 
 
 def test_screenshot_tool_name():
-    assert f"mcp__yunyun__{screen_tools(ScreenBridge(print))[0].name}" == protocol.SCREENSHOT_TOOL
+    assert f"mcp__yunyun__{screen_tools(Bridge(print))[0].name}" == protocol.SCREENSHOT_TOOL
 
 
 # ---------- 芸芸这边：缩小、编码 ----------

@@ -733,6 +733,10 @@ TEXTS = {
     "assistant_tool_forget": {"zh": "正在从记事本里划掉……", "en": "Crossing it out of the notebook…",
                               "ja": "メモ帳から消しています…"},
     "assistant_tool_screenshot": {"zh": "正在看屏幕……", "en": "Looking at the screen…", "ja": "画面を見ています…"},
+    "assistant_tool_find_app": {"zh": "正在找软件……", "en": "Looking for the app…", "ja": "ソフトを探しています…"},
+    "assistant_tool_open_app": {"zh": "正在打开软件……", "en": "Opening the app…", "ja": "ソフトを開いています…"},
+    # 打开软件（阶段 6）：打开后气泡说一声
+    "assistant_open_app_said": {"zh": "帮你打开「{}」啦", "en": "Opened “{}” for you", "ja": "「{}」を開いたよ"},
     # 看屏幕（阶段 5）：截之前气泡说一声；操作记录里截的是哪里
     "assistant_screenshot_said": {"zh": "我看一下屏幕哦", "en": "Let me take a look at your screen",
                                   "ja": "ちょっと画面を見るね"},
@@ -768,6 +772,13 @@ TEXTS = {
         "zh": "截图会发给你选的服务商，芸芸自己的窗口不截。",
         "en": "The screenshot is sent to your chosen provider; Yunyun's own windows are left out.",
         "ja": "スクリーンショットは選んだプロバイダーに送られます。芸芸自身のウィンドウは写りません。",
+    },
+    "assistant_confirm_open_app": {"zh": "芸芸想打开一个软件", "en": "Yunyun wants to open an app",
+                                   "ja": "芸芸がソフトを開こうとしています"},
+    "assistant_confirm_open_app_note": {
+        "zh": "开始菜单里的这个软件。芸芸只负责打开，不会操作软件里面。",
+        "en": "This app from your Start menu. Yunyun only opens it and won't operate anything inside.",
+        "ja": "スタートメニューにあるこのソフトです。芸芸は開くだけで、ソフトの中は操作しません。",
     },
     "assistant_confirm_note_danger": {
         "zh": "这类命令可能删除文件、安装软件、联网下载或改动系统，所以每次都要问你。",
@@ -818,6 +829,8 @@ TEXTS = {
                                         "ja": "この会話では編集を許可"},
     "assistant_confirm_remember_screenshot": {"zh": "这次对话截图都允许", "en": "Allow screenshots for this chat",
                                               "ja": "この会話ではスクリーンショットを許可"},
+    "assistant_confirm_remember_open_app": {"zh": "这次对话都允许打开它", "en": "Allow opening it for this chat",
+                                            "ja": "この会話ではこのソフトを開くのを許可"},
     "assistant_confirm_waiting_said": {
         "zh": "有件事要你确认：点我一下～",
         "en": "I need your OK on something — click me!",
@@ -946,6 +959,8 @@ TEXTS = {
     "assistant_action_recall": {"zh": "翻记事本", "en": "Check notes", "ja": "メモを見る"},
     "assistant_action_forget": {"zh": "划掉一条", "en": "Remove note", "ja": "メモを消す"},
     "assistant_action_screenshot": {"zh": "看屏幕", "en": "Screenshot", "ja": "画面を見る"},
+    "assistant_action_find_app": {"zh": "找软件", "en": "Find app", "ja": "ソフトを探す"},
+    "assistant_action_open_app": {"zh": "打开软件", "en": "Open app", "ja": "ソフトを開く"},
     "assistant_action_failed": {"zh": "（没成功）", "en": " (failed)", "ja": "（失敗）"},
     "assistant_decision_auto": {"zh": "不用问", "en": "No need to ask", "ja": "確認不要"},
     "assistant_decision_granted": {"zh": "之前允许过同类", "en": "Allowed earlier", "ja": "以前に許可済み"},
