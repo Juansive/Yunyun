@@ -1,5 +1,6 @@
 """助手的大脑（assistant/claude_brain.py）：启动选项、环境准备、把 SDK 的消息翻译成事件、权限。不启动 Claude Code。"""
 import asyncio
+import json
 import subprocess
 
 import anyio
@@ -12,7 +13,10 @@ from claude_agent_sdk import (
 from yunyun.assistant import claude_brain, protocol
 from yunyun.assistant.claude_brain import TurnState, error_kind, translate
 from yunyun.assistant.persona import persona
+from yunyun.assistant.providers import PROVIDERS, make_rates
 from yunyun.assistant.settings import AssistantSettings
+
+HAIKU = make_rates((1, 5))   # Claude Haiku 4.5 的价格
 
 
 def text_event(text):
@@ -20,9 +24,10 @@ def text_event(text):
                        event={"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": text}})
 
 
-def result(subtype="success", total=None, usage=None, is_error=False, result_text=None, errors=None):
+def result(subtype="success", total=None, usage=None, is_error=False, result_text=None, errors=None, model_usage=None):
     return ResultMessage(subtype=subtype, duration_ms=1, duration_api_ms=1, is_error=is_error, num_turns=1,
-                         session_id="s", total_cost_usd=total, usage=usage, result=result_text, errors=errors)
+                         session_id="s", total_cost_usd=total, usage=usage, result=result_text, errors=errors,
+                         model_usage=model_usage)
 
 
 # ---------- 翻译：文字和工具 ----------
@@ -152,10 +157,39 @@ def test_cost_is_per_turn_although_sdk_reports_session_total():
     assert second.cost_usd == pytest.approx(0.005) and second.session_cost_usd == 0.015
 
 
-def test_provider_without_usd_shows_no_cost():
-    event = translate(result(total=0.02, usage={"input_tokens": 10, "output_tokens": 3}), TurnState(cost_in_usd=False))[0]
-    assert event.cost_usd is None and event.session_cost_usd is None
-    assert (event.input_tokens, event.output_tokens) == (10, 3)   # token 数照样显示
+def deepseek_usage(pro_in, pro_out, flash_in=0, cache_read=0):
+    """Claude Code 报的 model_usage（整段对话累计）：主模型 pro + 后台小任务 flash。"""
+    return {"deepseek-v4-pro": {"inputTokens": pro_in, "outputTokens": pro_out, "cacheReadInputTokens": cache_read,
+                                "cacheCreationInputTokens": 0, "webSearchRequests": 0, "costUSD": 9.9},
+            "deepseek-flash": {"inputTokens": flash_in, "outputTokens": 0, "cacheReadInputTokens": 0,
+                               "cacheCreationInputTokens": 0, "webSearchRequests": 0, "costUSD": 9.9}}
+
+
+def test_own_pricing_ignores_claude_codes_cost():
+    """DeepSeek：Claude Code 按 $5 / $25 算（不认识的模型），芸芸按 DeepSeek 的价格算各模型的累计用量（2026-10-08）。"""
+    state = TurnState(own_pricing=PROVIDERS["deepseek"])
+    first = translate(result(total=0.525, usage={"input_tokens": 100_000, "output_tokens": 1000},
+                             model_usage=deepseek_usage(100_000, 1000, flash_in=2000, cache_read=50_000)), state)[0]
+    expected = (100_000 * 1.32 + 1000 * 3.96 + 50_000 * 0.044 + 2000 * 0.3) / 1e6   # 读缓存很便宜；小任务按 flash
+    assert first.cost_usd == pytest.approx(expected) and first.session_cost_usd == pytest.approx(expected)
+    assert (first.input_tokens, first.output_tokens) == (100_000, 1000)
+    state.new_turn()
+    second = translate(result(total=0.9, model_usage=deepseek_usage(110_000, 1100, flash_in=2000, cache_read=50_000)),
+                       state)[0]
+    assert second.cost_usd == pytest.approx((10_000 * 1.32 + 100 * 3.96) / 1e6)   # 累计值：这一轮 = 现在 − 上一轮
+
+
+def test_own_pricing_conversation_budget_is_enforced_by_yunyun():
+    """自己算钱时每段对话的上限由芸芸管：这一轮估算加上以前的超了 → 停下，报 budget（不是"用户停止"）。"""
+    deepseek = PROVIDERS["deepseek"]
+    state = TurnState(rates=deepseek.rates("deepseek-flash"), own_pricing=deepseek, reply_budget=1.0,
+                      conversation_budget=0.05, session_cost=0.049)
+    translate(usage_event("start", {"input_tokens": 10_000}), state)   # 约 $0.003：加起来超过 $0.05
+    assert state.over_conversation and not state.over_budget
+    state.interrupted = True                                            # 大脑会去停下这一轮
+    events = translate(result("error_during_execution", is_error=True), state)
+    assert events[0] == protocol.Error("budget") and events[1].stopped is False
+    assert state.conversation_full                                      # 下一问不用再发出去了
 
 
 def test_user_stop_is_not_an_error():
@@ -181,7 +215,7 @@ def usage_event(kind, usage):
 
 
 def test_reply_cost_is_estimated_from_usage():
-    state = TurnState(prices=(1, 5), reply_budget=1.0)
+    state = TurnState(rates=HAIKU, reply_budget=1.0)
     assert translate(usage_event("start", {"input_tokens": 1000, "cache_creation_input_tokens": 8000,
                                            "cache_read_input_tokens": 10000, "output_tokens": 1}), state) == []
     first_input = (1000 + 8000 * 1.25 + 10000 * 0.1) / 1e6          # 写缓存贵 25%，读缓存只要一成
@@ -196,7 +230,7 @@ def test_reply_cost_is_estimated_from_usage():
 
 
 def test_over_reply_budget_stops_with_its_own_error():
-    state = TurnState(prices=(1, 5), reply_budget=0.01)
+    state = TurnState(rates=HAIKU, reply_budget=0.01)
     translate(usage_event("start", {"input_tokens": 20000}), state)
     assert state.over_budget
     state.interrupted = True                                       # 大脑会去停下这一轮
@@ -206,7 +240,7 @@ def test_over_reply_budget_stops_with_its_own_error():
 
 
 def test_unknown_price_means_no_estimate():
-    state = TurnState(prices=None, reply_budget=0.01)
+    state = TurnState(rates=None, reply_budget=0.01)
     translate(usage_event("start", {"input_tokens": 10 ** 6}), state)
     assert state.estimate == 0 and not state.over_budget
 
@@ -250,7 +284,30 @@ def test_brain_stops_the_reply_when_over_budget():
 
 def test_custom_model_has_no_price_so_no_reply_estimate():
     brain = claude_brain.ClaudeBrain(AssistantSettings(model="my-own-model"), "k", "zh", lambda e: None)
-    assert brain._state.prices is None
+    assert brain._state.rates is None
+
+
+def test_deepseek_brain_prices_unknown_model_as_default():
+    """DeepSeek 认不出的模型名当 deepseek-flash 用，芸芸也按 flash 的价格估算；每段对话的上限芸芸自己管。"""
+    settings = AssistantSettings(provider="deepseek", model="deepseek-typo", conversation_budget_usd=0.3)
+    brain = claude_brain.ClaudeBrain(settings, "k", "zh", lambda e: None)
+    assert brain._state.rates == PROVIDERS["deepseek"].rates("deepseek-flash")
+    assert brain._state.conversation_budget == 0.3
+
+
+class NoQueryClient(FakeClient):
+    async def query(self, text):
+        raise AssertionError("花到上限了，不该再发出去")
+
+
+def test_brain_refuses_new_question_when_conversation_is_full():
+    emitted = []
+    brain = claude_brain.ClaudeBrain(AssistantSettings(provider="deepseek", conversation_budget_usd=0.05), "k", "zh",
+                                     emitted.append)
+    brain._client = NoQueryClient([])
+    brain._state.session_cost = 0.05
+    anyio.run(brain.ask, "还能问吗")
+    assert emitted == [protocol.Error("budget"), protocol.TurnFinished(session_cost_usd=0.05)]
 
 
 def test_unexpected_failure_is_an_error():
@@ -318,6 +375,30 @@ def test_system_proxy_env(environ, proxies, expected):
     assert {k: v for k, v in env.items() if k != "NO_PROXY"} == expected
 
 
+def test_build_options_deepseek(monkeypatch):
+    monkeypatch.setattr(claude_brain, "system_proxy_env", lambda: {})
+    options = claude_brain.build_options(AssistantSettings(provider="deepseek"), "sk-test", "zh")
+    assert options.model == "deepseek-flash"
+    assert options.tools == ["WebFetch"]                           # 别家用不了 Anthropic 的网页搜索
+    assert options.system_prompt["append"] == persona("zh", web_search=False)   # 芸芸也知道自己不能搜
+    assert options.max_budget_usd is None                          # Claude Code 按 Claude 的价格算会早早停下：芸芸自己管
+    assert options.env["ANTHROPIC_AUTH_TOKEN"] == "sk-test" and "ANTHROPIC_API_KEY" not in options.env
+
+
+def test_previous_cost_of_resumed_conversation(tmp_path, monkeypatch):
+    """接着聊：以前花的当起点。Claude 用记录里的总数；DeepSeek 按它的价格算记录里的 modelUsage。"""
+    monkeypatch.setattr(claude_brain, "CONFIG_DIR", tmp_path)
+    (tmp_path / "projects" / "F--proj").mkdir(parents=True)
+    usage = {"deepseek-flash": {"inputTokens": 1_000_000, "outputTokens": 0}}
+    (tmp_path / "projects" / "F--proj" / "s1.jsonl").write_text("\n".join(json.dumps(x) for x in [
+        {"type": "user", "message": {"role": "user", "content": "你好"}, "promptSource": "sdk"},
+        {"type": "cost-state", "totalCostUSD": 5.0, "modelUsage": usage},
+    ]), encoding="utf-8")
+    assert claude_brain.previous_cost("s1", PROVIDERS["anthropic"]) == 5.0
+    assert claude_brain.previous_cost("s1", PROVIDERS["deepseek"]) == pytest.approx(0.3)
+    assert claude_brain.previous_cost("nope", PROVIDERS["deepseek"]) == 0.0
+
+
 def test_build_options(monkeypatch):
     monkeypatch.setattr(claude_brain, "system_proxy_env", lambda: {})
     gate = claude_brain.PermissionGate(claude_brain.WORKSPACE, lambda event: None)
@@ -374,6 +455,11 @@ def test_persona_languages():
     for language in ("zh", "en", "ja"):                            # 选没选工作文件夹，说的能力不一样
         assert persona(language, working=True) != persona(language)
         assert persona(language, project_notes="RULES").endswith("RULES")
+        for working in (False, True):                              # 服务商不能搜索网页：不说自己能搜，还要说清楚
+            assert "{" not in persona(language, working)
+            assert persona(language, working, web_search=False) != persona(language, working)
+    assert "上网搜索" in persona("zh") and "不能搜索网页" in persona("zh", web_search=False)
+    assert "上网搜索" not in persona("zh", working=True, web_search=False)
 
 
 def test_tool_detail_shows_paths_inside_the_work_folder_relatively(tmp_path):
@@ -577,7 +663,7 @@ def test_long_commands_are_recorded_in_full_up_to_a_limit(tmp_path):
 
 def test_stopped_turn_without_reported_cost_uses_the_estimate():
     """中途停下时 Claude Code 报的花费是 0，可 token 一样计费：用芸芸自己的估算记账（2026-10-07 实测）。"""
-    state = TurnState(prices=(1, 5), reply_budget=1.0)
+    state = TurnState(rates=HAIKU, reply_budget=1.0)
     translate(usage_event("start", {"input_tokens": 10000}), state)   # 估算 $0.01
     state.interrupted = True
     finished = translate(result("error_during_execution", total=0.0, is_error=True), state)[-1]

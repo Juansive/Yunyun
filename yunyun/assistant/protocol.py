@@ -191,7 +191,7 @@ DECISIONS = (
 class TurnFinished:
     """这一轮回答结束了。
 
-    cost_usd：这一轮花了多少美元（服务商不按美元算时是 None，见 Provider.cost_in_usd）；
+    cost_usd：这一轮花了多少美元（不知道时是 None；DeepSeek 这类是芸芸按它的价格算的，见 Provider.own_pricing）；
     session_cost_usd：这次打开助手以来一共花了多少；stopped：是不是用户点了"停止"；
     checkpoint：撤销这一轮的改动要用的标记（Rewind；没开检查点时是空的）；files：这一轮用 Edit / Write 改成功的文件。
     """
@@ -231,7 +231,7 @@ ERROR_KINDS = (
     "auth",          # Key 不对或过期了
     "billing",       # 账户余额不足
     "rate_limit",    # 请求太频繁，被限流了
-    "budget",        # 这段对话累计花到了上限（Claude Code 的 max_budget_usd）
+    "budget",        # 这段对话累计花到了上限（Claude Code 的 max_budget_usd；自己算钱的服务商由 TurnState 管）
     "reply_budget",  # 这次回答估算快超过上限了，芸芸自己停下（TurnState.add_usage）
     "missing_cli",   # 找不到 Claude Code 程序
     "no_key",        # 还没有填 Key

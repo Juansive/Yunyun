@@ -8,7 +8,7 @@
 - 点了停止：type=user、文字块 "[Request interrupted…"、**没有** promptSource → 上一问标成"已停止"；
 - 工具结果：type=user、内容是 tool_result 块；
 - 回答：type=assistant，每行一个块（thinking / text / tool_use）；
-- cost-state：totalCostUSD（这段对话一共花了多少）。
+- cost-state：totalCostUSD（这段对话一共花了多少，按 Claude 的价格算）、modelUsage（各模型累计用了多少 token）。
 
 纯函数，不 import Qt / SDK（芸芸进程用）。
 """
@@ -50,8 +50,9 @@ class Transcript:
     session_id: str
     cwd: str
     turns: list                    # TranscriptTurn（从旧到新）
-    cost_usd: float | None = None  # 这段对话一共花了多少（Claude Code 记的）
+    cost_usd: float | None = None  # 这段对话一共花了多少（Claude Code 记的，按 Claude 的价格；别家见 providers.recorded_cost）
     updated: datetime | None = None
+    model_usage: dict | None = None   # 各模型累计用了多少 token（cost-state 的 modelUsage）
 
 
 def _time(data):
@@ -91,7 +92,7 @@ def read_transcript(path):
         log.info("读不了一个对话记录（%s）", type(e).__name__)
         return None
     session_id = os.path.splitext(os.path.basename(path))[0]
-    cwd, turns, cost, updated, tools_by_id = "", [], None, None, {}
+    cwd, turns, cost, model_usage, updated, tools_by_id = "", [], None, None, None, {}
     for line in lines:
         try:
             data = json.loads(line)
@@ -105,6 +106,7 @@ def read_transcript(path):
             updated = when
         if kind == "cost-state" and isinstance(data.get("totalCostUSD"), (int, float)):
             cost = float(data["totalCostUSD"])
+            model_usage = data.get("modelUsage") if isinstance(data.get("modelUsage"), dict) else model_usage
             continue
         content = (data.get("message") or {}).get("content") if isinstance(data.get("message"), dict) else None
         if kind == "user" and not data.get("isMeta"):
@@ -133,7 +135,7 @@ def read_transcript(path):
                         tools_by_id[block["id"]] = tool
     if not turns:
         return None
-    return Transcript(session_id, cwd, turns, cost, updated or turns[-1].time)
+    return Transcript(session_id, cwd, turns, cost, updated or turns[-1].time, model_usage)
 
 
 _cache = {}   # 路径 → ((修改时间, 大小), Transcript)：没变过的文件不用重读

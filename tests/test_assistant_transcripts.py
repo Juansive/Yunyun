@@ -38,13 +38,15 @@ def conversation_lines():
              ts="2026-10-07T16:40:00.000Z"),
         line("assistant", [{"type": "text", "text": "好的，"}]),
         line("user", [{"type": "text", "text": "[Request interrupted by user]"}]),   # 点了停止：没有 promptSource
-        json.dumps({"type": "cost-state", "sessionId": "sess-1", "totalCostUSD": 0.0312}),
+        json.dumps({"type": "cost-state", "sessionId": "sess-1", "totalCostUSD": 0.0312,
+                    "modelUsage": {"claude-haiku-4-5": {"inputTokens": 3000, "outputTokens": 200, "costUSD": 0.0312}}}),
     ]
 
 
 def test_turns_answers_tools_and_cost(tmp_path):
     t = read_transcript(write(tmp_path / "sess-1.jsonl", conversation_lines()))
     assert (t.session_id, t.cwd, t.cost_usd) == ("sess-1", CWD, 0.0312)
+    assert t.model_usage["claude-haiku-4-5"]["inputTokens"] == 3000          # DeepSeek 这类按它的价格重算时用
     first, second = t.turns
     assert first.question == "运行测试，把 bug 修好"
     assert first.answer == "我先跑一下测试。\n\n修好了。"                 # 几段文字接起来，思考不算

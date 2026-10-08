@@ -17,6 +17,7 @@ from dataclasses import dataclass, field, fields
 from datetime import datetime, timedelta
 
 from yunyun.assistant import transcripts
+from yunyun.assistant.providers import recorded_cost
 from yunyun.assistant.session import Action
 from yunyun.assistant.settings import HISTORY_KEEP_DAYS, SESSION_DATA_DIRS
 from yunyun.paths import data_dir
@@ -200,6 +201,6 @@ def conversations(now=None):
             missing = len(transcript.turns) - len(conversation.cards)
             conversation.cards[:0] = [_card_from_transcript(turn, workspace) for turn in transcript.turns[:missing]]
             conversation.recovered = True
-        conversation.cost_usd = transcript.cost_usd
+        conversation.cost_usd = recorded_cost(transcript.cost_usd, transcript.model_usage)   # DeepSeek 按它的价格
         conversation.workspace = conversation.workspace or workspace
     return sorted((c for c in found.values() if c.cards), key=lambda c: c.updated, reverse=True)

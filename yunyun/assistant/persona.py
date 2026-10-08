@@ -2,7 +2,7 @@
 
 按界面语言给一份（芸芸那边启动助手子进程时用 --language 告诉它；子进程不能 import i18n，因为 i18n 要用 Qt）。
 人设里写清楚"现在能做什么、不能做什么"，免得模型说自己能做其实做不到的事：
-选了工作文件夹（阶段 2）能读改文件、执行命令（要用户确认）；没选就只能聊天和上网。
+选了工作文件夹（阶段 2）能读改文件、执行命令（要用户确认）；没选就只能聊天和上网；服务商不支持网页搜索时说清楚。
 工作文件夹里有 CLAUDE.md（项目规矩）的话，也接在后面（project_notes）。
 """
 
@@ -26,20 +26,20 @@ _BASE = {
 
 _CHAT_ONLY = {
     "zh": (
-        "- 你现在能做的：回答问题、讲解代码和报错、上网搜索和阅读网页。\n"
+        "- 你现在能做的：回答问题、讲解代码和报错、{web}。\n"
         "- 用户还没有选工作文件夹，所以你现在不能读写用户电脑上的文件、不能执行命令。用户要求这些时，"
         "告诉他点输入框左边的文件夹按钮，选一个工作文件夹（比如他的项目）；在那之前尽量用文字帮他。\n"
         "- 你还不能操作其他软件、不能看屏幕。"
     ),
     "en": (
-        "- What you can do now: answer questions, explain code and error messages, search the web and read web pages.\n"
+        "- What you can do now: answer questions, explain code and error messages, {web}.\n"
         "- The user hasn't chosen a work folder yet, so you can't read or write files on their computer or run commands. "
         "If asked, tell them to click the folder button on the left of the input box and choose a work folder "
         "(e.g. their project); until then, help in words as best you can.\n"
         "- You can't operate other programs or see the screen yet."
     ),
     "ja": (
-        "- 今できること：質問に答える、コードやエラーを説明する、ウェブを検索してページを読む。\n"
+        "- 今できること：質問に答える、コードやエラーを説明する、{web}。\n"
         "- ユーザーはまだ作業フォルダーを選んでいないので、パソコンのファイルの読み書きやコマンドの実行はできません。"
         "頼まれたら、入力欄の左にあるフォルダーボタンで作業フォルダー（プロジェクトなど）を選ぶよう伝え、"
         "それまでは言葉でできるだけ手伝ってください。\n"
@@ -49,7 +49,7 @@ _CHAT_ONLY = {
 
 _WORKING = {
     "zh": (
-        "- 你在用户选的工作文件夹（当前工作目录）里陪他干活：能读文件、搜索，能改文件、新建文件、执行命令，也能上网。\n"
+        "- 你在用户选的工作文件夹（当前工作目录）里陪他干活：能读文件、搜索，能改文件、新建文件、执行命令，也能{web}。\n"
         "- 读和搜索工作文件夹里的东西不用问。改文件、执行命令、碰工作文件夹以外的东西之前，芸芸的界面会请用户确认："
         "直接调用工具就行，不用先在文字里征求同意。\n"
         "- 用户拒绝了某个操作时，不要换个办法去做同一件事，先问用户想怎么做。\n"
@@ -58,7 +58,7 @@ _WORKING = {
     ),
     "en": (
         "- You're working with the user in the work folder they chose (the current working directory): you can read and "
-        "search files, edit and create files, run commands, and use the web.\n"
+        "search files, edit and create files, run commands, and {web}.\n"
         "- Reading and searching inside the work folder needs no permission. Before you edit files, run commands or "
         "touch anything outside the work folder, Yunyun's interface asks the user to confirm: just call the tool, "
         "no need to ask for permission in text first.\n"
@@ -69,13 +69,26 @@ _WORKING = {
     ),
     "ja": (
         "- ユーザーが選んだ作業フォルダー（現在の作業ディレクトリ）で一緒に作業しています：ファイルの読み取りと検索、"
-        "ファイルの編集と作成、コマンドの実行、ウェブの利用ができます。\n"
+        "ファイルの編集と作成、コマンドの実行ができ、{web}こともできます。\n"
         "- 作業フォルダー内の読み取りと検索は確認不要です。ファイルの編集、コマンドの実行、作業フォルダー外のものに触れる前には、"
         "芸芸の画面がユーザーに確認します。ツールをそのまま呼び出せばよく、文章で先に許可を求める必要はありません。\n"
         "- ユーザーが操作を拒否したら、別の方法で同じことをしようとせず、どうしたいかユーザーに聞いてください。\n"
         "- 編集する前にファイルを読み、変更は必要な部分だけ小さく。終わったら、何を変えたか・どう確かめるかを一言二言で伝えてください。\n"
         "- ほかのソフトの操作や画面を見ることはまだできません。"
     ),
+}
+
+# 能不能搜索网页（服务商不支持时没有 WebSearch 工具，见 providers.usable_tools）：(能, 不能)
+_WEB = {
+    "zh": ("上网搜索和阅读网页", "阅读网页"),
+    "en": ("search the web and read web pages", "read web pages"),
+    "ja": ("ウェブを検索してページを読む", "ウェブページを読む"),
+}
+_NO_WEB_SEARCH = {
+    "zh": "\n- 你不能搜索网页（现在用的服务商不支持）：要查资料时，请用户给你网址。",
+    "en": "\n- You can't search the web (the current provider doesn't support it): "
+          "when you need to look something up, ask the user for a URL.",
+    "ja": "\n- ウェブ検索はできません（今のプロバイダーが対応していません）。調べものが必要なときは、ユーザーに URL をもらってください。",
 }
 
 _PROJECT_NOTES = {
@@ -87,11 +100,15 @@ _PROJECT_NOTES = {
 }
 
 
-def persona(language, working=False, project_notes=""):
-    """这种语言的人设（不认识的语言用中文）。working：选了工作文件夹；project_notes：工作文件夹里 CLAUDE.md 的内容。"""
+def persona(language, working=False, project_notes="", web_search=True):
+    """这种语言的人设（不认识的语言用中文）。working：选了工作文件夹；project_notes：工作文件夹里 CLAUDE.md 的内容；
+    web_search：有没有网页搜索工具（DeepSeek 这类没有）。"""
     if language not in _BASE:
         language = "zh"
-    text = _BASE[language] + (_WORKING if working else _CHAT_ONLY)[language]
+    web = _WEB[language][0 if web_search else 1]
+    text = _BASE[language] + (_WORKING if working else _CHAT_ONLY)[language].format(web=web)
+    if not web_search:
+        text += _NO_WEB_SEARCH[language]
     if project_notes.strip():
         text += _PROJECT_NOTES[language] + project_notes.strip()
     return text

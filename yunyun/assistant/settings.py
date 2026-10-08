@@ -35,7 +35,7 @@ class AssistantSettings:
     provider: str = DEFAULT_PROVIDER
     model: str = ""                       # 空 = 用这家服务商的默认模型
     budget_usd: float = DEFAULT_BUDGET_USD                            # 每次回答（芸芸自己按 token 估算）
-    conversation_budget_usd: float = DEFAULT_CONVERSATION_BUDGET_USD  # 每段对话（交给 Claude Code 的 max_budget_usd）
+    conversation_budget_usd: float = DEFAULT_CONVERSATION_BUDGET_USD  # 每段对话（Claude 官方交给 Claude Code 的 max_budget_usd）
     workspace: str = ""                   # 工作文件夹；空 = 没选（只聊天）。save_settings 不写它，见 set_workspace
 
     @property

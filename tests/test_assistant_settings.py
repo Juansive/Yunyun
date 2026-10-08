@@ -4,6 +4,7 @@ from dataclasses import replace
 import pytest
 
 from yunyun import config as cfg
+from yunyun.assistant import providers
 from yunyun.assistant import settings as assistant_settings
 from yunyun.assistant.providers import (
     DEFAULT_BUDGET_USD, DEFAULT_PROVIDER, PROVIDERS, Provider, launch_env, usable_tools,
@@ -73,8 +74,31 @@ def test_deepseek_launch_env(model):
         "ANTHROPIC_DEFAULT_HAIKU_MODEL": "deepseek-flash",
     }
     assert usable_tools(deepseek, ["WebSearch", "WebFetch", "Read"]) == ["WebFetch", "Read"]
-    assert not deepseek.cost_in_usd                       # Claude Code 按 Claude 的价格算，对别家不准
+    assert deepseek.own_pricing                           # Claude Code 按 Claude 的价格算，对别家不准：芸芸自己算
     assert set(deepseek.prices) == set(deepseek.models)
+
+
+def test_rates_follow_each_providers_pricing():
+    claude = PROVIDERS["anthropic"].rates("claude-haiku-4-5")
+    assert claude.cost(1_000_000, 1_000_000, 1_000_000, 1_000_000, searches=1) == pytest.approx(1 + 5 + 1.25 + 0.1 + 0.01)
+    flash = PROVIDERS["deepseek"].rates("deepseek-flash")
+    assert flash.cost(1_000_000, 1_000_000, 1_000_000, 1_000_000) == pytest.approx(0.3 + 1.2 + 0.3 + 0.006)   # 写缓存不另收
+    assert PROVIDERS["anthropic"].rates("my-own-model") is None              # 不知道价格：不估算
+    assert PROVIDERS["deepseek"].rates("deepseek-typo") == flash              # DeepSeek 认不出的名字当 flash 用
+
+
+def test_usage_cost_and_recorded_cost():
+    deepseek = PROVIDERS["deepseek"]
+    usage = {"deepseek-v4-pro": {"inputTokens": 1_000_000, "outputTokens": 1_000_000, "cacheReadInputTokens": 1_000_000},
+             "deepseek-flash": {"inputTokens": 1_000_000}}
+    expected = 1.32 + 3.96 + 0.044 + 0.3
+    assert providers.usage_cost(deepseek, usage) == pytest.approx(expected)
+    assert providers.usage_cost(deepseek, None) is None and providers.usage_cost(deepseek, {}) is None
+    assert providers.usage_cost(PROVIDERS["anthropic"], {"my-own-model": {"inputTokens": 1}}) is None
+    # 历史面板：DeepSeek 的对话按它的价格算；Claude 的（或混着别的模型）用 Claude Code 记的
+    assert providers.recorded_cost(9.9, usage) == pytest.approx(expected)
+    assert providers.recorded_cost(0.5, {"claude-haiku-4-5": {"inputTokens": 1}}) == 0.5
+    assert providers.recorded_cost(0.5, None) == 0.5
 
 
 def test_every_provider_has_texts():

@@ -139,7 +139,7 @@ class AssistantSettingsPage(QWidget):
         self._model.clear()
         for name in info.models:
             price = info.prices.get(name)
-            self._model.addItem(i18n.tr("assistant_model_price", name, *price) if price else name, name)
+            self._model.addItem(i18n.tr("assistant_model_price", name, *price[:2]) if price else name, name)
         self._model.addItem(i18n.tr("assistant_model_custom"), None)
         index = self._model.findData(model)
         if index < 0:

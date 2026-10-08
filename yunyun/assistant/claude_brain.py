@@ -26,7 +26,7 @@ from yunyun.assistant.environment import (   # noqa: F401（clean_environment、
     clean_environment, hide_child_consoles, prepare_process, system_proxy_env,
 )
 from yunyun.assistant.persona import persona
-from yunyun.assistant.providers import launch_env, usable_tools
+from yunyun.assistant.providers import Provider, Rates, launch_env, usable_tools, usage_cost
 from yunyun.assistant.settings import HISTORY_KEEP_DAYS, SESSION_DATA_DIRS
 from yunyun.paths import data_dir
 
@@ -39,9 +39,6 @@ PROJECT_NOTES_FILES = ("CLAUDE.md", os.path.join(".claude", "CLAUDE.md"))   # �
 PROJECT_NOTES_MAX_CHARS = 20_000   # 太长的只读开头（每一问都要带着它，太长费钱）
 CONFIG_DIR = data_dir() / "assistant" / "claude"   # Claude Code 的会话记录、设置放这里（里面有完整对话内容）
 WORKSPACE = data_dir() / "assistant" / "workspace"  # 用户没选工作文件夹时用的：一个空文件夹（只聊天）
-
-# 估算每次回答花了多少（Anthropic 的计价方式）：写缓存 = 输入价 × 1.25，读缓存 = 输入价 × 0.1，网页搜索每次 $0.01
-CACHE_WRITE, CACHE_READ, WEB_SEARCH_USD = 1.25, 0.1, 0.01
 
 
 # ---------- 启动选项 ----------
@@ -69,12 +66,16 @@ def prune_old_sessions(config_dir, days, now=None):
     return removed
 
 
-def previous_cost(session_id):
-    """一段以前的对话一共花了多少（Claude Code 记录里的 cost-state）；找不到就是 0。"""
+def previous_cost(session_id, provider):
+    """一段以前的对话一共花了多少（Claude Code 记录里的 cost-state）；找不到就是 0。
+    自己算钱的服务商（provider.own_pricing）按它的价格算 modelUsage，和之后每一轮的算法一样。"""
     for path in (CONFIG_DIR / "projects").glob(f"*/{session_id}.jsonl"):
         transcript = transcripts.read_transcript(str(path))
-        if transcript is not None and transcript.cost_usd:
-            return transcript.cost_usd
+        if transcript is None:
+            continue
+        if provider.own_pricing:
+            return usage_cost(provider, transcript.model_usage) or 0.0
+        return transcript.cost_usd or 0.0
     return 0.0
 
 
@@ -114,13 +115,14 @@ def build_options(settings, api_key, language, stderr=None, gate=None, resume=""
     }
     notes = read_project_notes(settings.workspace)
     working = bool(settings.workspace)
+    tools = usable_tools(provider, wanted_tools(settings))
     return ClaudeAgentOptions(
         resume=resume or None,            # 历史对话"接着聊"：Claude Code 读回那段对话的记录
         # 撤销（2.7）：Claude Code 改文件前先备份（放在 CLAUDE_CONFIG_DIR 里），每一问传回一个 uuid，rewind_files 到它
         enable_file_checkpointing=working,
         extra_args={"replay-user-messages": None} if working else {},
         model=settings.effective_model,   # 注意：Haiku 4.5 不支持 effort 参数，所以不传
-        tools=usable_tools(provider, wanted_tools(settings)),   # 只有这些工具存在
+        tools=tools,                      # 只有这些工具存在
         allowed_tools=[],                 # 一个都不直接放行：全部交给 PermissionGate
         permission_mode="default",        # "要问"的交给 can_use_tool（dontAsk 会把"要问"直接变成拒绝）
         hooks={"PreToolUse": [HookMatcher(hooks=[gate.pre_tool_use])]} if gate else None,
@@ -128,9 +130,11 @@ def build_options(settings, api_key, language, stderr=None, gate=None, resume=""
         setting_sources=[],               # 不读用户自己的 Claude Code 设置，也不读工作文件夹里 .claude/ 的设置
         strict_mcp_config=True,           # 不加载别处配置的 MCP 服务器
         system_prompt={"type": "preset", "preset": "claude_code",
-                       "append": persona(language, bool(settings.workspace), notes)},
+                       "append": persona(language, working, notes, web_search="WebSearch" in tools)},
         include_partial_messages=True,    # 逐字显示
-        max_budget_usd=settings.conversation_budget_usd,   # Claude Code 按整段对话累计算；每次回答的上限由 TurnState 估算
+        # 每段对话的上限：Claude Code 按整段对话累计算；但它只认 Claude 的价格，自己算钱的服务商由 TurnState 管。
+        # 每次回答的上限都由 TurnState 估算
+        max_budget_usd=None if provider.own_pricing else settings.conversation_budget_usd,
         cwd=settings.workspace or str(WORKSPACE),
         env=env,
         stderr=stderr,
@@ -243,15 +247,18 @@ class PermissionGate:
 @dataclass
 class TurnState:
     """翻译时要记住的东西（跨消息、跨轮次）。"""
-    cost_in_usd: bool = True
     session_cost: float = 0.0          # SDK 报的花费是整个会话的累计值，这一轮的 = 现在的 − 上一轮的
     interrupted: bool = False          # 这一轮用户点了"停止"
     errored: bool = False              # 这一轮已经报过错了（不要重复报）
     seen_tools: set = field(default_factory=set)
-    prices: tuple | None = None        # (输入, 输出)：美元 / 百万 token；None = 不知道价格，不估算
+    rates: Rates | None = None         # 主模型的价格（providers.Rates）；None = 不知道价格，不估算
+    # 自己算钱的服务商（Provider.own_pricing）：整段对话的花费按它的价格算 model_usage，不用 Claude Code 报的
+    own_pricing: Provider | None = None
     reply_budget: float | None = None  # 每次回答的上限（美元）
+    conversation_budget: float | None = None   # 每段对话的上限：只在自己算钱时由这里管（Claude 官方交给 Claude Code）
     estimate: float = 0.0              # 这一轮估算已经花了多少
     over_budget: bool = False          # 估算超过了每次回答的上限：大脑会停下这一轮
+    over_conversation: bool = False    # 这段对话加上这一轮超过了每段对话的上限：也停下
     _message_out: int = 0              # 当前这条模型消息已经算过的输出 token / 网页搜索次数（SDK 报的是累计值）
     _message_searches: int = 0
     unreported: float = 0.0            # 中途停下的几轮里，Claude Code 没算进总花费、芸芸按估算补上的钱
@@ -265,30 +272,41 @@ class TurnState:
         self.errored = False
         self.estimate = 0.0
         self.over_budget = False
+        self.over_conversation = False
         self.checkpoint = ""
         self.files = []
         self._editing = {}
 
+    @property
+    def conversation_cost(self):
+        """这段对话到上一轮为止一共花了多少（含中途停下、按估算补上的）。"""
+        return self.session_cost + self.unreported
+
+    @property
+    def conversation_full(self):
+        """自己管每段对话上限时：已经花到上限了（新的一问不用再发出去）。"""
+        return self.conversation_budget is not None and self.conversation_cost >= self.conversation_budget
+
     def add_usage(self, usage, new_message):
         """把一次模型调用的用量（流式事件里的 usage）算进这一轮的估算。"""
-        if self.prices is None or not isinstance(usage, dict):
+        if self.rates is None or not isinstance(usage, dict):
             return
-        price_in, price_out = (p / 1_000_000 for p in self.prices)
         if new_message:   # message_start：输入（含读写缓存）只在开头报一次
             self._message_out = self._message_searches = 0
-            self.estimate += price_in * (int(usage.get("input_tokens") or 0)
-                                         + CACHE_WRITE * int(usage.get("cache_creation_input_tokens") or 0)
-                                         + CACHE_READ * int(usage.get("cache_read_input_tokens") or 0))
+            self.estimate += self.rates.cost(usage.get("input_tokens"), 0, usage.get("cache_creation_input_tokens"),
+                                             usage.get("cache_read_input_tokens"))
         out = int(usage.get("output_tokens") or 0)
         if out > self._message_out:
-            self.estimate += price_out * (out - self._message_out)
+            self.estimate += self.rates.cost(output_tokens=out - self._message_out)
             self._message_out = out
         searches = int((usage.get("server_tool_use") or {}).get("web_search_requests") or 0)
         if searches > self._message_searches:
-            self.estimate += WEB_SEARCH_USD * (searches - self._message_searches)
+            self.estimate += self.rates.cost(searches=searches - self._message_searches)
             self._message_searches = searches
         if self.reply_budget is not None and self.estimate >= self.reply_budget:
             self.over_budget = True
+        if self.conversation_budget is not None and self.conversation_cost + self.estimate >= self.conversation_budget:
+            self.over_conversation = True
 
 
 _NETWORK_HINTS = ("connection error", "econnrefused", "econnreset", "enotfound", "etimedout", "fetch failed",
@@ -372,8 +390,8 @@ def translate(message, state):
 
 def _turn_finished(message, state):
     events = []
-    stopped = state.interrupted and not state.over_budget
-    if message.subtype == "error_max_budget_usd":
+    stopped = state.interrupted and not state.over_budget and not state.over_conversation
+    if message.subtype == "error_max_budget_usd" or state.over_conversation:
         events.append(protocol.Error("budget"))           # 这段对话累计花到了上限
     elif state.over_budget:
         events.append(protocol.Error("reply_budget", f"~${state.estimate:.3f}"))   # 这次回答快超了，芸芸自己停的
@@ -383,19 +401,23 @@ def _turn_finished(message, state):
     elif message.subtype == "success" and message.is_error and not state.errored:
         events.append(protocol.Error(error_kind(message.result), (message.result or "")[:500]))
 
-    total = message.total_cost_usd
+    # 整段对话一共花了多少：Claude 官方用 Claude Code 报的；自己算钱的服务商按它的价格算各模型的累计用量
+    # （model_usage 也是整段对话累计的，连后台小任务用的模型一起，2026-10-08 实测）
+    total = (usage_cost(state.own_pricing, message.model_usage) if state.own_pricing is not None
+             else message.total_cost_usd)
     cost = None
     if total is not None:
         cost = max(total - state.session_cost, 0.0)
         state.session_cost = total
-    if not cost and state.estimate > 0 and (state.interrupted or state.over_budget):
+    if not cost and state.estimate > 0 and (state.interrupted or state.over_budget or state.over_conversation
+                                            or total is None):
         # 中途停下时 Claude Code 报的这一轮花费是 0（2026-10-07 实测），可停下前处理过的 token 一样计费：用自己的估算
         cost = state.estimate
         state.unreported += state.estimate
     usage = message.usage or {}
     events.append(protocol.TurnFinished(
-        cost_usd=cost if state.cost_in_usd else None,
-        session_cost_usd=state.session_cost + state.unreported if state.cost_in_usd else None,
+        cost_usd=cost,
+        session_cost_usd=state.conversation_cost,
         input_tokens=sum(int(usage.get(k) or 0) for k in
                          ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")),
         output_tokens=int(usage.get("output_tokens") or 0),
@@ -427,10 +449,12 @@ class ClaudeBrain:
         self._emit = emit
         self._resume = resume
         self._client = None
+        own = settings.info.own_pricing
         self._state = TurnState(
-            cost_in_usd=settings.info.cost_in_usd,
-            prices=settings.info.prices.get(settings.effective_model),   # 自己填的模型名不知道价格：不估算
+            rates=settings.info.rates(settings.effective_model),   # Claude 官方自己填的模型名不知道价格：不估算
+            own_pricing=settings.info if own else None,
             reply_budget=settings.budget_usd,
+            conversation_budget=settings.conversation_budget_usd if own else None,
             workspace=settings.workspace,
         )
         self.gate = PermissionGate(settings.workspace or WORKSPACE, emit)
@@ -454,7 +478,7 @@ class ClaudeBrain:
         if self._resume:
             # 接着聊：Claude Code 报的花费会接着那段对话的累计往上加（try_resume.py 实测），先把以前花的当起点，
             # 不然第一问会把以前的钱再算一遍
-            self._state.session_cost = previous_cost(self._resume)
+            self._state.session_cost = previous_cost(self._resume, self._settings.info)
             log.info("接着以前的一段对话聊（之前花了 %.4f 美元）", self._state.session_cost)
         self._client = ClaudeSDKClient(options)
         try:
@@ -469,6 +493,13 @@ class ClaudeBrain:
     async def ask(self, text):
         self._state.new_turn()
         self.gate.stopped = False
+        if self._state.conversation_full:
+            # 自己管每段对话上限时，花到了就不再发出去（Claude Code 的 max_budget_usd 也是这样报 budget）
+            log.info("这段对话已经花了约 %.4f 美元，到了上限 %s，不再提问", self._state.conversation_cost,
+                     self._state.conversation_budget)
+            self._emit(protocol.Error("budget"))
+            self._emit(protocol.TurnFinished(session_cost_usd=self._state.conversation_cost))
+            return
         started, first_text = time.monotonic(), None   # 首字要等多久（只记时间，不记内容）
         try:
             await self._client.query(text)
@@ -484,8 +515,10 @@ class ClaudeBrain:
                                  "—" if first_text is None else f"{first_text:.1f}", time.monotonic() - started,
                                  "（用户停止）" if event.stopped else "")
                     self._emit(event)
-                if self._state.over_budget and not self._state.interrupted:
-                    log.info("这次回答估算花了约 %.4f 美元，到了上限 %s，停下", self._state.estimate, self._settings.budget_usd)
+                state = self._state
+                if (state.over_budget or state.over_conversation) and not state.interrupted:
+                    log.info("这次回答估算花了约 %.4f 美元，到了%s的上限，停下", state.estimate,
+                             "每段对话" if state.over_conversation else "每次回答")
                     # 另开一个任务去停：在这里等它的话，SDK 读消息的那一头可能正等着我们把消息取走
                     asyncio.get_running_loop().create_task(self.interrupt())
         except Exception as e:   # 子进程断了之类：告诉芸芸这一轮出错了，并且结束这一轮
