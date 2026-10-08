@@ -27,6 +27,7 @@ from yunyun.assistant.environment import (   # noqa: F401（clean_environment、
 )
 from yunyun.assistant.persona import persona
 from yunyun.assistant.providers import launch_env, usable_tools
+from yunyun.assistant.settings import HISTORY_KEEP_DAYS, SESSION_DATA_DIRS
 from yunyun.paths import data_dir
 
 log = logging.getLogger(__name__)
@@ -44,6 +45,29 @@ CACHE_WRITE, CACHE_READ, WEB_SEARCH_USD = 1.25, 0.1, 0.01
 
 
 # ---------- 启动选项 ----------
+
+def prune_old_sessions(config_dir, days, now=None):
+    """删掉 days 天以前的对话记录和备份（按修改时间）；返回删了几个文件。删不掉的（正在用）跳过。"""
+    cutoff = (now or time.time()) - days * 86400
+    removed = 0
+    for name in SESSION_DATA_DIRS:
+        root = os.path.join(config_dir, name)
+        for folder, subfolders, files in os.walk(root, topdown=False):
+            for file in files:
+                path = os.path.join(folder, file)
+                try:
+                    if os.path.getmtime(path) < cutoff:
+                        os.remove(path)
+                        removed += 1
+                except OSError as e:
+                    log.info("清理旧记录时跳过一个文件：%s", type(e).__name__)
+            if folder != root and not os.listdir(folder):
+                try:
+                    os.rmdir(folder)
+                except OSError as e:
+                    log.info("清理旧记录时跳过一个文件夹：%s", type(e).__name__)
+    return removed
+
 
 def wanted_tools(settings):
     return WEB_TOOLS + (WORK_TOOLS if settings.workspace else [])
@@ -367,6 +391,7 @@ def _turn_finished(message, state):
         stopped=stopped,
         checkpoint=state.checkpoint if state.files else "",   # 没改文件就没什么可撤销的
         files=tuple(state.files),
+        session_id=message.session_id or "",
     ))
     return events
 
@@ -408,6 +433,9 @@ class ClaudeBrain:
                  "用了工作文件夹" if self._settings.workspace else "没有工作文件夹", len(removed))
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
         WORKSPACE.mkdir(parents=True, exist_ok=True)
+        removed = prune_old_sessions(CONFIG_DIR, HISTORY_KEEP_DAYS)   # 历史只留 30 天（卡片那边芸芸自己清）
+        if removed:
+            log.info("清理了 %d 个 %d 天以前的对话记录 / 备份文件", removed, HISTORY_KEEP_DAYS)
         options = build_options(self._settings, self._api_key, self._language, stderr=self._stderr.append,
                                 gate=self.gate)
         self._client = ClaudeSDKClient(options)

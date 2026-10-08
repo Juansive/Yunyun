@@ -778,6 +778,44 @@ def test_emergency_stop_from_the_menu_even_when_collapsed(qapp, working):
     assert pet.assistant is mode and not process.stopped           # 停止 ≠ 退出：还能接着聊
 
 
+# ---------- 历史对话 ----------
+
+def test_cards_are_still_there_after_restarting_yunyun(qapp, world, monkeypatch):
+    pet, _, processes = world
+    has_key(monkeypatch)
+    pet.open_assistant()
+    processes[0].say(protocol.Ready("anthropic", "m"))
+    finish_turn(pet, processes[0], "重启前的问题", "重启前的回答")
+    pet.close_assistant()
+
+    another = PetWindow(load_sprites())               # 重新启动芸芸：内存里什么都没有
+    try:
+        connect_assistant(another, StateMachine())
+        another.open_assistant()
+        cards = another.assistant.cards
+        assert [(c.kind, c.question) for c in cards] == [("turn", "重启前的问题"), ("divider", "")]
+        assert cards[0].answer == "重启前的回答" and cards[0].generation == 0   # 撤销不了以前的了
+    finally:
+        another.close_assistant()
+        another.close()
+
+
+def test_clearing_history_in_settings_empties_the_deck(qapp, world, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+    from yunyun.pet import assistant_history
+    pet, _, processes = world
+    has_key(monkeypatch)
+    pet.open_assistant()
+    processes[0].say(protocol.Ready("anthropic", "m"))
+    finish_turn(pet, processes[0], "问题")
+    assert assistant_history.history_path().exists()
+    pet.open_settings("assistant")
+    monkeypatch.setattr(QMessageBox, "question", staticmethod(lambda *a: QMessageBox.StandardButton.Yes))
+    pet.settings_window._assistant_page._clear_history.click()
+    assert not assistant_history.history_path().exists()
+    assert pet.assistant.cards == [] and not pet.assistant.deck.isVisible()
+
+
 # ---------- 撤销 ----------
 
 def test_undo_from_the_reader(qapp, working):

@@ -45,6 +45,8 @@ class AssistantCard:
     generation: int = 0     # 是哪一个大脑会话（session.generation）里的：换了会话就撤销不了了
     undone: bool = False    # 已经撤销了
     actions: tuple = ()     # 操作记录（session.Action）：这一问芸芸用过哪些工具、怎么定的
+    session_id: str = ""    # Claude Code 的会话编号（历史对话"接着聊"用）
+    workspace: str = ""     # 在哪个工作文件夹里问的（"接着聊"要在同一个文件夹里）
 
     @classmethod
     def divider(cls, folder=""):

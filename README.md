@@ -108,8 +108,9 @@ python -m venv .venv
 | 数据 | 存在哪里 |
 |---|---|
 | 邮箱授权码、AI 的 API Key、助手的 API Key | Windows 凭据管理器（`yunyun-mail`、`yunyun-ai`、`yunyun-assistant`），由你的 Windows 账户加密保护 |
-| 助手模式的对话记录 | `%APPDATA%\Yunyun\Yunyun\assistant\claude\`（Claude Code 自己的会话记录，**含完整对话**；芸芸旁边的卡片只在内存里，退出芸芸就没了） |
-| 撤销用的文件备份 | 同一个文件夹里（Claude Code 改文件前先备份一份原文件，撤销时用） |
+| 助手模式的对话记录 | `%APPDATA%\Yunyun\Yunyun\assistant\claude\`（Claude Code 自己的会话记录，**含完整对话**） |
+| 助手的问答卡片（历史对话） | `%APPDATA%\Yunyun\Yunyun\assistant\cards.json`（**含完整问答和她做过的操作**）；和上面的对话记录、撤销备份一样**保留 30 天**，设置 → 助手 →「清空历史对话」可以马上全部删掉 |
+| 撤销用的文件备份 | 同一个文件夹里（Claude Code 改文件前先备份一份原文件，撤销时用；保留 30 天） |
 | 工作文件夹（最近 5 个） | `%APPDATA%\Yunyun\Yunyun\config.yaml` |
 | 助手花了多少钱 | `%APPDATA%\Yunyun\Yunyun\assistant_spending.json`（只有日期和金额） |
 | 邮箱地址、AI 服务商 | `%APPDATA%\Yunyun\Yunyun\config.yaml` |

@@ -102,6 +102,7 @@ class SettingsWindow(QDialog):
         self._mail_page = MailAccountsPage()
         self._ai_page = AISettingsPage()
         self._assistant_page = AssistantSettingsPage()
+        self._assistant_page.history_cleared.connect(self._pet.clear_assistant_history)
         self._history_page = HistoryPage(self._pet.history)
         self._about_page = AboutPage(self._pet)
         self._mail_page.accounts_changed.connect(self.accounts_changed)

@@ -81,7 +81,7 @@ class PetWindow(QWidget):
         self._settings_window = None  # 设置窗口（用到时才创建，关掉就销毁）
         self._assistant = None        # 助手模式（用到时才创建，退出就销毁）
         self._assistant_cards = []    # 助手的问答卡片（从旧到新）：退出助手模式也留着，芸芸退出才清掉，不写硬盘
-        self._assistant_place = {}    # 卡片组拖到了哪（相对芸芸的偏移）：退出助手模式也记着
+        self._assistant_state = {}    # 助手要记着的（卡片组拖到了哪、历史读过没有）：退出助手模式也记着
         self._history = None          # 邮件提醒的历史记录（main 里设置）
         self._quiet_hours = None      # 免打扰时段（main 里设置）
 
@@ -707,7 +707,7 @@ class PetWindow(QWidget):
             return
         if self._assistant is None:
             from yunyun.pet.assistant_mode import AssistantMode
-            mode = AssistantMode(self, self._assistant_cards, place=self._assistant_place)
+            mode = AssistantMode(self, self._assistant_cards, state=self._assistant_state)
             mode.busy_changed.connect(self.assistant_busy_changed)
             mode.closed.connect(self._on_assistant_closed)
             self.language_changed.connect(mode.retranslate)
@@ -718,6 +718,13 @@ class PetWindow(QWidget):
     def assistant(self):
         """助手模式（没开就是 None）。"""
         return self._assistant
+
+    def clear_assistant_history(self):
+        """设置页清空了助手的历史对话（文件已经删了）：内存里的卡片也清掉。"""
+        if self._assistant is not None:
+            self._assistant.clear_history()
+        else:
+            self._assistant_cards.clear()
 
     def stop_assistant(self):
         """右键"停止助手"：停下正在做的事（命令也结束掉），等着确认的都算拒绝；助手模式还开着，可以接着聊。"""

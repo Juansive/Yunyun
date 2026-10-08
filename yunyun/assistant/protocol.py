@@ -203,6 +203,7 @@ class TurnFinished:
     stopped: bool = False
     checkpoint: str = ""
     files: tuple = ()
+    session_id: str = ""   # Claude Code 的会话编号（历史对话"接着聊"时用它恢复）
 
     def __post_init__(self):
         object.__setattr__(self, "files", tuple(self.files))   # JSON 读回来是列表：统一成元组

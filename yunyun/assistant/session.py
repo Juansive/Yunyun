@@ -90,6 +90,7 @@ class Turn:
     generation: int = 0        # 在哪个子进程里问的（撤销只能在同一个子进程里）
     undone: bool = False
     actions: list = field(default_factory=list)   # 操作记录：这一轮用过的工具（Action，按先后）
+    session_id: str = ""       # Claude Code 的会话编号（历史对话"接着聊"用）
 
     def action(self, tool_id):
         return next((a for a in self.actions if a.tool_id and a.tool_id == tool_id), None)
@@ -342,7 +343,7 @@ class AssistantSession(QObject):
         elif isinstance(event, protocol.TurnFinished):
             turn.cost_usd, turn.session_cost_usd = event.cost_usd, event.session_cost_usd
             turn.input_tokens, turn.output_tokens = event.input_tokens, event.output_tokens
-            turn.files, turn.checkpoint = tuple(event.files), event.checkpoint
+            turn.files, turn.checkpoint, turn.session_id = tuple(event.files), event.checkpoint, event.session_id
             ledger.record(event.cost_usd)   # 记账：设置页显示今天 / 本月 / 一共花了多少
             self._end_turn(stopped=event.stopped)
         elif isinstance(event, protocol.PermissionRequest):

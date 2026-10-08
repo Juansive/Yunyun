@@ -24,6 +24,10 @@ MIN_BUDGET_USD, MAX_BUDGET_USD = 0.01, 10.0   # 每次回答的上限能设的�
 MIN_CONVERSATION_BUDGET_USD, MAX_CONVERSATION_BUDGET_USD = 0.05, 50.0   # 每段对话的上限
 LOW_BUDGET_USD = 0.05   # 每次回答的上限低于这个就提醒：每段对话的第一问就要 1 美分多（Claude Code 自带的说明很长）
 MAX_RECENT_WORKSPACES = 5
+HISTORY_KEEP_DAYS = 30   # 历史对话（卡片、Claude Code 的对话记录、撤销用的备份）保留多久（2026-10-08 用户定）
+# Claude Code 自己的数据（在 claude_brain.CONFIG_DIR 里）中，按天数清理 / 清空历史时删掉的文件夹：对话记录、撤销用的备份……
+# backups（它的设置备份）不动。芸芸进程（清空历史）和子进程（按天数清理）都用，所以放这里（不 import SDK）
+SESSION_DATA_DIRS = ("projects", "file-history", "sessions", "session-env", "shell-snapshots")
 
 
 @dataclass

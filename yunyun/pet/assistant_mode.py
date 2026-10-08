@@ -15,7 +15,7 @@
   撤销会连之后几问的改动一起恢复；做完芸芸说一句，卡片标上"已撤销"。用命令改的东西撤销不了。
 - 收起（Esc / 点到别的程序）：只有输入框缩回去；卡片堆、阅读框、确认卡片**一直留着**（2026-10-08 用户要求：边看文档边看回答），
   图层跟着芸芸（都是芸芸的从属窗口）。右键"隐藏卡片"才收起，左键芸芸再唤出。
-- 拖动：卡片堆 / 阅读框的空白处按住左键拖，整组一起动，记住相对芸芸的位置（place["offset"]），芸芸走到哪跟到哪；
+- 拖动：卡片堆 / 阅读框的空白处按住左键拖，整组一起动，记住相对芸芸的位置（state["offset"]），芸芸走到哪跟到哪；
   不出屏幕。右键"卡片回到芸芸旁边"复位。位置由芸芸保管，退出助手模式再唤出还在。
 - 闲置：输入框收起后 IDLE_EXIT_MS 没再用，只释放大脑（子进程，约 300 MB），卡片照常显示；再唤出时重新启动（算新对话，插分隔卡）。
 - 退出（菜单"退出助手模式" / 芸芸退出）：关掉子进程和所有窗口，发 closed。卡片留在 cards 里（芸芸退出才清掉，不写硬盘）。
@@ -33,6 +33,7 @@ from yunyun import i18n
 from yunyun.assistant import settings as assistant_settings
 from yunyun.assistant.session import SETTINGS_ERRORS, AssistantSession, error_text
 from yunyun.pet.assistant_confirm import AssistantConfirm
+from yunyun.pet import assistant_history
 from yunyun.pet.assistant_deck import AssistantCard, AssistantDeck
 from yunyun.pet.assistant_input import AssistantInput, folder_name
 from yunyun.pet.assistant_reader import AssistantReader
@@ -46,7 +47,7 @@ def markdown_to_plain(markdown):
     return re.sub(r"\n{3,}", "\n\n", document.toPlainText()).strip()
 
 
-def card_from_turn(turn):
+def card_from_turn(turn, workspace=""):
     """一轮问答（session.Turn）→ 卡片。"""
     if turn.cost_usd is not None:
         cost = f"${turn.cost_usd:.4f}"
@@ -59,6 +60,7 @@ def card_from_turn(turn):
         markdown_to_plain(turn.answer) if turn.answer else "", cost, turn.stopped,
         error_text(turn.error) if turn.error else "",
         tuple(turn.files), turn.checkpoint, turn.generation, turn.undone, tuple(turn.actions),
+        turn.session_id, workspace,
     )
 
 
@@ -74,19 +76,24 @@ class AssistantMode(QObject):
     DONE_SAY_WITH_DECK_MS = 3000  # 卡片堆开着时：卡片里已经有了，气泡早点收
     CONFIRM_SAY_MS = 15000        # 收起着时来了确认请求：气泡提醒多久
 
-    def __init__(self, pet, cards, make_process=None, place=None):
-        """cards：所有卡片（从旧到新）；place：卡片组的位置（{"offset": 相对芸芸的偏移}）。都由芸芸保管，助手模式退出了也还在。"""
+    def __init__(self, pet, cards, make_process=None, state=None):
+        """cards：所有卡片（从旧到新）；state：要记着的东西（"offset"：卡片组相对芸芸的偏移，"history_loaded"：读过历史了）。
+        都由芸芸保管，助手模式退出了也还在。"""
         super().__init__(pet)
         self._pet = pet
         self.cards = cards
-        self._place = place if place is not None else {}
+        self._state = state if state is not None else {}
         self._cards_shown = False   # 卡片组（卡片堆 + 阅读框 + 确认卡片）该不该显示：唤出时显示，"隐藏卡片"时收起
         self._reader_card = None    # 隐藏卡片时阅读框正开着的那张：再唤出时一起回来
         self._released = False      # 闲置时把大脑释放了：再唤出时是新对话
         self._drag_base = None      # 拖动开始时卡片堆的位置
         self.workspace = assistant_settings.load_settings().workspace   # 子进程启动时也是读这一项
+        if not self._state.get("history_loaded"):   # 这次运行芸芸第一次打开助手模式：读出以前的卡片（30 天内）
+            self._state["history_loaded"] = True
+            cards[:0] = assistant_history.load()
         if cards and cards[-1].kind != "divider":
             cards.append(self._divider())   # 大脑是新启动的：之前的对话它不记得了
+            self._save_history()
         self.session = AssistantSession(pet, make_process)
         self.input = AssistantInput(pet)
         self.input.recent_folders = assistant_settings.recent_workspaces
@@ -140,7 +147,7 @@ class AssistantMode(QObject):
     @property
     def has_custom_place(self):
         """卡片组被拖过（右键菜单据此显示"卡片回到芸芸旁边"）。"""
-        return self._place.get("offset") is not None
+        return self._state.get("offset") is not None
 
     def summon(self):
         """唤出（右键"✦ 助手模式"、左键芸芸）：启动大脑（已经开着就不用），输入框展开并拿到焦点，卡片组显示出来。"""
@@ -150,6 +157,7 @@ class AssistantMode(QObject):
             if self.cards and self.cards[-1].kind != "divider":
                 self.cards.append(self._divider())
                 self.deck.newest_added()
+                self._save_history()
         self.session.start()
         self.input.open(self._pet.body_rect())
         self._show_cards()
@@ -166,7 +174,7 @@ class AssistantMode(QObject):
 
     def reset_place(self):
         """右键"卡片回到芸芸旁边"：忘掉拖过的位置。"""
-        self._place["offset"] = None
+        self._state["offset"] = None
         self._reposition()
 
     def follow(self, body_rect):
@@ -186,6 +194,7 @@ class AssistantMode(QObject):
         elif self.cards:
             self.cards[-1] = self._divider()   # 刚插过分隔卡（比如连着换了两次文件夹）：换成新的
             self.deck.update()
+        self._save_history()
         self.reader.refresh_undo()   # 换了对话：以前的改动撤销不了了
         self._pet.say(said or i18n.tr("assistant_new_chat_said"), 2500)
 
@@ -235,6 +244,18 @@ class AssistantMode(QObject):
     def _divider(self):
         return AssistantCard.divider(folder_name(self.workspace) if self.workspace else "")
 
+    def _save_history(self):
+        """卡片有变化（新卡片、分隔卡、撤销）：存到硬盘（assistant_history，保留 30 天）。"""
+        assistant_history.save(self.cards)
+
+    def clear_history(self):
+        """设置页清空了历史对话：卡片堆、阅读框清空（文件已经由设置页删掉了）。"""
+        self.cards.clear()
+        self._reader_card = None
+        self.reader.close_now()
+        self.deck.reset()
+        self.deck.close_now()
+
     def _column(self):
         """"芸芸 + 输入框"这一列（屏幕坐标）：卡片堆放在它旁边，就不会和头顶的气泡、脚下的输入框重叠。"""
         body = self._pet.body_rect()
@@ -262,7 +283,7 @@ class AssistantMode(QObject):
 
     def _place_deck(self):
         """卡片堆放哪：拖过就按记住的偏移（相对芸芸，不出屏幕），没拖过就放在"芸芸 + 输入框"旁边。"""
-        offset = self._place.get("offset")
+        offset = self._state.get("offset")
         if offset is None:
             self.deck.follow(self._column())
         else:
@@ -299,7 +320,7 @@ class AssistantMode(QObject):
         if self._drag_base is None:
             return
         target = self._on_screen(self._drag_base + moved)
-        self._place["offset"] = target - self._pet.body_rect().topLeft()
+        self._state["offset"] = target - self._pet.body_rect().topLeft()
         self._reposition()
 
     def _on_drag_finished(self):
@@ -372,6 +393,7 @@ class AssistantMode(QObject):
                 if card.kind == "turn" and card.checkpoint in undone:
                     card.undone = True
                     files.update(card.files)
+            self._save_history()
             self._pet.say(i18n.tr("assistant_undo_said", len(files)), self.DONE_SAY_MS)
         else:
             self._pet.say(i18n.tr("assistant_undo_failed"), self.DONE_SAY_MS)
@@ -413,8 +435,9 @@ class AssistantMode(QObject):
 
     def _on_turn_finished(self, turn):
         self._bubble_timer.stop()
-        self.cards.append(card_from_turn(turn))
+        self.cards.append(card_from_turn(turn, self.workspace))
         self.deck.newest_added()
+        self._save_history()
         if self._cards_shown:
             self._place_deck()
             self.deck.show_animated()

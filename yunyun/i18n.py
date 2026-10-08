@@ -700,6 +700,21 @@ TEXTS = {
     "assistant_card_tokens": {"zh": "{} / {} token", "en": "{} / {} tokens", "ja": "{} / {} トークン"},
     "assistant_card_files": {"zh": "改了 {} 个文件", "en": "{} file(s) changed", "ja": "{} 個のファイルを変更"},
     "assistant_card_undone": {"zh": "已撤销", "en": "Undone", "ja": "取り消し済み"},
+    # 历史对话（设置 → 助手）
+    "assistant_history_note": {
+        "zh": "问答卡片保留 {} 天，只存在这台电脑上（里面有完整的对话内容）。",
+        "en": "Chat cards are kept for {} days, only on this PC (they contain the full conversations).",
+        "ja": "やり取りのカードは {} 日間、この PC にだけ保存されます（会話の全文を含みます）。",
+    },
+    "assistant_history_clear": {"zh": "清空历史对话", "en": "Clear chat history", "ja": "履歴を消去"},
+    "assistant_history_confirm": {
+        "zh": "要清空助手的历史对话吗？\n问答卡片、Claude Code 的对话记录、撤销用的文件备份都会删掉，清空后就不能撤销以前的改动了。",
+        "en": "Clear the assistant's chat history?\nChat cards, Claude Code's conversation records and the file backups "
+              "used for undo will be deleted; earlier changes can no longer be undone.",
+        "ja": "アシスタントの履歴を消去しますか？\nやり取りのカード、Claude Code の会話記録、取り消し用のファイルのバックアップが"
+              "削除され、以前の変更は取り消せなくなります。",
+    },
+    "assistant_history_cleared": {"zh": "历史对话已清空。", "en": "Chat history cleared.", "ja": "履歴を消去しました。"},
     # 操作记录（阅读框里"芸芸做了几件事"）
     "assistant_actions_toggle": {"zh": "芸芸做了 {} 件事", "en": "Yunyun did {} thing(s)", "ja": "芸芸がしたこと（{} 件）"},
     "assistant_action_read": {"zh": "读", "en": "Read", "ja": "読む"},

@@ -145,7 +145,8 @@ def test_cost_is_per_turn_although_sdk_reports_session_total():
     state = TurnState()
     usage = {"input_tokens": 2, "cache_creation_input_tokens": 2000, "cache_read_input_tokens": 1000, "output_tokens": 50}
     first = translate(result(total=0.010, usage=usage), state)
-    assert first == [protocol.TurnFinished(cost_usd=0.010, session_cost_usd=0.010, input_tokens=3002, output_tokens=50)]
+    assert first == [protocol.TurnFinished(cost_usd=0.010, session_cost_usd=0.010, input_tokens=3002, output_tokens=50,
+                                           session_id="s")]   # 会话编号："接着聊"时用它恢复
     state.new_turn()
     second = translate(result(total=0.015, usage={"output_tokens": 4}), state)[0]
     assert second.cost_usd == pytest.approx(0.005) and second.session_cost_usd == 0.015
@@ -162,7 +163,7 @@ def test_user_stop_is_not_an_error():
     state = TurnState(interrupted=True)
     # 这一轮的花费 SDK 没报（None）；这次打开助手以来的累计还是知道的（这里是 0）
     assert translate(result("error_during_execution", is_error=True), state) == [
-        protocol.TurnFinished(cost_usd=None, session_cost_usd=0.0, stopped=True)]
+        protocol.TurnFinished(cost_usd=None, session_cost_usd=0.0, stopped=True, session_id="s")]
 
 
 def test_budget_exceeded():

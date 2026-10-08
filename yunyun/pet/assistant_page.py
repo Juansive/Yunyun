@@ -8,7 +8,8 @@
 """
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QComboBox, QDoubleSpinBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget,
+    QComboBox, QDoubleSpinBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton, QVBoxLayout,
+    QWidget,
 )
 
 from yunyun import i18n
@@ -17,13 +18,15 @@ from yunyun.assistant import settings as assistant_settings
 from yunyun.assistant.process import KeyCheck
 from yunyun.assistant.providers import PROVIDERS
 from yunyun.assistant.settings import (
-    LOW_BUDGET_USD, MAX_BUDGET_USD, MAX_CONVERSATION_BUDGET_USD, MIN_BUDGET_USD, MIN_CONVERSATION_BUDGET_USD,
-    AssistantSettings,
+    HISTORY_KEEP_DAYS, LOW_BUDGET_USD, MAX_BUDGET_USD, MAX_CONVERSATION_BUDGET_USD, MIN_BUDGET_USD,
+    MIN_CONVERSATION_BUDGET_USD, AssistantSettings,
 )
+from yunyun.pet import assistant_history
 
 
 class AssistantSettingsPage(QWidget):
     settings_saved = Signal()
+    history_cleared = Signal()   # 清空了历史对话（文件已经删了）：芸芸把内存里的卡片也清掉
 
     def __init__(self, parent=None, make_check=KeyCheck):
         """make_check(服务商, 模型, Key) → 有 done 信号和 start() 的对象；测试时换成假的。"""
@@ -68,6 +71,15 @@ class AssistantSettingsPage(QWidget):
         self._spent.setOpenExternalLinks(True)
         self._spent.setStyleSheet("color: #666;")
         layout.addWidget(self._spent)
+        history_row = QHBoxLayout()   # 历史对话：保留多久 + 清空
+        self._history_note = QLabel(tr("assistant_history_note", HISTORY_KEEP_DAYS))
+        self._history_note.setWordWrap(True)
+        self._history_note.setStyleSheet("color: #666;")
+        self._clear_history = QPushButton(tr("assistant_history_clear"))
+        self._clear_history.clicked.connect(self._on_clear_history)
+        history_row.addWidget(self._history_note, 1)
+        history_row.addWidget(self._clear_history)
+        layout.addLayout(history_row)
 
         self._hint = QLabel()
         self._hint.setWordWrap(True)
@@ -174,6 +186,15 @@ class AssistantSettingsPage(QWidget):
             warnings.append(i18n.tr("assistant_budget_conversation_low"))
         self._budget_warning.setText("\n".join(warnings))
         self._budget_warning.setVisible(bool(warnings))
+
+    def _on_clear_history(self):
+        """清空历史对话：卡片、Claude Code 自己的对话记录、撤销用的备份都删掉（先问一句）。"""
+        answer = QMessageBox.question(self, self.window().windowTitle(), i18n.tr("assistant_history_confirm"))
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        assistant_history.clear()
+        self.history_cleared.emit()
+        self._status.setText(i18n.tr("assistant_history_cleared"))
 
     def _test_and_save(self):
         if not self._save_button.isEnabled():
