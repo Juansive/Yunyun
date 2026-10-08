@@ -64,6 +64,63 @@ if IS_WINDOWS:
     user32.GetAsyncKeyState.restype = ctypes.c_short
     user32.GetSystemMetrics.argtypes = [ctypes.c_int]
     user32.GetSystemMetrics.restype = ctypes.c_int
+    WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    user32.EnumWindows.argtypes = [WNDENUMPROC, wintypes.LPARAM]
+    user32.EnumWindows.restype = wintypes.BOOL
+    user32.GetForegroundWindow.argtypes = []
+    user32.GetForegroundWindow.restype = wintypes.HWND
+    user32.SetForegroundWindow.argtypes = [wintypes.HWND]
+    user32.SetForegroundWindow.restype = wintypes.BOOL
+    user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+    user32.ShowWindow.restype = wintypes.BOOL
+    user32.GetWindowTextLengthW.argtypes = [wintypes.HWND]
+    user32.GetWindowTextLengthW.restype = ctypes.c_int
+
+SW_RESTORE = 9
+WS_EX_TOOLWINDOW = 0x00000080
+
+
+# ---------- 顶层窗口 ----------
+
+def top_level_windows():
+    """所有顶层窗口，按 Z 序从上到下（EnumWindows 就是这个顺序）。"""
+    if not IS_WINDOWS:
+        return []
+    found = []
+    callback = WNDENUMPROC(lambda hwnd, _: found.append(hwnd) or True)
+    user32.EnumWindows(callback, 0)
+    return found
+
+
+def foreground_window():
+    """现在最前面（你在用）的窗口；没有是 0。"""
+    return int(user32.GetForegroundWindow() or 0) if IS_WINDOWS else 0
+
+
+def process_id(hwnd):
+    return _process_id(hwnd) if IS_WINDOWS and hwnd else 0
+
+
+def main_window_of(pids):
+    """这几个进程里，第一个（按 pids 的顺序）有"正常窗口"（看得见、有标题、不是工具小窗）的，返回那个窗口；没有是 None。
+    旁观模式用：从 hook 脚本的祖先进程里找 Claude Code 所在的终端 / 桌面版窗口。"""
+    if not IS_WINDOWS or not pids:
+        return None
+    by_pid = {}
+    for hwnd in top_level_windows():
+        if (user32.IsWindowVisible(hwnd) and user32.GetWindowTextLengthW(hwnd) > 0
+                and not user32.GetWindowLongW(hwnd, GWL_EXSTYLE) & WS_EX_TOOLWINDOW):
+            by_pid.setdefault(_process_id(hwnd), hwnd)
+    return next((by_pid[pid] for pid in pids if pid in by_pid), None)
+
+
+def activate(hwnd):
+    """切到这个窗口（最小化了就先还原）。用户刚点了芸芸的提醒，Windows 允许这样抢到前台。"""
+    if not IS_WINDOWS or not hwnd:
+        return
+    if user32.IsIconic(hwnd):
+        user32.ShowWindow(hwnd, SW_RESTORE)
+    user32.SetForegroundWindow(hwnd)
 
 VK_LBUTTON, VK_RBUTTON = 0x01, 0x02
 SM_SWAPBUTTON = 23   # 左右键对调了（左撇子设置）：物理的"左键"在系统里是 VK_RBUTTON

@@ -27,8 +27,10 @@ from yunyun.pet.assistant_page import AssistantSettingsPage
 from yunyun.pet.history_page import HistoryPage
 from yunyun.pet.mail_page import MailAccountsPage
 from yunyun.pet.notebook_page import NotebookPage
+from yunyun.pet.watch_page import WatchPage
 
-PAGES = ["general", "mail", "ai", "assistant", "notebook", "history", "about"]  # 页面顺序；open_settings(page) 用这些名字
+# 页面顺序；open_settings(page) 用这些名字。"旁观"（阶段 8）和助手模式无关，打包版也有
+PAGES = ["general", "mail", "ai", "assistant", "notebook", "watch", "history", "about"]
 ASSISTANT_PAGES = ("assistant", "notebook")   # 助手模式的页：这个版本没有助手模式时藏起来
 
 
@@ -68,6 +70,10 @@ class SettingsWindow(QDialog):
     @property
     def notebook_page(self):
         return self._notebook_page
+
+    @property
+    def watch_page(self):
+        return self._watch_page
 
     @property
     def general_page(self):
@@ -110,6 +116,8 @@ class SettingsWindow(QDialog):
         self._assistant_page = AssistantSettingsPage()
         self._assistant_page.history_cleared.connect(self._pet.clear_assistant_history)
         self._notebook_page = NotebookPage()
+        self._watch_page = WatchPage()
+        self._watch_page.test_requested.connect(self._test_watch)
         self._history_page = HistoryPage(self._pet.history)
         self._about_page = AboutPage(self._pet)
         self._mail_page.accounts_changed.connect(self.accounts_changed)
@@ -117,13 +125,20 @@ class SettingsWindow(QDialog):
 
         self._stack = QStackedWidget()  # 一叠页面，同时只显示一页（顺序和 PAGES 一样）
         for widget in (self._general_page, self._mail_page, self._ai_page, self._assistant_page, self._notebook_page,
-                       self._history_page, self._about_page):
+                       self._watch_page, self._history_page, self._about_page):
             self._stack.addWidget(widget)
         self._sidebar.currentRowChanged.connect(self._stack.setCurrentIndex)
         self._sidebar.setCurrentRow(0)
 
         self._root.addWidget(self._sidebar)
         self._root.addWidget(self._stack, 1)  # 1：多余的宽度都给内容区
+
+    def _test_watch(self):
+        """设置 → 旁观的"发一条测试提醒"：假装 Claude Code 做完了（你正看着设置窗口，照样提醒）。"""
+        from yunyun.watch.server import WatchEvent
+        reminder = self._pet.watch_reminder
+        if reminder is not None:
+            reminder.on_event(WatchEvent("stop", "", i18n.tr("watch_test_text")), force=True)
 
     def _retranslate(self):
         """切换了语言：把窗口内容整个重建一遍，所有文字就都是新语言了，停在原来那一页。"""

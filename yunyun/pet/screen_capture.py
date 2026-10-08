@@ -49,13 +49,8 @@ class BITMAPINFOHEADER(ctypes.Structure):
 
 if winapi.IS_WINDOWS:
     user32, gdi32 = winapi.user32, ctypes.WinDLL("gdi32")
-    WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
-    user32.EnumWindows.argtypes = [WNDENUMPROC, wintypes.LPARAM]
-    user32.EnumWindows.restype = wintypes.BOOL
     user32.GetClassNameW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
     user32.GetClassNameW.restype = ctypes.c_int
-    user32.GetWindowTextLengthW.argtypes = [wintypes.HWND]
-    user32.GetWindowTextLengthW.restype = ctypes.c_int
     user32.SetWindowDisplayAffinity.argtypes = [wintypes.HWND, wintypes.DWORD]
     user32.SetWindowDisplayAffinity.restype = wintypes.BOOL
     user32.MonitorFromPoint.argtypes = [wintypes.POINT, wintypes.DWORD]
@@ -87,11 +82,7 @@ if winapi.IS_WINDOWS:
 # ---------- 窗口 ----------
 
 def _top_level_windows():
-    """所有顶层窗口，按 Z 序从上到下（EnumWindows 就是这个顺序）。"""
-    found = []
-    callback = WNDENUMPROC(lambda hwnd, _: found.append(hwnd) or True)
-    user32.EnumWindows(callback, 0)
-    return found
+    return winapi.top_level_windows()
 
 
 def own_windows():

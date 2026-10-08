@@ -24,8 +24,10 @@ class AssistantNotice(QWidget):
 
     clicked = Signal()
 
-    def __init__(self):
+    def __init__(self, stack=0):
+        """stack：往上叠几层（旁观模式的小条用 1，和助手的同时出现也不挡）。"""
         super().__init__(None)   # 没有主人：独立窗口
+        self.stack = stack
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Tool
                             | Qt.WindowType.WindowStaysOnTopHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
@@ -62,7 +64,7 @@ class AssistantNotice(QWidget):
         geometry, area = screen.geometry(), screen.availableGeometry()
         right, bottom, autohide = tray_corner(geometry, area)
         margin = Badge.CORNER_MARGIN
-        badge_room = Badge.HEIGHT + self.GAP   # 给小红点留的位置
+        badge_room = Badge.HEIGHT + self.GAP + self.stack * (self.HEIGHT + self.GAP)   # 给小红点（和下面几层）留的位置
         x = area.x() + area.width() - margin - self.width() if right else area.x() + margin
         if bottom:
             extra = Badge.AUTOHIDE_MARGIN if autohide else 0

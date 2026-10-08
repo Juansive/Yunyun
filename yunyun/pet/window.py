@@ -118,6 +118,7 @@ class PetWindow(QWidget):
         self._assistant_state = {}    # 助手要记着的（卡片组拖到了哪、历史读过没有）：退出助手模式也记着
         self._history = None          # 邮件提醒的历史记录（main 里设置）
         self._quiet_hours = None      # 免打扰时段（main 里设置）
+        self.watch_reminder = None    # 旁观模式的提醒（main 里设置；设置 → 旁观的"发一条测试提醒"用）
 
         # ---- 小红点 ----
         self._mail_count = 0

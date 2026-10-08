@@ -56,6 +56,9 @@ def no_real_assistant(monkeypatch, tmp_path):
     monkeypatch.setattr(screen_capture, "take", lambda target, near: (target, FAKE_SCREENSHOT, 4, 2))
     # 鼠标左键按没按着：测试里不看你真的鼠标（跑测试时你在点东西，结果就会变）
     monkeypatch.setattr(winapi, "left_button_down", lambda: False)
+    # 旁观模式（阶段 8）：绝不读、不改你真的 ~/.claude/settings.json
+    from yunyun.watch import hooks as watch_hooks
+    monkeypatch.setattr(watch_hooks, "settings_path", lambda: tmp_path / "claude_settings.json")
     real_get = keyring.get_password
     monkeypatch.setattr(keyring, "get_password", lambda service, user: None
                         if service == assistant_settings.KEYRING_SERVICE else real_get(service, user))

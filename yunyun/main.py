@@ -79,12 +79,14 @@ def main():
     quiet.changed.connect(on_quiet_changed)
     connect_mail(mail, pet, machine, history, quiet)
     connect_assistant(pet, machine)
+    watch = connect_watch(app, pet)
 
     app.aboutToQuit.connect(lambda: pet.close_assistant(wait=True))   # 退出前关掉助手子进程（等它真的退出）
     app.aboutToQuit.connect(keyboard.stop)       # 退出前停止键盘监听
     app.aboutToQuit.connect(ai.shutdown)         # 退出前关掉芸芸按需启动的 Ollama
     app.aboutToQuit.connect(mail.stop)           # 退出前断开实时接收邮件的连接
     app.aboutToQuit.connect(pet.save_position)   # 退出前记下芸芸的位置（万一刚拖完还没来得及保存）
+    app.aboutToQuit.connect(watch.close)         # 退出前关掉旁观模式的通道和角落小条
     pet.show()
     keyboard.start()
     mail.start()
@@ -108,6 +110,24 @@ def connect_assistant(pet, machine):
     """助手模式和芸芸连起来：助手在想 / 干活 / 等你确认，芸芸就是那个样子（优先级见 StateMachine.set_assistant）。
     面板本身由 pet.open_assistant() 管；这里不 import 助手的代码（芸芸平时不加载它）。"""
     pet.assistant_activity_changed.connect(machine.set_assistant)
+
+
+def connect_watch(app, pet):
+    """旁观模式（阶段 8）：开本机通道收你自己的 Claude Code 的 hook（没连接时也开着，几乎不占东西），收到就提醒你。
+    和助手模式无关（不 import 助手的代码）。返回一个有 close() 的对象（退出时关掉）。"""
+    from yunyun.pet.watch_reminder import WatchReminder
+    from yunyun.watch.server import WatchServer
+    server = WatchServer(parent=app)
+    reminder = WatchReminder(pet)
+    server.event_received.connect(reminder.on_event)
+    pet.watch_reminder = reminder   # 设置 → 旁观的"发一条测试提醒"用
+
+    class Watch:
+        @staticmethod
+        def close():
+            server.close()
+            reminder.close()
+    return Watch
 
 
 def connect_mail(mail, pet, machine, history=None, quiet=None):

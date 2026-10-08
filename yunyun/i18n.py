@@ -93,6 +93,71 @@ TEXTS = {
     "page_ai": {"zh": "AI", "en": "AI", "ja": "AI"},
     "page_assistant": {"zh": "助手", "en": "Assistant", "ja": "アシスタント"},
     "page_notebook": {"zh": "记事本", "en": "Notebook", "ja": "メモ帳"},
+    "page_watch": {"zh": "旁观", "en": "Watch", "ja": "見守り"},
+    # ---- 设置 → 旁观（pet/watch_page.py，阶段 8）和提醒（pet/watch_reminder.py）----
+    "watch_intro": {
+        "zh": "旁观模式：你自己用 Claude Code（终端、VS Code、Claude 桌面版都行）时，它做完一轮、等你确认或者让你选的时候，"
+              "芸芸提醒你；你正看着那个窗口时不打扰。芸芸被挡住时在任务栏上方弹一个小条，点一下就切过去。不用打开助手模式。",
+        "en": "Watch mode: when you use Claude Code yourself (terminal, VS Code or the Claude desktop app), Yunyun lets you "
+              "know when it finishes a reply, needs your permission or wants you to pick an option — but not while you're "
+              "looking at that window. If Yunyun is covered, a small bar pops up above the taskbar; click it to switch "
+              "over. Assistant mode doesn't need to be open.",
+        "ja": "見守りモード：あなた自身が Claude Code（ターミナル、VS Code、Claude デスクトップ版）を使うとき、"
+              "返答が終わった・確認が必要・選んでほしいときに芸芸が知らせます。そのウィンドウを見ている間は邪魔しません。"
+              "芸芸が隠れているときはタスクバーの上に小さなバーが出て、クリックすると切り替わります。アシスタントモードは不要です。",
+    },
+    "watch_status_connected": {"zh": "✓ 已经连接", "en": "✓ Connected", "ja": "✓ 接続済み"},
+    "watch_status_disconnected": {"zh": "还没有连接", "en": "Not connected", "ja": "未接続"},
+    "watch_status_partial": {"zh": "只连了一半（你可能手动改过设置）：点\"重新连接\"修好",
+                             "en": "Only half connected (the settings may have been edited by hand): click \"Reconnect\"",
+                             "ja": "半分だけ接続されています（設定を手で変えたかも）：「再接続」で直せます"},
+    "watch_status_broken": {"zh": "Claude Code 的设置文件看不懂（不是合法的 JSON），芸芸不会动它，请先修好",
+                            "en": "Claude Code's settings file isn't valid JSON; Yunyun won't touch it — please fix it first",
+                            "ja": "Claude Code の設定ファイルが正しい JSON ではありません。芸芸は触りません。先に直してください"},
+    "watch_settings_file": {"zh": "会改的文件：{}", "en": "File it changes: {}", "ja": "変更するファイル：{}"},
+    "watch_connect": {"zh": "连接我的 Claude Code", "en": "Connect my Claude Code", "ja": "Claude Code に接続"},
+    "watch_reconnect": {"zh": "重新连接", "en": "Reconnect", "ja": "再接続"},
+    "watch_disconnect": {"zh": "断开", "en": "Disconnect", "ja": "切断"},
+    "watch_test": {"zh": "发一条测试提醒", "en": "Send a test reminder", "ja": "テスト通知を送る"},
+    "watch_note": {
+        "zh": "连接 = 在这个文件里加两条 hook：做完时、等你确认时运行芸芸的小脚本（几十毫秒就完；芸芸没开时什么都不做）。"
+              "改之前先备份到同一个文件夹；你自己的 hook 和别的设置不动；断开只删芸芸的两条。"
+              "已经开着的 Claude Code 要重新打开才生效。",
+        "en": "Connecting adds two hooks to this file: Yunyun's tiny script runs when a reply is done and when your "
+              "permission is needed (it takes milliseconds and does nothing if Yunyun isn't running). The file is backed "
+              "up first, in the same folder; your own hooks and other settings are left alone, and disconnecting removes "
+              "only Yunyun's two. Claude Code sessions that are already open need a restart to pick it up.",
+        "ja": "接続すると、このファイルにフックを 2 つ追加します：返答が終わったとき・確認が必要なときに芸芸の小さなスクリプトが"
+              "動きます（数十ミリ秒で終わり、芸芸が起動していなければ何もしません）。変更前に同じフォルダーにバックアップし、"
+              "あなたのフックや他の設定には触りません。切断すると芸芸の 2 つだけを削除します。"
+              "すでに開いている Claude Code は開き直すと反映されます。",
+    },
+    "watch_connect_confirm": {
+        "zh": "芸芸要在你的 Claude Code 设置里加两条 hook：\n{}\n\n改之前会先备份到同一个文件夹。继续吗？",
+        "en": "Yunyun will add two hooks to your Claude Code settings:\n{}\n\nThe file is backed up first. Continue?",
+        "ja": "芸芸が Claude Code の設定にフックを 2 つ追加します：\n{}\n\n変更前にバックアップします。続けますか？",
+    },
+    "watch_connected": {"zh": "连接好了。原来的设置备份在：{}", "en": "Connected. The old settings are backed up at: {}",
+                        "ja": "接続しました。元の設定のバックアップ：{}"},
+    "watch_connected_new": {"zh": "连接好了（原来没有设置文件，新建了一个）。",
+                            "en": "Connected (there was no settings file, so a new one was created).",
+                            "ja": "接続しました（設定ファイルがなかったので新しく作りました）。"},
+    "watch_disconnected": {"zh": "断开了：芸芸的两条 hook 删掉了。", "en": "Disconnected: Yunyun's two hooks were removed.",
+                           "ja": "切断しました：芸芸のフック 2 つを削除しました。"},
+    "watch_error_broken": {"zh": "没改：设置文件不是合法的 JSON（{}）", "en": "Nothing changed: the settings file isn't valid JSON ({})",
+                           "ja": "変更していません：設定ファイルが正しい JSON ではありません（{}）"},
+    "watch_error_io": {"zh": "读写设置文件出错（{}）", "en": "Couldn't read or write the settings file ({})",
+                       "ja": "設定ファイルの読み書きに失敗しました（{}）"},
+    "watch_test_text": {"zh": "这是一条测试提醒～", "en": "This is a test reminder~", "ja": "これはテスト通知です～"},
+    "watch_stop": {"zh": "Claude Code 做完了 · {}", "en": "Claude Code is done · {}", "ja": "Claude Code 完了 · {}"},
+    "watch_stop_plain": {"zh": "Claude Code 做完了", "en": "Claude Code is done", "ja": "Claude Code 完了"},
+    "watch_permission": {"zh": "Claude Code 等你确认 · {}", "en": "Claude Code needs your OK · {}",
+                         "ja": "Claude Code が確認待ち · {}"},
+    "watch_permission_plain": {"zh": "Claude Code 等你确认", "en": "Claude Code needs your OK", "ja": "Claude Code が確認待ち"},
+    "watch_choice": {"zh": "Claude Code 等你选一下 · {}", "en": "Claude Code wants you to choose · {}",
+                     "ja": "Claude Code が選択待ち · {}"},
+    "watch_choice_plain": {"zh": "Claude Code 等你选一下", "en": "Claude Code wants you to choose",
+                           "ja": "Claude Code が選択待ち"},
     # ---- 设置 → 记事本（pet/notebook_page.py，阶段 10 的 B）----
     "notebook_enabled": {"zh": "让芸芸用记事本（记住你的习惯、项目的规矩）",
                          "en": "Let Yunyun keep a notebook (your habits, project rules)",

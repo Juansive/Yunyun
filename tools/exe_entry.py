@@ -15,6 +15,10 @@ if __name__ == "__main__":
         worker.main(sys.argv[2:])
         sys.exit(0)
 
+    if len(sys.argv) >= 2 and sys.argv[1] == "--watch-relay":        # 旁观模式的 hook 脚本（见 yunyun/watch/relay.py）
+        from yunyun.watch import relay   # 只用标准库，不 import Qt：每次 hook 都要启动一次，要快
+        sys.exit(relay.main())
+
     if len(sys.argv) >= 2 and sys.argv[1] == "--assistant-check":    # 设置窗口的"测试连接"（见 yunyun/assistant/check.py）
         from yunyun.assistant import check
         check.main()
