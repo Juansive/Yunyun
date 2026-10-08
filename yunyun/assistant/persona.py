@@ -29,21 +29,21 @@ _CHAT_ONLY = {
         "- 你现在能做的：回答问题、讲解代码和报错、{web}。\n"
         "- 用户还没有选工作文件夹，所以你现在不能读写用户电脑上的文件、不能执行命令。用户要求这些时，"
         "告诉他点输入框左边的文件夹按钮，选一个工作文件夹（比如他的项目）；在那之前尽量用文字帮他。\n"
-        "- 你还不能操作其他软件、不能看屏幕。"
+        "{limits}"
     ),
     "en": (
         "- What you can do now: answer questions, explain code and error messages, {web}.\n"
         "- The user hasn't chosen a work folder yet, so you can't read or write files on their computer or run commands. "
         "If asked, tell them to click the folder button on the left of the input box and choose a work folder "
         "(e.g. their project); until then, help in words as best you can.\n"
-        "- You can't operate other programs or see the screen yet."
+        "{limits}"
     ),
     "ja": (
         "- 今できること：質問に答える、コードやエラーを説明する、{web}。\n"
         "- ユーザーはまだ作業フォルダーを選んでいないので、パソコンのファイルの読み書きやコマンドの実行はできません。"
         "頼まれたら、入力欄の左にあるフォルダーボタンで作業フォルダー（プロジェクトなど）を選ぶよう伝え、"
         "それまでは言葉でできるだけ手伝ってください。\n"
-        "- ほかのソフトの操作や画面を見ることはまだできません。"
+        "{limits}"
     ),
 }
 
@@ -54,7 +54,7 @@ _WORKING = {
         "直接调用工具就行，不用先在文字里征求同意。\n"
         "- 用户拒绝了某个操作时，不要换个办法去做同一件事，先问用户想怎么做。\n"
         "- 改文件前先读；改动尽量小、只改需要改的；做完用一两句话说清楚改了什么、怎么验证。\n"
-        "- 你还不能操作其他软件、不能看屏幕。"
+        "{limits}"
     ),
     "en": (
         "- You're working with the user in the work folder they chose (the current working directory): you can read and "
@@ -65,7 +65,7 @@ _WORKING = {
         "- If the user denies an action, don't try to do the same thing another way; ask them how they'd like to proceed.\n"
         "- Read a file before editing it; keep changes small and focused; when done, say in a sentence or two what you "
         "changed and how to check it.\n"
-        "- You can't operate other programs or see the screen yet."
+        "{limits}"
     ),
     "ja": (
         "- ユーザーが選んだ作業フォルダー（現在の作業ディレクトリ）で一緒に作業しています：ファイルの読み取りと検索、"
@@ -74,8 +74,27 @@ _WORKING = {
         "芸芸の画面がユーザーに確認します。ツールをそのまま呼び出せばよく、文章で先に許可を求める必要はありません。\n"
         "- ユーザーが操作を拒否したら、別の方法で同じことをしようとせず、どうしたいかユーザーに聞いてください。\n"
         "- 編集する前にファイルを読み、変更は必要な部分だけ小さく。終わったら、何を変えたか・どう確かめるかを一言二言で伝えてください。\n"
-        "- ほかのソフトの操作や画面を見ることはまだできません。"
+        "{limits}"
     ),
+}
+
+# 能不能看屏幕（阶段 5：服务商能看图片时有截图工具，见 tools/screen.py）：(能, 不能)
+_LIMITS = {
+    "zh": ("- 你能用 screenshot 工具看用户的屏幕：用户说\"看看这个报错\"\"我屏幕上的……\"时先截图再回答。"
+           "优先截用户刚才用的窗口（target=window），需要看全局时才截整块屏幕（screen）；用户没提到屏幕时不要截。\n"
+           "- 你还不能操作其他软件。",
+           "- 你还不能操作其他软件、不能看屏幕（现在用的大脑看不了图片）。"),
+    "en": ("- You can see the user's screen with the screenshot tool: when they say \"look at this error\" or mention "
+           "something on their screen, take a screenshot before answering. Prefer the window they were using "
+           "(target=window); take the whole screen only when you need the bigger picture. Don't take screenshots "
+           "when the user hasn't mentioned their screen.\n"
+           "- You can't operate other programs yet.",
+           "- You can't operate other programs or see the screen yet (the current model can't read images)."),
+    "ja": ("- screenshot ツールでユーザーの画面を見られます。「このエラーを見て」「画面の……」と言われたら、"
+           "先にスクリーンショットを撮ってから答えてください。ユーザーが直前に使っていたウィンドウ（target=window）を優先し、"
+           "全体が必要なときだけ画面全体（screen）を撮ります。画面の話が出ていないときは撮らないでください。\n"
+           "- ほかのソフトの操作はまだできません。",
+           "- ほかのソフトの操作や画面を見ることはまだできません（今のモデルは画像を読めません）。"),
 }
 
 # 能不能搜索网页（服务商不支持时没有 WebSearch 工具，见 providers.usable_tools）：(能, 不能)
@@ -148,14 +167,15 @@ _NOTEBOOK_HEADINGS = {   # (关于用户, 这个项目, 还没有)
 }
 
 
-def persona(language, working=False, project_notes="", web_search=True, notebook=None):
+def persona(language, working=False, project_notes="", web_search=True, notebook=None, screen=False):
     """这种语言的人设（不认识的语言用中文）。working：选了工作文件夹；project_notes：工作文件夹里 CLAUDE.md 的内容；
     web_search：有没有网页搜索工具（DeepSeek 这类没有）；notebook：记事本的目录 (关于用户的几行, 这个项目的几行)，
-    None = 不用记事本。"""
+    None = 不用记事本；screen：有没有截图工具。"""
     if language not in _BASE:
         language = "zh"
     web = _WEB[language][0 if web_search else 1]
-    text = _BASE[language] + (_WORKING if working else _CHAT_ONLY)[language].format(web=web)
+    limits = _LIMITS[language][0 if screen else 1]
+    text = _BASE[language] + (_WORKING if working else _CHAT_ONLY)[language].format(web=web, limits=limits)
     if not web_search:
         text += _NO_WEB_SEARCH[language]
     if notebook is not None:

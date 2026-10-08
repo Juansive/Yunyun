@@ -212,6 +212,13 @@ def test_notebook_switch_is_on_by_default_and_saved_alone(fake_keyring):
     assert not load_settings().notebook
 
 
+def test_screenshot_ask_is_off_by_default_and_saved(fake_keyring):
+    cfg.save_config({"assistant": {"provider": "anthropic"}})
+    assert not load_settings().screenshot_ask                                  # 用户定的：截图不用问
+    save_settings(AssistantSettings(screenshot_ask=True))
+    assert load_settings().screenshot_ask
+
+
 def test_compact_limit_defaults_to_40k_and_is_saved(fake_keyring):
     cfg.save_config({"assistant": {"provider": "anthropic"}})
     assert load_settings().compact_tokens == 40_000

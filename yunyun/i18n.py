@@ -570,13 +570,19 @@ TEXTS = {
     },
     "assistant_privacy_note": {
         "zh": "助手模式里，你的提问和对话会发送给 {}；芸芸搜索、阅读的网页内容，以及选了工作文件夹时她读的文件、"
-              "命令的结果也会经过它。API Key 只保存在这台电脑的 Windows 凭据管理器里。",
+              "命令的结果也会经过它；芸芸看屏幕时，截图也会发过去（芸芸自己的窗口不截）。"
+              "API Key 只保存在这台电脑的 Windows 凭据管理器里。",
         "en": "In assistant mode, your questions and the conversation are sent to {}; web pages Yunyun searches and reads, "
-              "and — with a work folder — the files she reads and command output, also pass through it. "
+              "and — with a work folder — the files she reads and command output, also pass through it; when Yunyun "
+              "looks at your screen, the screenshot is sent too (her own windows are left out). "
               "The API key is stored only in Windows Credential Manager on this PC.",
         "ja": "アシスタントモードでは、あなたの質問と会話が {} に送信されます。芸芸が検索・閲覧するウェブページの内容や、"
-              "作業フォルダーを選んだ場合に読むファイル・コマンドの結果も経由します。API キーはこの PC の Windows 資格情報マネージャーにのみ保存されます。",
+              "作業フォルダーを選んだ場合に読むファイル・コマンドの結果も経由します。芸芸が画面を見るときは、"
+              "スクリーンショットも送られます（芸芸自身のウィンドウは写りません）。"
+              "API キーはこの PC の Windows 資格情報マネージャーにのみ保存されます。",
     },
+    "assistant_screenshot_ask": {"zh": "截图前先问我", "en": "Ask me before taking a screenshot",
+                                 "ja": "スクリーンショットの前に確認する"},
     "assistant_testing": {"zh": "正在测试连接（不会花钱）……", "en": "Testing the connection (free)…", "ja": "接続をテスト中（無料）…"},
     "assistant_saved": {"zh": "连接成功，已保存！", "en": "Connected and saved!", "ja": "接続できました。保存しました！"},
     "assistant_empty_key": {"zh": "请先粘贴 API Key。", "en": "Please paste your API key first.", "ja": "まず API キーを貼り付けてください。"},
@@ -661,6 +667,13 @@ TEXTS = {
     "assistant_tool_recall": {"zh": "正在翻记事本……", "en": "Checking the notebook…", "ja": "メモ帳を見ています…"},
     "assistant_tool_forget": {"zh": "正在从记事本里划掉……", "en": "Crossing it out of the notebook…",
                               "ja": "メモ帳から消しています…"},
+    "assistant_tool_screenshot": {"zh": "正在看屏幕……", "en": "Looking at the screen…", "ja": "画面を見ています…"},
+    # 看屏幕（阶段 5）：截之前气泡说一声；操作记录里截的是哪里
+    "assistant_screenshot_said": {"zh": "我看一下屏幕哦", "en": "Let me take a look at your screen",
+                                  "ja": "ちょっと画面を見るね"},
+    "assistant_screenshot_target_window": {"zh": "你刚才用的窗口", "en": "the window you were using",
+                                           "ja": "直前に使っていたウィンドウ"},
+    "assistant_screenshot_target_screen": {"zh": "整块屏幕", "en": "the whole screen", "ja": "画面全体"},
     "assistant_waiting_confirm": {"zh": "等你确认……", "en": "Waiting for your OK…", "ja": "確認を待っています…"},
     # 确认卡片
     "assistant_confirm_command": {"zh": "芸芸想执行一条命令", "en": "Yunyun wants to run a command",
@@ -684,6 +697,13 @@ TEXTS = {
                                         "en": "Yunyun wants to write a file outside the work folder",
                                         "ja": "芸芸が作業フォルダー外のファイルに書き込もうとしています"},
     "assistant_confirm_other": {"zh": "芸芸想用 {}", "en": "Yunyun wants to use {}", "ja": "芸芸が {} を使おうとしています"},
+    "assistant_confirm_screenshot": {"zh": "芸芸想看一下你的屏幕", "en": "Yunyun wants to look at your screen",
+                                     "ja": "芸芸があなたの画面を見ようとしています"},
+    "assistant_confirm_screenshot_note": {
+        "zh": "截图会发给你选的服务商，芸芸自己的窗口不截。",
+        "en": "The screenshot is sent to your chosen provider; Yunyun's own windows are left out.",
+        "ja": "スクリーンショットは選んだプロバイダーに送られます。芸芸自身のウィンドウは写りません。",
+    },
     "assistant_confirm_note_danger": {
         "zh": "这类命令可能删除文件、安装软件、联网下载或改动系统，所以每次都要问你。",
         "en": "Commands like this may delete files, install software, download things or change the system, "
@@ -731,6 +751,8 @@ TEXTS = {
                                           "ja": "この会話ではこのフォルダーを許可"},
     "assistant_confirm_remember_edit": {"zh": "这次对话改文件都允许", "en": "Allow edits for this chat",
                                         "ja": "この会話では編集を許可"},
+    "assistant_confirm_remember_screenshot": {"zh": "这次对话截图都允许", "en": "Allow screenshots for this chat",
+                                              "ja": "この会話ではスクリーンショットを許可"},
     "assistant_confirm_waiting_said": {
         "zh": "有件事要你确认：点我一下～",
         "en": "I need your OK on something — click me!",
@@ -847,6 +869,7 @@ TEXTS = {
     "assistant_action_remember": {"zh": "记一条", "en": "Note", "ja": "メモ"},
     "assistant_action_recall": {"zh": "翻记事本", "en": "Check notes", "ja": "メモを見る"},
     "assistant_action_forget": {"zh": "划掉一条", "en": "Remove note", "ja": "メモを消す"},
+    "assistant_action_screenshot": {"zh": "看屏幕", "en": "Screenshot", "ja": "画面を見る"},
     "assistant_action_failed": {"zh": "（没成功）", "en": " (failed)", "ja": "（失敗）"},
     "assistant_decision_auto": {"zh": "不用问", "en": "No need to ask", "ja": "確認不要"},
     "assistant_decision_granted": {"zh": "之前允许过同类", "en": "Allowed earlier", "ja": "以前に許可済み"},

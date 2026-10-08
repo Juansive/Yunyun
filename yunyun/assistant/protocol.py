@@ -108,6 +108,21 @@ class Rewind:
 
 
 @_message
+class ScreenshotReply:
+    """芸芸截好的图（ScreenshotRequest 的回答）。data：base64 的图片；width / height：缩小后的大小；
+    target：实际截的是什么（"window" 找不到时会改成截 "screen"）；没截成（ok=False）时 detail 是原因（给模型看的英文）。"""
+    TYPE: ClassVar[str] = "screenshot_reply"
+    request_id: int
+    ok: bool
+    data: str = ""
+    mime: str = "image/jpeg"
+    width: int = 0
+    height: int = 0
+    target: str = ""
+    detail: str = ""
+
+
+@_message
 class Quit:
     """关掉助手：子进程收拾好就退出。"""
     TYPE: ClassVar[str] = "quit"
@@ -174,6 +189,19 @@ class ToolDecision:
     tool: str
     decision: str
     detail: str = ""
+
+
+@_message
+class ScreenshotRequest:
+    """模型调用了截图工具（阶段 5）：请芸芸截图（截图要用 Qt 和芸芸自己的窗口信息，所以在芸芸进程里做），等 ScreenshotReply。
+    target："window"（你切到芸芸之前用的那个窗口）或 "screen"（芸芸所在的那块屏幕）。"""
+    TYPE: ClassVar[str] = "screenshot_request"
+    request_id: int
+    target: str
+
+
+SCREENSHOT_TOOL = "mcp__yunyun__screenshot"   # 截图工具在 Claude Code 里的名字（assistant/tools/screen.py）
+SCREENSHOT_TARGETS = ("window", "screen")
 
 
 DECISIONS = (
@@ -265,6 +293,6 @@ ERROR_KINDS = (
     "other",
 )
 
-COMMANDS = (Ask, Interrupt, PermissionReply, Rewind, Quit)
-EVENTS = (Ready, TextDelta, ToolStarted, ToolFinished, PermissionRequest, ToolDecision, TurnFinished, Compacting,
-          Compacted, Rewound, Error)
+COMMANDS = (Ask, Interrupt, PermissionReply, Rewind, ScreenshotReply, Quit)
+EVENTS = (Ready, TextDelta, ToolStarted, ToolFinished, PermissionRequest, ToolDecision, ScreenshotRequest, TurnFinished,
+          Compacting, Compacted, Rewound, Error)

@@ -415,6 +415,40 @@ def test_notebook_goes_into_the_options(monkeypatch):
     assert off.mcp_servers == {} and "m1" not in off.system_prompt["append"]
 
 
+def test_screenshot_tool_only_when_the_provider_can_read_images(monkeypatch):
+    from dataclasses import replace
+    brain = claude_brain.ClaudeBrain(AssistantSettings(), "k", "zh", lambda e: None)
+    assert brain.screen is not None
+    calls = []
+    real_server = claude_brain.yunyun_server
+    monkeypatch.setattr(claude_brain, "yunyun_server", lambda *a, **kw: calls.append(kw) or real_server(*a, **kw))
+    options = claude_brain.build_options(AssistantSettings(), "k", "zh", screen=brain.screen)
+    assert calls[-1]["screen"] is brain.screen and "yunyun" in options.mcp_servers   # 截图工具挂上了
+    assert "screenshot" in options.system_prompt["append"]                # 芸芸知道自己能看屏幕了
+    monkeypatch.setitem(PROVIDERS, "anthropic", replace(PROVIDERS["anthropic"], images=False))
+    blind = claude_brain.ClaudeBrain(AssistantSettings(), "k", "zh", lambda e: None)
+    assert blind.screen is None                                           # 看不了图片：没有截图工具
+    assert "看不了图片" in claude_brain.build_options(AssistantSettings(), "k", "zh").system_prompt["append"]
+
+
+def test_gate_asks_before_screenshots_when_set():
+    asking = claude_brain.ClaudeBrain(AssistantSettings(screenshot_ask=True), "k", "zh", lambda e: None)
+    assert asking.gate.decide("mcp__yunyun__screenshot", {"target": "window"}).kind == "screenshot"
+    quiet = claude_brain.ClaudeBrain(AssistantSettings(), "k", "zh", lambda e: None)
+    assert quiet.gate.decide("mcp__yunyun__screenshot", {"target": "window"}).action == "allow"
+
+
+def test_stopping_cancels_a_waiting_screenshot():
+    brain = claude_brain.ClaudeBrain(AssistantSettings(), "k", "zh", lambda e: None)
+
+    async def main():
+        waiting = asyncio.create_task(brain.screen.request("window"))
+        await asyncio.sleep(0)
+        await brain.interrupt()                                           # 还没连上 Claude Code 也能停
+        return await waiting
+    assert not asyncio.run(main()).ok
+
+
 def test_persona_notebook_section():
     for language in ("zh", "en", "ja"):
         text = persona(language, notebook=(["[m1] A"], ["[m2] B"]))

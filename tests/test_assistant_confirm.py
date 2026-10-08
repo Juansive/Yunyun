@@ -65,6 +65,7 @@ def shown(qapp, confirm, req, more=0):
      "assistant_confirm_edit_sensitive"),
     (request("Write", {"file_path": "C:\\a.txt"}, "write_outside", False), "assistant_confirm_write_outside"),
     (request("Mystery", {}, "something_new"), "assistant_confirm_other"),
+    (request("mcp__yunyun__screenshot", {"target": "window"}, "screenshot", scope=""), "assistant_confirm_screenshot"),
 ])
 def test_title_for_each_kind(req, key):
     assert title_key(req) == key
@@ -115,6 +116,16 @@ def test_remember_text(monkeypatch):
     assert remember_text(request("Edit", {}, "edit")) == i18n.tr("assistant_confirm_remember_edit")
     assert remember_text(request("Read", {}, "read_outside")) == i18n.tr("assistant_confirm_remember_folder")
     assert remember_text(request(can_remember=False)) == ""
+
+
+def test_screenshot_request_says_where_and_that_it_is_sent(monkeypatch):
+    """设置里选了"截图前先问我"时的确认卡片（阶段 5）。"""
+    monkeypatch.setattr(i18n, "_current", "zh")
+    req = request("mcp__yunyun__screenshot", {"target": "screen"}, "screenshot", scope="")
+    html = detail_html(req, WS)
+    assert "整块屏幕" in html and "截图会发给你选的服务商" in html
+    assert remember_text(req) == "这次对话截图都允许"
+    assert "你刚才用的窗口" in detail_html(request("mcp__yunyun__screenshot", {}, "screenshot"), WS)   # 没说就是窗口
 
 
 # ---------- 卡片 ----------

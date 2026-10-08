@@ -30,7 +30,7 @@ from PySide6.QtWidgets import (
 from shiboken6 import isValid
 
 from yunyun import i18n
-from yunyun.assistant import memory
+from yunyun.assistant import memory, protocol
 from yunyun.pet.assistant_deck import context_status
 from yunyun.pet.side_panel import SidePanel
 
@@ -93,7 +93,7 @@ _ACTION_VERBS = {
     "WebSearch": "assistant_action_web_search", "web_search": "assistant_action_web_search",
     "WebFetch": "assistant_action_web_fetch",
     memory.REMEMBER_TOOL: "assistant_action_remember", memory.RECALL_TOOL: "assistant_action_recall",
-    memory.FORGET_TOOL: "assistant_action_forget",
+    memory.FORGET_TOOL: "assistant_action_forget", protocol.SCREENSHOT_TOOL: "assistant_action_screenshot",
 }
 _DECISION_COLORS = {"auto": "#8A94A6", "granted": "#2E7D32", "allowed": "#2E7D32", "remembered": "#2E7D32",
                     "denied": "#C62828", "blocked": "#C62828", "stopped": "#B7791F"}
@@ -111,13 +111,16 @@ def actions_html(actions):
     for action in actions:
         key = _ACTION_VERBS.get(action.tool)
         verb = i18n.tr(key) if key else action.tool
+        detail = action.detail
+        if action.tool == protocol.SCREENSHOT_TOOL and detail in protocol.SCREENSHOT_TARGETS:
+            detail = i18n.tr(f"assistant_screenshot_target_{detail}")   # window / screen → 给人看的说法
         decision = i18n.tr(f"assistant_decision_{action.decision}")
         if action.ok is False:
             decision += i18n.tr("assistant_action_failed")
         color = _DECISION_COLORS.get(action.decision, "#8A94A6")
         rows.append(
             f'<tr><td style="color:#9AA3B2;">{action.time:%H:%M}</td><td>{_escape(verb)}</td>'
-            f'<td style="font-family:Consolas,\'Microsoft YaHei\';">{_escape(_short(action.detail))}</td>'
+            f'<td style="font-family:Consolas,\'Microsoft YaHei\';">{_escape(_short(detail))}</td>'
             f'<td style="color:{color};">{_escape(decision)}</td></tr>')
     return f'<table cellspacing="0" cellpadding="2">{"".join(rows)}</table>'
 

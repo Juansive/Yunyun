@@ -28,6 +28,9 @@ def isolate_user_data(tmp_path, monkeypatch):
     monkeypatch.setattr(service, "IDLE_ENABLED", False)   # 也不许真的去连邮箱做实时接收
 
 
+FAKE_SCREENSHOT = "ZmFrZSBzY3JlZW5zaG90"   # 假截图的 base64（"fake screenshot"）
+
+
 @pytest.fixture(autouse=True)
 def no_real_assistant(monkeypatch, tmp_path):
     """测试里绝不启动真的助手子进程 / 测试连接的小进程（会启动 Claude Code、联网），也不读真的助手 Key（autouse：自动生效）。
@@ -48,6 +51,9 @@ def no_real_assistant(monkeypatch, tmp_path):
     monkeypatch.setattr(assistant_history, "history_path", lambda: tmp_path / "assistant_cards.json")
     monkeypatch.setattr(assistant_history, "claude_data_dir", lambda: tmp_path / "assistant_claude")
     monkeypatch.setattr(memory, "memory_path", lambda: tmp_path / "assistant_memory.json")   # 记事本也一样
+    # 截图（阶段 5）：GDI 截图在 offscreen 平台下也会真的截到你的屏幕——测试里一律换成假截图（一张 4x2 的灰图）
+    from yunyun.pet import screen_capture
+    monkeypatch.setattr(screen_capture, "take", lambda target, near: (target, FAKE_SCREENSHOT, 4, 2))
     real_get = keyring.get_password
     monkeypatch.setattr(keyring, "get_password", lambda service, user: None
                         if service == assistant_settings.KEYRING_SERVICE else real_get(service, user))

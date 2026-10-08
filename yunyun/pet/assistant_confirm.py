@@ -84,7 +84,7 @@ def title_key(request):
         return "assistant_confirm_read_outside" if request.tool == "Read" else "assistant_confirm_search_outside"
     if request.kind == "edit":
         return "assistant_confirm_write" if request.tool == "Write" else "assistant_confirm_edit"
-    if request.kind in ("edit_sensitive", "write_outside"):
+    if request.kind in ("edit_sensitive", "write_outside", "screenshot"):
         return f"assistant_confirm_{request.kind}"
     return "assistant_confirm_other"
 
@@ -108,6 +108,10 @@ def detail_html(request, workspace):
     data = request.input or {}
     if request.kind == "command":
         return f'<div {MONO}>{html.escape(str(data.get("command", "")))}</div>'
+    if request.kind == "screenshot":   # 截哪里 + 截图会发给模型（芸芸自己的窗口不截）
+        target = data.get("target") if data.get("target") in ("window", "screen") else "window"
+        return (f'<div><b>{html.escape(i18n.tr(f"assistant_screenshot_target_{target}"))}</b></div>'
+                f'<div style="color:#6B7280;">{html.escape(i18n.tr("assistant_confirm_screenshot_note"))}</div>')
     path = show_path(str(data.get("file_path") or data.get("notebook_path") or data.get("path") or ""), workspace)
     head = f'<b>{html.escape(path)}</b>' if path else ""
     if request.tool in ("Glob", "Grep"):
@@ -132,6 +136,8 @@ def remember_text(request):
         return i18n.tr("assistant_confirm_remember_command", scope)
     if request.kind == "read_outside":
         return i18n.tr("assistant_confirm_remember_folder")
+    if request.kind == "screenshot":
+        return i18n.tr("assistant_confirm_remember_screenshot")
     return i18n.tr("assistant_confirm_remember_edit")
 
 

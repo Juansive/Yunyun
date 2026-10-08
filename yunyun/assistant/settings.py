@@ -42,6 +42,7 @@ class AssistantSettings:
     workspace: str = ""                   # 工作文件夹；空 = 没选（只聊天）。save_settings 不写它，见 set_workspace
     compact_tokens: int = DEFAULT_COMPACT_TOKENS   # 对话超过这么长（token）就自动整理；0 = 不整理
     notebook: bool = True                 # 用不用记事本（阶段 10 的 B）。save_settings 不写它，见 set_notebook_enabled
+    screenshot_ask: bool = False          # 截图前先问我（阶段 5；默认不问，2026-10-06 用户定）
 
     @property
     def info(self):
@@ -67,6 +68,7 @@ def load_settings():
         provider, str(saved.get("model") or ""), _budget(saved.get("budget_usd")),
         _conversation_budget(saved.get("conversation_budget_usd")), workspace,
         compact_tokens=_compact_tokens(saved.get("compact_tokens", DEFAULT_COMPACT_TOKENS)), notebook=notebook,
+        screenshot_ask=saved.get("screenshot_ask") is True,
     )
 
 
@@ -78,6 +80,7 @@ def save_settings(settings):
         "budget_usd": _budget(settings.budget_usd),
         "conversation_budget_usd": _conversation_budget(settings.conversation_budget_usd),
         "compact_tokens": _compact_tokens(settings.compact_tokens),
+        "screenshot_ask": bool(settings.screenshot_ask),
     })
 
 

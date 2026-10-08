@@ -87,6 +87,34 @@ def menu_texts(pet):
     return [a.text() for a in pet._build_menu().actions() if not a.isSeparator()]
 
 
+def test_screenshot_request_says_so_and_answers_with_the_picture(world, monkeypatch):
+    """大脑要看屏幕：气泡说"我看一下屏幕哦"，截图（这里是 conftest 的假截图）交回给大脑。"""
+    pet, _, processes = world
+    has_key(monkeypatch)
+    pet.open_assistant()
+    process = processes[0]
+    process.say(protocol.Ready("anthropic", "m"))
+    ask(pet, "看看我屏幕上这个报错")
+    process.say(protocol.ScreenshotRequest(1, "window"))
+    assert i18n.tr("assistant_screenshot_said") in bubbles(pet)
+    reply = process.sent[-1]
+    assert isinstance(reply, protocol.ScreenshotReply) and reply.ok and reply.request_id == 1
+    assert (reply.target, reply.width, reply.height) == ("window", 4, 2)
+
+
+def test_failed_screenshot_tells_the_brain(world, monkeypatch):
+    from yunyun.pet import screen_capture
+    pet, _, processes = world
+    has_key(monkeypatch)
+    monkeypatch.setattr(screen_capture, "take", lambda target, near: None)
+    pet.open_assistant()
+    process = processes[0]
+    process.say(protocol.Ready("anthropic", "m"))
+    ask(pet, "看看屏幕")
+    process.say(protocol.ScreenshotRequest(2, "screen"))
+    assert process.sent[-1] == protocol.ScreenshotReply(2, False, detail="Yunyun could not take a screenshot.")
+
+
 def test_menu_puts_assistant_first_and_fancy(world, monkeypatch):
     pet, _, _ = world
     actions = pet._build_menu().actions()

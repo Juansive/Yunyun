@@ -12,7 +12,7 @@ import logging
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QComboBox, QDoubleSpinBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton, QVBoxLayout,
+    QCheckBox, QComboBox, QDoubleSpinBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton, QVBoxLayout,
     QWidget,
 )
 
@@ -69,6 +69,7 @@ class AssistantSettingsPage(QWidget):
         self._budget = _money_box(MIN_BUDGET_USD, MAX_BUDGET_USD, 0.05)                         # 每次回答
         self._conversation_budget = _money_box(MIN_CONVERSATION_BUDGET_USD, MAX_CONVERSATION_BUDGET_USD, 0.1)   # 每段对话
         self._compact = QComboBox()   # 对话超过多长自动整理（阶段 10）
+        self._screenshot_ask = QCheckBox(tr("assistant_screenshot_ask"))   # 截图前先问我（阶段 5，默认不问）
         form.addRow(tr("assistant_provider"), self._provider)
         form.addRow(tr("assistant_model"), self._model)
         form.addRow("", self._custom_model)
@@ -76,6 +77,7 @@ class AssistantSettingsPage(QWidget):
         form.addRow(tr("assistant_budget"), self._budget)
         form.addRow(tr("assistant_conversation_budget"), self._conversation_budget)
         form.addRow(tr("assistant_compact"), self._compact)
+        form.addRow("", self._screenshot_ask)
         layout.addLayout(form)
 
         budget_hint = QLabel(tr("assistant_budget_hint"))
@@ -137,6 +139,7 @@ class AssistantSettingsPage(QWidget):
         self._budget.setValue(saved.budget_usd)
         self._conversation_budget.setValue(saved.conversation_budget_usd)
         self._fill_compact(saved.compact_tokens)
+        self._screenshot_ask.setChecked(saved.screenshot_ask)
         self._budget.valueChanged.connect(self._update_budget_warning)
         self._conversation_budget.valueChanged.connect(self._update_budget_warning)
         self._update_budget_warning()
@@ -269,7 +272,8 @@ class AssistantSettingsPage(QWidget):
             return
         self._pending = (AssistantSettings(info.code, model, round(self._budget.value(), 2),
                                            round(self._conversation_budget.value(), 2),
-                                           compact_tokens=self._compact.currentData()), typed_key)
+                                           compact_tokens=self._compact.currentData(),
+                                           screenshot_ask=self._screenshot_ask.isChecked()), typed_key)
         self._set_busy(True)
         self._show_status(i18n.tr("assistant_testing"))
         self._check = self._make_check(info.code, model, key)
@@ -300,7 +304,7 @@ class AssistantSettingsPage(QWidget):
 
     def _set_busy(self, busy):
         for widget in (self._save_button, self._provider, self._model, self._custom_model, self._key, self._budget,
-                       self._conversation_budget, self._compact):
+                       self._conversation_budget, self._compact, self._screenshot_ask):
             widget.setEnabled(not busy)
 
     def _fill_compact(self, current):

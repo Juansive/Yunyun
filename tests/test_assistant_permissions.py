@@ -26,10 +26,22 @@ def test_web_tools_never_ask(ws, tool):
     assert decide(tool, {"query": "x"}, ws / "proj").action == ALLOW
 
 
-@pytest.mark.parametrize("tool", ["mcp__yunyun__remember", "mcp__yunyun__recall", "mcp__yunyun__forget"])
-def test_notebook_tools_never_ask(ws, tool):
-    """芸芸的记事本（阶段 10）：只动芸芸自己的记事本，你在设置 → 记事本里随时能看、改、删。"""
+@pytest.mark.parametrize("tool", ["mcp__yunyun__remember", "mcp__yunyun__recall", "mcp__yunyun__forget",
+                                  "mcp__yunyun__screenshot"])
+def test_notebook_and_screenshot_never_ask(ws, tool):
+    """芸芸的记事本（阶段 10）：只动芸芸自己的记事本，你在设置 → 记事本里随时能看、改、删；
+    截图（阶段 5）：用户定的不用问（截之前气泡说一声，芸芸自己的窗口不截）。"""
     assert decide(tool, {"title": "x", "scope": "user"}, ws / "proj").action == ALLOW
+
+
+def test_screenshot_asks_when_the_user_wants_to_be_asked(ws):
+    """设置里选了"截图前先问我"：每次问，可以选"这次对话都允许截图"。"""
+    decision = decide("mcp__yunyun__screenshot", {"target": "window"}, ws / "proj", ask_screenshot=True)
+    assert (decision.action, decision.kind, decision.grant) == (ASK, "screenshot", (("screenshot",),))
+    granted = decide("mcp__yunyun__screenshot", {"target": "screen"}, ws / "proj", {("screenshot",)},
+                     ask_screenshot=True)
+    assert granted.action == ALLOW and granted.by_grant
+    assert decide("mcp__yunyun__screenshot", {}, ws / "proj").action == ALLOW   # 默认不问
 
 
 @pytest.mark.parametrize("tool", ["Task", "mcp__x__y", "mcp__yunyun__other", "mcp__other__remember", "KillShell", ""])

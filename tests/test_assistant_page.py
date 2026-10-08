@@ -120,6 +120,18 @@ def test_compact_limit_choice(qapp, keys, monkeypatch):
     assert assistant_settings.load_settings().compact_tokens == 0
 
 
+def test_screenshot_ask_checkbox_is_saved(qapp, keys):
+    page = make_page()
+    assert not page._screenshot_ask.isChecked()                       # 默认不问
+    page._screenshot_ask.setChecked(True)
+    page._key.setText("sk-ant-new")
+    saved = []
+    page.settings_saved.connect(lambda: saved.append(True))
+    page._test_and_save()
+    assert wait_until(qapp, lambda: saved)
+    assert assistant_settings.load_settings().screenshot_ask
+
+
 def test_unusual_saved_compact_limit_is_listed(qapp, keys):
     assistant_settings.save_settings(AssistantSettings(compact_tokens=50_000))   # 改过配置文件
     page = make_page()

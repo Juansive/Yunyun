@@ -16,6 +16,7 @@
   收起着的时候来了确认：芸芸用气泡提醒，唤出时卡片再出来。停止 / 新对话 / 退出 = 等着的都算拒绝。
 - 芸芸被别的窗口挡住时（气泡也看不到）：要你确认 / 做完了，任务栏时钟上方弹出角落小条（pet/assistant_notice.py），
   点一下芸芸出来、卡片展开；全屏时不弹。做完的那条留到你看到芸芸 / 点它 / 又问了新问题。
+- 看屏幕（阶段 5）：大脑要截图时（session.screenshot_requested）气泡说"我看一下屏幕哦"，pet/screen_capture 截好交回去。
 - 撤销：改了文件的那一问，阅读框里有"撤销这次改动"（点两次）。只有同一个大脑会话里的能撤销（换了对话 / 闲置退出过就不行了），
   撤销会连之后几问的改动一起恢复；做完芸芸说一句，卡片标上"已撤销"。用命令改的东西撤销不了。
 - 收起（Esc / 点到别的程序）：只有输入框缩回去；卡片堆、阅读框、确认卡片**一直留着**（2026-10-08 用户要求：边看文档边看回答），
@@ -27,6 +28,7 @@
 
 pet 只需要提供：body_rect()、say(text, ms)、say_live(text, max_width)、end_live(ms)。
 """
+import logging
 import os
 from datetime import datetime
 
@@ -34,10 +36,11 @@ from PySide6.QtCore import QObject, QPoint, QRect, QTimer, Signal
 from PySide6.QtGui import QGuiApplication
 
 from yunyun import i18n
+from yunyun.assistant import protocol
 from yunyun.assistant import settings as assistant_settings
 from yunyun.assistant.session import SETTINGS_ERRORS, AssistantSession, error_text
 from yunyun.assistant.transcripts import tool_detail
-from yunyun.pet import assistant_history, winapi
+from yunyun.pet import assistant_history, screen_capture, winapi
 from yunyun.pet.assistant_confirm import AssistantConfirm, title_key
 from yunyun.pet.assistant_deck import AssistantCard, AssistantDeck, markdown_to_plain
 from yunyun.pet.assistant_history_panel import AssistantHistoryPanel
@@ -45,6 +48,8 @@ from yunyun.pet.assistant_input import AssistantInput, folder_name
 from yunyun.pet.assistant_notice import AssistantNotice
 from yunyun.pet.assistant_reader import AssistantReader
 from yunyun.pet.bubble import bubble_font, elide_lines
+
+log = logging.getLogger(__name__)
 
 
 def turn_cost(turn):
@@ -92,6 +97,7 @@ class AssistantMode(QObject):
     DONE_SAY_MS = 8000            # 答完以后气泡再留多久（卡片堆没显示时）
     DONE_SAY_WITH_DECK_MS = 3000  # 卡片堆开着时：卡片里已经有了，气泡早点收
     CONFIRM_SAY_MS = 15000        # 收起着时来了确认请求：气泡提醒多久
+    SCREENSHOT_SAY_MS = 2500      # "我看一下屏幕哦"说多久
 
     def __init__(self, pet, cards, make_process=None, state=None):
         """cards：当前这段对话的卡片（从旧到新）；state：要记着的东西（"offset"：卡片组相对芸芸的偏移）。
@@ -147,6 +153,7 @@ class AssistantMode(QObject):
         self.session.progress_changed.connect(self._on_progress)
         self.session.turn_finished.connect(self._on_turn_finished)
         self.session.compact_changed.connect(self._on_compact_changed)
+        self.session.screenshot_requested.connect(self._on_screenshot_requested)
         self.session.error_occurred.connect(self._on_error)
         self.notice.clicked.connect(self._on_notice_clicked)
         pet.cover_checked.connect(self._update_notice)   # 芸芸被挡住 / 露出来（约每 0.5 秒检查一次）
@@ -535,6 +542,23 @@ class AssistantMode(QObject):
 
     def _snippet(self, markdown, lines=None):
         return elide_lines(markdown_to_plain(markdown), bubble_font(), self.ANSWER_WIDTH, lines or self.ANSWER_LINES)
+
+    def _on_screenshot_requested(self, request):
+        """大脑要看屏幕（阶段 5）：气泡说一声"我看一下屏幕哦"，截图（芸芸自己的窗口不截，见 screen_capture），交回去。
+        气泡也是芸芸的窗口，不会被截进去，所以说完马上截就行。"""
+        self._pet.say(i18n.tr("assistant_screenshot_said"), self.SCREENSHOT_SAY_MS)
+        try:
+            near = screen_capture.window_center(int(self._pet.winId()))   # 物理像素：找芸芸在哪块屏幕上
+            result = screen_capture.take(request.target, near)
+        except OSError as e:
+            log.warning("截图出错：%s", e)
+            result = None
+        if result is None:
+            reply = protocol.ScreenshotReply(request.request_id, False, detail="Yunyun could not take a screenshot.")
+        else:
+            target, data, width, height = result
+            reply = protocol.ScreenshotReply(request.request_id, True, data, "image/jpeg", width, height, target)
+        self.session.answer_screenshot(reply)
 
     def _on_compact_changed(self, turn):
         """大脑在整理 / 整理好了前面的对话：那一轮的卡片底行跟着变（整理的那一会儿不能撤销）。"""

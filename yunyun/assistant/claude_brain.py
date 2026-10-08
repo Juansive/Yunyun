@@ -30,7 +30,7 @@ from yunyun.assistant.persona import persona
 from yunyun.assistant.providers import Provider, Rates, launch_env, usable_tools, usage_cost
 from yunyun.assistant.settings import HISTORY_KEEP_DAYS, SESSION_DATA_DIRS
 from yunyun.assistant.tools import SERVER as TOOL_SERVER
-from yunyun.assistant.tools import yunyun_server
+from yunyun.assistant.tools import ScreenBridge, yunyun_server
 from yunyun.paths import data_dir
 
 log = logging.getLogger(__name__)
@@ -109,9 +109,9 @@ def read_project_notes(workspace):
     return text
 
 
-def build_options(settings, api_key, language, stderr=None, gate=None, resume=""):
+def build_options(settings, api_key, language, stderr=None, gate=None, resume="", screen=None):
     """启动 Claude Code 的全部选项。gate：PermissionGate（每次用工具前拍板）；测试里可以不传。
-    resume：接着哪一段对话聊（Claude Code 的会话编号；空 = 新对话）。"""
+    resume：接着哪一段对话聊（Claude Code 的会话编号；空 = 新对话）；screen：ScreenBridge（有它才有截图工具）。"""
     provider = settings.info
     env = {
         **launch_env(provider, api_key, settings.effective_model),
@@ -124,7 +124,7 @@ def build_options(settings, api_key, language, stderr=None, gate=None, resume=""
     tools = usable_tools(provider, wanted_tools(settings))
     # 记事本（阶段 10）：目录接在人设后面（这段对话里不变，命中缓存），细节和写入用芸芸自己的工具（进程内 MCP）
     notebook = memory.index_lines(memory.load(), settings.workspace) if settings.notebook else None
-    server = yunyun_server(settings.workspace, notebook=settings.notebook)
+    server = yunyun_server(settings.workspace, notebook=settings.notebook, screen=screen)
     return ClaudeAgentOptions(
         resume=resume or None,            # 历史对话"接着聊"：Claude Code 读回那段对话的记录
         # 撤销（2.7）：Claude Code 改文件前先备份（放在 CLAUDE_CONFIG_DIR 里），每一问传回一个 uuid，rewind_files 到它
@@ -140,7 +140,8 @@ def build_options(settings, api_key, language, stderr=None, gate=None, resume=""
         setting_sources=[],               # 不读用户自己的 Claude Code 设置，也不读工作文件夹里 .claude/ 的设置
         strict_mcp_config=True,           # 不加载别处配置的 MCP 服务器
         system_prompt={"type": "preset", "preset": "claude_code",
-                       "append": persona(language, working, notes, web_search="WebSearch" in tools, notebook=notebook)},
+                       "append": persona(language, working, notes, web_search="WebSearch" in tools, notebook=notebook,
+                                         screen=screen is not None)},
         include_partial_messages=True,    # 逐字显示
         # 每段对话的上限：Claude Code 按整段对话累计算；但它只认 Claude 的价格，自己算钱的服务商由 TurnState 管。
         # 每次回答的上限都由 TurnState 估算
@@ -162,8 +163,9 @@ class PermissionGate:
     DENIED = "The user denied this action."
     STOPPED = "The user stopped the current task."
 
-    def __init__(self, workspace, emit):
+    def __init__(self, workspace, emit, ask_screenshot=False):
         self.workspace = str(workspace)
+        self.ask_screenshot = ask_screenshot   # 设置里选了"截图前先问我"
         self.grants = set()
         self.stopped = False  # 这一轮被停下了：之后迟到的确认请求直接拒绝（下一轮开始时 ClaudeBrain.ask 清掉）
         self._emit = emit
@@ -171,7 +173,7 @@ class PermissionGate:
         self._next_id = 1
 
     def decide(self, tool, tool_input):
-        return permissions.decide(tool, tool_input, self.workspace, self.grants)
+        return permissions.decide(tool, tool_input, self.workspace, self.grants, self.ask_screenshot)
 
     def _record(self, tool_id, tool, tool_input, decision):
         """操作记录：这次工具调用最后怎么定的（protocol.DECISIONS），给芸芸发一条 ToolDecision。"""
@@ -368,7 +370,7 @@ def error_kind(text, sdk_error=None):
 
 def _tool_detail(name, tool_input, workspace=""):
     """给人看的线索：搜索的关键词、读的网址、文件（工作文件夹里的显示相对路径）……没有就是空的。"""
-    for key in ("query", "url", "file_path", "notebook_path", "path", "pattern", "command", "title", "id"):
+    for key in ("query", "url", "file_path", "notebook_path", "path", "pattern", "command", "title", "id", "target"):
         value = tool_input.get(key) if isinstance(tool_input, dict) else None
         if isinstance(value, str) and value:
             if key in ("file_path", "notebook_path", "path") and workspace and os.path.isabs(value):
@@ -509,7 +511,8 @@ class ClaudeBrain:
             context_limit=settings.compact_tokens,
         )
         self.compacting = False   # 正在整理前面的对话（worker 据此把这时来的提问排到整理之后）
-        self.gate = PermissionGate(settings.workspace or WORKSPACE, emit)
+        self.gate = PermissionGate(settings.workspace or WORKSPACE, emit, ask_screenshot=settings.screenshot_ask)
+        self.screen = ScreenBridge(emit) if settings.info.images else None   # 服务商看不了图片就没有截图工具
         self._stderr = deque(maxlen=30)   # Claude Code 的错误输出：启动失败时看最后几行
 
     async def start(self):
@@ -526,7 +529,7 @@ class ClaudeBrain:
         if removed:
             log.info("清理了 %d 个 %d 天以前的对话记录 / 备份文件", removed, HISTORY_KEEP_DAYS)
         options = build_options(self._settings, self._api_key, self._language, stderr=self._stderr.append,
-                                gate=self.gate, resume=self._resume)
+                                gate=self.gate, resume=self._resume, screen=self.screen)
         if self._resume:
             # 接着聊：Claude Code 报的花费会接着那段对话的累计往上加（try_resume.py 实测），先把以前花的当起点，
             # 不然第一问会把以前的钱再算一遍
@@ -621,6 +624,10 @@ class ClaudeBrain:
     def reply_permission(self, reply):
         self.gate.reply(reply)
 
+    def reply_screenshot(self, reply):
+        if self.screen is not None:
+            self.screen.reply(reply)
+
     async def rewind(self, checkpoint):
         """撤销：用 Edit / Write 改过的文件恢复到 checkpoint 那一问之前（之后几问的改动也一起撤销）。"""
         try:
@@ -634,6 +641,8 @@ class ClaudeBrain:
 
     async def interrupt(self):
         self.gate.deny_all(PermissionGate.STOPPED)   # 等着确认的先拒绝掉，不然停不下来
+        if self.screen is not None:
+            self.screen.cancel_all()                  # 等着截图的也一样
         if self._client is not None:
             self._state.interrupted = True
             running = proctree.before_stop()
@@ -642,6 +651,8 @@ class ClaudeBrain:
 
     async def close(self):
         self.gate.deny_all(PermissionGate.STOPPED)
+        if self.screen is not None:
+            self.screen.cancel_all()
         if self._client is not None:
             client, self._client = self._client, None
             running = proctree.before_stop()
