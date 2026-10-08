@@ -3,14 +3,16 @@
 助手用 Claude Agent SDK（里面是 Claude Code）。Claude Code 说的是 Anthropic 的接口格式，所以除了 Claude 官方，
 凡是提供"Anthropic 兼容接口"的服务商（DeepSeek、智谱……）也能用：同一套程序，只换接口地址、Key 和模型名。
 
-现在只有 Claude 官方一家；阶段 3 在 PROVIDERS 里加条目（再在 i18n.py 里加显示名），别的代码不用改：
+加一家服务商：在 PROVIDERS 里加条目，再在 i18n.py 里加显示名（assistant_provider_代号）和说明（assistant_hint_代号）：
 - launch_env() 把"服务商 + Key + 模型"变成启动 Claude Code 用的环境变量；
 - usable_tools() 去掉这家用不了的工具（网页搜索是 Anthropic 服务器上的工具，别家用不了）。
 """
 from dataclasses import dataclass, field
 
-# Claude Code 内部的"模型别名"：后台的小任务会用 haiku 别名。接别家时这些都要指到那家的模型，不然它会去要 Claude 的模型
-_MODEL_ALIAS_ENVS = ("ANTHROPIC_DEFAULT_HAIKU_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL")
+# Claude Code 内部的"模型别名"：后台的小任务（起标题、读网页后的摘要……）用 haiku 别名，别的用 sonnet / opus。
+# 接别家时这些都要指到那家的模型，不然它会去要 Claude 的模型
+_SMALL_ALIAS_ENV = "ANTHROPIC_DEFAULT_HAIKU_MODEL"
+_BIG_ALIAS_ENVS = ("ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL")
 
 
 @dataclass(frozen=True)  # frozen：创建后不能修改，防止被不小心改掉
@@ -23,6 +25,7 @@ class Provider:
     base_url: str = ""                         # 接口地址；空 = Claude 官方（Claude Code 默认的地址）
     key_env: str = "ANTHROPIC_API_KEY"         # Key 用哪个环境变量传：官方是 x-api-key 头；不少兼容接口要 ANTHROPIC_AUTH_TOKEN
     alias_models: bool = False                 # 把 Claude Code 的模型别名都指到用户选的模型（接别家时要）
+    small_model: str = ""                      # 后台小任务用的模型（haiku 别名）；空 = 也用用户选的模型
     web_search: bool = True                    # 能不能用网页搜索（WebSearch 在 Anthropic 的服务器上执行）
     images: bool = True                        # 能不能看图片（阶段 5 截图用）
     cost_in_usd: bool = True                   # SDK 报的花费是按 Claude 的价格算的；别家不准，只显示 token 数
@@ -41,6 +44,22 @@ PROVIDERS = {
             key_url="https://platform.claude.com",
             billing_url="https://platform.claude.com/settings/billing",
         ),
+        # DeepSeek 的 Anthropic 兼容接口（2026-10-08 按官方文档 api-docs.deepseek.com 核对：
+        # guides/anthropic_api、guides/coding_agents、quick_start/pricing）。
+        # 认不出的模型名它会悄悄换成 deepseek-flash，所以模型名写错不会报错（测试并保存时另外查模型列表）
+        Provider(
+            code="deepseek",
+            models=("deepseek-flash", "deepseek-v4-pro"),
+            prices={"deepseek-flash": (0.3, 1.2), "deepseek-v4-pro": (1.32, 3.96)},   # 高峰价；闲时半价
+            key_url="https://platform.deepseek.com/api_keys",
+            billing_url="https://platform.deepseek.com/usage",
+            base_url="https://api.deepseek.com/anthropic",
+            key_env="ANTHROPIC_AUTH_TOKEN",    # 官方给 Claude Code 的配置用这个（Authorization: Bearer）
+            alias_models=True,
+            small_model="deepseek-flash",      # 官方推荐：后台小任务用 flash（选了 pro 也不让小任务跟着贵）
+            web_search=False,                  # 文档没说能执行 Anthropic 的网页搜索；读网页（WebFetch）在本机做，能用
+            cost_in_usd=False,                 # Claude Code 按 Claude 的价格算花费，对别家不准（3.4 再定怎么显示）
+        ),
     ]
 }
 DEFAULT_PROVIDER = "anthropic"
@@ -55,7 +74,8 @@ def launch_env(provider, api_key, model):
         env["ANTHROPIC_BASE_URL"] = provider.base_url
     if provider.alias_models and model:
         env["ANTHROPIC_MODEL"] = model
-        env.update({name: model for name in _MODEL_ALIAS_ENVS})
+        env.update({name: model for name in _BIG_ALIAS_ENVS})
+        env[_SMALL_ALIAS_ENV] = provider.small_model or model
     return env
 
 

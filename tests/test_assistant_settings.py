@@ -59,6 +59,32 @@ def test_claude_keeps_web_search():
     assert usable_tools(PROVIDERS["anthropic"], ["WebSearch", "WebFetch"]) == ["WebSearch", "WebFetch"]
 
 
+@pytest.mark.parametrize("model", ["deepseek-flash", "deepseek-v4-pro"])
+def test_deepseek_launch_env(model):
+    """DeepSeek（2026-10-08 按官方文档）：Bearer 传 Key；主模型用选的，后台小任务一律 flash（选了 pro 也不跟着贵）。"""
+    deepseek = PROVIDERS["deepseek"]
+    env = launch_env(deepseek, "sk-test", model)
+    assert env == {
+        "ANTHROPIC_AUTH_TOKEN": "sk-test",
+        "ANTHROPIC_BASE_URL": "https://api.deepseek.com/anthropic",
+        "ANTHROPIC_MODEL": model,
+        "ANTHROPIC_DEFAULT_SONNET_MODEL": model,
+        "ANTHROPIC_DEFAULT_OPUS_MODEL": model,
+        "ANTHROPIC_DEFAULT_HAIKU_MODEL": "deepseek-flash",
+    }
+    assert usable_tools(deepseek, ["WebSearch", "WebFetch", "Read"]) == ["WebFetch", "Read"]
+    assert not deepseek.cost_in_usd                       # Claude Code 按 Claude 的价格算，对别家不准
+    assert set(deepseek.prices) == set(deepseek.models)
+
+
+def test_every_provider_has_texts():
+    """每家服务商在设置页都要有显示名和申请 Key 的说明（三种语言）。"""
+    from yunyun.i18n import TEXTS
+    for code in PROVIDERS:
+        for key in (f"assistant_provider_{code}", f"assistant_hint_{code}"):
+            assert set(TEXTS[key]) >= {"zh", "en", "ja"}, key
+
+
 # ---------- 设置 ----------
 
 def test_defaults_when_nothing_saved(fake_keyring):

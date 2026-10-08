@@ -441,6 +441,7 @@ TEXTS = {
     # ---- 设置窗口：助手页（助手模式用的"大脑"，和上面邮件用的 AI 是两套设置）----
     "assistant_provider": {"zh": "服务商", "en": "Provider", "ja": "プロバイダー"},
     "assistant_provider_anthropic": {"zh": "Claude（Anthropic 官方）", "en": "Claude (Anthropic)", "ja": "Claude（Anthropic 公式）"},
+    "assistant_provider_deepseek": {"zh": "DeepSeek（深度求索）", "en": "DeepSeek", "ja": "DeepSeek"},
     "assistant_model": {"zh": "模型", "en": "Model", "ja": "モデル"},
     "assistant_model_price": {   # 模型名 · 价格（每百万 token 多少美元）
         "zh": "{} · 每百万 token：输入 ${} / 输出 ${}",
@@ -497,6 +498,14 @@ TEXTS = {
               "\"Test and Save\" only checks the key and model; it costs nothing.",
         "ja": "{} で API キーを取得してください（従量課金。Claude のサブスクリプションとは別に請求されます）。"
               "「テストして保存」はキーとモデルを確認するだけで、料金はかかりません。",
+    },
+    "assistant_hint_deepseek": {
+        "zh": "在 {} 申请 API Key（按用量付费，先充值）。这家不能搜索网页，但能读你给的网址。"
+              "点「测试并保存」只检查 Key 和模型，不会花钱。",
+        "en": "Get an API key at {} (pay-as-you-go; top up first). This provider can't search the web, "
+              "but it can read pages you give it. \"Test and Save\" only checks the key and model; it costs nothing.",
+        "ja": "{} で API キーを取得してください（従量課金。先にチャージが必要です）。ウェブ検索はできませんが、"
+              "指定した URL は読めます。「テストして保存」はキーとモデルを確認するだけで、料金はかかりません。",
     },
     "assistant_privacy_note": {
         "zh": "助手模式里，你的提问和对话会发送给 {}；芸芸搜索、阅读的网页内容，以及选了工作文件夹时她读的文件、"
