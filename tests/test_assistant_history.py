@@ -28,8 +28,9 @@ def test_cards_survive_a_round_trip():
                 actions=(action,), session_id="sess-1", workspace="F:\\proj")
     assistant_history.save([divider(folder="proj"), card], now=NOW)
     loaded = assistant_history.load(now=NOW)
-    assert [c.kind for c in loaded] == ["divider", "turn"] and loaded[0].question == "proj"
-    back = loaded[1]
+    assert [c.kind for c in loaded] == ["turn"]                # 分隔卡不存（卡片堆只放一段对话，用不着了）
+    back = loaded[0]
+    assert back.card_id == card.card_id
     assert (back.question, back.answer, back.files, back.checkpoint, back.undone, back.session_id, back.workspace) == (
         "修 bug", "答：修 bug", ("F:\\proj\\calc.py",), "cp-1", True, "sess-1", "F:\\proj")
     assert back.generation == 0                       # 撤销用的会话号不存：重启后都对不上了
@@ -42,7 +43,19 @@ def test_only_the_last_30_days_are_kept():
     cards = [turn("很久以前", days_ago=40), divider(days_ago=35), turn("一个月前", days_ago=31),
              divider(days_ago=29), turn("上周", days_ago=7), turn("今天")]
     assistant_history.save(cards, now=NOW)
-    assert [c.question for c in assistant_history.load(now=NOW)] == ["", "上周", "今天"]   # 留下的那段前面有分隔卡
+    assert [c.question for c in assistant_history.load(now=NOW)] == ["上周", "今天"]
+
+
+def test_saving_merges_instead_of_replacing():
+    """卡片堆里只是当前这段对话：存的时候不能把别的对话冲掉；同一张卡片（撤销后）更新，不会存两份。"""
+    old = turn("昨天那段", days_ago=1, session_id="a")
+    assistant_history.save([old], now=NOW)
+    current = turn("今天这段", session_id="b")
+    assistant_history.save([current], now=NOW)
+    current.undone = True
+    assistant_history.save([current], now=NOW)
+    loaded = assistant_history.load(now=NOW)
+    assert [(c.question, c.undone) for c in loaded] == [("昨天那段", False), ("今天这段", True)]
 
 
 def test_dividers_are_tidied():

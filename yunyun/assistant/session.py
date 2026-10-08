@@ -46,10 +46,10 @@ UNDO_NOTE = transcripts.UNDO_NOTE   # 历史对话读回来时要认出它、去
 _generations = itertools.count(1)   # 子进程的编号：芸芸整个运行期间不重复（助手模式退出再唤出也不会撞号）
 
 
-def default_process(language, parent):
-    """真正的助手子进程（测试时换成假的）。"""
+def default_process(language, parent, resume=""):
+    """真正的助手子进程（测试时换成假的）。resume：接着哪一段以前的对话聊（Claude Code 的会话编号）。"""
     from yunyun.assistant.process import AssistantProcess
-    return AssistantProcess(language, parent)
+    return AssistantProcess(language, parent, resume=resume)
 
 
 def error_text(error):
@@ -117,7 +117,7 @@ class AssistantSession(QObject):
     rewind_finished = Signal(str, bool, object)   # 检查点、成没成、撤销掉的那几轮（[Turn]）
 
     def __init__(self, parent=None, make_process=None):
-        """make_process(语言, parent) → 和 AssistantProcess 一样的对象；不传就用 default_process。"""
+        """make_process(语言, parent, resume=会话编号) → 和 AssistantProcess 一样的对象；不传就用 default_process。"""
         super().__init__(parent)
         self._make_process = make_process or default_process
         self._process = None
@@ -130,6 +130,7 @@ class AssistantSession(QObject):
         self.pending_permissions = []     # 等你确认的 protocol.PermissionRequest（先来的在前）
         self.turns = []               # 这次会话的所有问答（从旧到新）
         self.generation = 0           # 当前子进程的编号（还没启动是 0）
+        self.session_id = ""          # 当前这段对话的 Claude Code 会话编号（闲置释放后再唤出时接着它聊）
         self.rewinding = ""           # 正在撤销的检查点（等 Rewound）
         self._undo_note = []          # 撤销过的文件：下一问发给大脑时附一句说明
 
@@ -156,13 +157,14 @@ class AssistantSession(QObject):
     def progress(self):
         return self._progress
 
-    def start(self):
-        """把大脑启动起来（已经在运行就什么也不做）。"""
+    def start(self, resume=""):
+        """把大脑启动起来（已经在运行就什么也不做）。resume：接着哪一段以前的对话聊（Claude Code 的会话编号）。"""
         if self._process is not None:
             return
         # parent 不用会话自己：会话关掉后，子进程还要几百毫秒才能好好退出
         owner = self.parent() or QCoreApplication.instance()
-        process = self._make_process(i18n.current_language(), owner)
+        process = self._make_process(i18n.current_language(), owner, resume=resume)
+        self.session_id = resume   # 当前这段对话的会话编号：接着聊就是那段的；新对话等第一问答完才知道
         process.event.connect(lambda event, p=process: self._on_event(p, event))
         process.finished.connect(lambda p=process: self._on_process_finished(p))
         self._process = process
@@ -235,14 +237,14 @@ class AssistantSession(QObject):
         self.permissions_changed.emit()
         return True
 
-    def new_conversation(self):
-        """忘掉之前的对话：换一个新的子进程。"""
+    def new_conversation(self, resume=""):
+        """换一个新的子进程：忘掉现在的对话（resume 为空），或者接着以前的某一段聊（resume = 那段的会话编号）。"""
         self._retire_process()
         self._pending = None
         if self.busy:
             self._end_turn(stopped=True)
         self.turns = []
-        self.start()
+        self.start(resume)
 
     def close(self, wait=False):
         """关掉子进程。wait=True（芸芸退出时）：等它真的退出再返回。"""
@@ -343,6 +345,7 @@ class AssistantSession(QObject):
             turn.cost_usd, turn.session_cost_usd = event.cost_usd, event.session_cost_usd
             turn.input_tokens, turn.output_tokens = event.input_tokens, event.output_tokens
             turn.files, turn.checkpoint, turn.session_id = tuple(event.files), event.checkpoint, event.session_id
+            self.session_id = event.session_id or self.session_id
             ledger.record(event.cost_usd)   # 记账：设置页显示今天 / 本月 / 一共花了多少
             self._end_turn(stopped=event.stopped)
         elif isinstance(event, protocol.PermissionRequest):

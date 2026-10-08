@@ -23,11 +23,12 @@ from yunyun.paths import data_dir
 log = logging.getLogger("yunyun.assistant.worker")
 
 
-async def serve(stdin, write, language, make_brain):
+async def serve(stdin, write, language, make_brain, resume=""):
     """主循环。
 
     stdin：能一行行读的二进制流；write(bytes)：把一行发给芸芸；
-    make_brain(settings, api_key, language, emit)：造一个大脑（正式用 ClaudeBrain，测试用假的）。
+    make_brain(settings, api_key, language, emit, resume=...)：造一个大脑（正式用 ClaudeBrain，测试用假的）；
+    resume：接着哪一段以前的对话聊（Claude Code 的会话编号；空 = 新对话）。
     """
     loop = asyncio.get_running_loop()
     commands = asyncio.Queue()
@@ -66,7 +67,7 @@ async def serve(stdin, write, language, make_brain):
         emit(protocol.Error("no_key"))
         return
 
-    brain = make_brain(settings, api_key, language, emit)
+    brain = make_brain(settings, api_key, language, emit, resume=resume)
     try:
         await brain.start()
     except Exception as e:   # 大脑启动失败：告诉芸芸是哪一种错，然后退出
@@ -110,6 +111,7 @@ async def serve(stdin, write, language, make_brain):
 def main(argv=None):
     parser = argparse.ArgumentParser(description="芸芸的助手子进程（由芸芸启动，不要直接运行）")
     parser.add_argument("--language", default="zh")
+    parser.add_argument("--resume", default="")   # 历史对话"接着聊"：Claude Code 的会话编号
     args, _ = parser.parse_known_args(argv)
 
     # 拿到真正的标准输出（pythonw 下 sys.stdout 可能是 None，这时直接用文件描述符 1）
@@ -127,7 +129,7 @@ def main(argv=None):
 
     from yunyun.assistant.claude_brain import ClaudeBrain   # 到这里才 import SDK
     try:
-        asyncio.run(serve(stdin, write, args.language, ClaudeBrain))
+        asyncio.run(serve(stdin, write, args.language, ClaudeBrain, resume=args.resume))
     except Exception:
         log.exception("助手子进程出现意外错误")
         with contextlib.suppress(Exception):

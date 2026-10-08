@@ -13,9 +13,10 @@ class FakeProcess(QObject):
     event = Signal(object)
     finished = Signal()
 
-    def __init__(self, language, parent=None):
+    def __init__(self, language, parent=None, resume=""):
         super().__init__(parent)
         self.language = language
+        self.resume = resume   # 接着哪一段以前的对话聊
         self.ready = False
         self.started = False
         self.stopped = False

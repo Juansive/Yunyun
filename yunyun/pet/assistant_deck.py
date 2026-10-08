@@ -18,7 +18,8 @@
 - 所有卡片画在这一个窗口里，错位、缩放、淡化都按一个连续的"翻到第几张"来算，翻动画才顺。
 """
 import re
-from dataclasses import dataclass
+import uuid
+from dataclasses import dataclass, field
 from datetime import datetime
 
 from PySide6.QtCore import QEasingCurve, QPoint, QPointF, QRect, QRectF, Qt, QVariantAnimation, Signal
@@ -50,6 +51,7 @@ class AssistantCard:
     actions: tuple = ()     # 操作记录（session.Action）：这一问芸芸用过哪些工具、怎么定的
     session_id: str = ""    # Claude Code 的会话编号（历史对话"接着聊"用）
     workspace: str = ""     # 在哪个工作文件夹里问的（"接着聊"要在同一个文件夹里）
+    card_id: str = field(default_factory=lambda: uuid.uuid4().hex)   # 存历史时按它合并（同一张不会存两份）
 
     @classmethod
     def divider(cls, folder=""):
@@ -78,6 +80,7 @@ def _with_alpha(color, alpha):
 class AssistantDeck(QWidget):
     card_clicked = Signal(object)            # 单击了当前卡片（AssistantCard）
     new_conversation_requested = Signal()    # 点了"+ 新对话"
+    history_requested = Signal()             # 点了"历史"
     current_changed = Signal(int)            # 翻到了另一张（或者最前面换成了新卡片）；阅读框跟着换
     drag_started = Signal()
     dragged = Signal(QPoint)                 # 从按下的地方起一共移动了多少（屏幕坐标）
@@ -294,6 +297,12 @@ class AssistantDeck(QWidget):
         m = self.MARGIN
         return QRectF(m + self.CARD_W - w, m + 2, w, self.HEADER - 6)
 
+    def _history_rect(self):
+        """"历史"：在"+ 新对话"左边。"""
+        new_chat = self._new_chat_rect()
+        w = QFontMetrics(self._small).horizontalAdvance(i18n.tr("assistant_history_button")) + 18
+        return QRectF(new_chat.left() - 6 - w, new_chat.top(), w, new_chat.height())
+
     # ---------- 绘制 ----------
 
     def paintEvent(self, event):
@@ -313,17 +322,18 @@ class AssistantDeck(QWidget):
         counter = f"{self._target + 1} / {len(self._cards)}"
         p.drawText(QRectF(m + 4, m, 120, self.HEADER - 2), Qt.AlignmentFlag.AlignVCenter, counter)
         if self._hover_header > 0:
-            rect = self._new_chat_rect()
             p.save()
             p.setOpacity(self._shown * self._hover_header)
-            gradient = QLinearGradient(rect.topLeft(), rect.topRight())
-            gradient.setColorAt(0, QColor("#E3F0FF"))
-            gradient.setColorAt(1, QColor("#ECE8FF"))
-            p.setPen(QPen(QColor("#C9D8F5"), 1))
-            p.setBrush(QBrush(gradient))
-            p.drawRoundedRect(rect, rect.height() / 2, rect.height() / 2)
-            p.setPen(QColor("#4C6FD8"))
-            p.drawText(rect, Qt.AlignmentFlag.AlignCenter, i18n.tr("assistant_new_chat"))
+            for rect, text in ((self._history_rect(), i18n.tr("assistant_history_button")),
+                               (self._new_chat_rect(), i18n.tr("assistant_new_chat"))):
+                gradient = QLinearGradient(rect.topLeft(), rect.topRight())
+                gradient.setColorAt(0, QColor("#E3F0FF"))
+                gradient.setColorAt(1, QColor("#ECE8FF"))
+                p.setPen(QPen(QColor("#C9D8F5"), 1))
+                p.setBrush(QBrush(gradient))
+                p.drawRoundedRect(rect, rect.height() / 2, rect.height() / 2)
+                p.setPen(QColor("#4C6FD8"))
+                p.drawText(rect, Qt.AlignmentFlag.AlignCenter, text)
             p.restore()
 
     def _paint_card(self, p, index, d):
@@ -439,7 +449,8 @@ class AssistantDeck(QWidget):
                 self.dragged.emit(moved)
                 return
         self.setCursor(Qt.CursorShape.PointingHandCursor if self._card_at(event.position()) is not None
-                       or self._new_chat_rect().contains(event.position()) else Qt.CursorShape.ArrowCursor)
+                       or self._new_chat_rect().contains(event.position())
+                       or self._history_rect().contains(event.position()) else Qt.CursorShape.ArrowCursor)
 
     def enterEvent(self, event):
         self._set_hover(True)
@@ -457,6 +468,9 @@ class AssistantDeck(QWidget):
             return
         if self._hover_header > 0.5 and self._new_chat_rect().contains(event.position()):
             self.new_conversation_requested.emit()
+            return
+        if self._hover_header > 0.5 and self._history_rect().contains(event.position()):
+            self.history_requested.emit()
             return
         self._press_at = event.globalPosition().toPoint()
         self._dragging = False

@@ -655,6 +655,7 @@ class PetWindow(QWidget):
             assistant = FancyAction(tr("menu_assistant"), menu)
             assistant.triggered.connect(self.open_assistant)
             menu.addAction(assistant)
+            menu.addAction(tr("menu_assistant_history"), self.open_assistant_history)   # 以前的对话，可以接着聊
             if self._assistant is not None:
                 if self._assistant.busy:
                     menu.addAction(tr("menu_assistant_stop"), self.stop_assistant)
@@ -718,6 +719,12 @@ class PetWindow(QWidget):
     def assistant(self):
         """助手模式（没开就是 None）。"""
         return self._assistant
+
+    def open_assistant_history(self):
+        """右键"历史对话…"：打开助手模式（还没开的话），再打开历史对话面板。"""
+        self.open_assistant()
+        if self._assistant is not None:
+            self._assistant.show_history()
 
     def clear_assistant_history(self):
         """设置页清空了助手的历史对话（文件已经删了）：内存里的卡片也清掉。"""

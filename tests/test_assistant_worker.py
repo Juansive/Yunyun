@@ -82,8 +82,9 @@ def run(scenario, fail_kind=None):
     """跑一遍 serve：scenario(feed, events, brains) 是一个协程，负责发命令、检查结果。返回 (事件, 造出来的大脑)。"""
     feed, events, brains = Feed(), [], []
 
-    def make_brain(*args):
+    def make_brain(*args, resume=""):
         brains.append(FakeBrain(*args, fail_kind=fail_kind))
+        brains[-1].resume = resume
         return brains[0]
 
     async def main():

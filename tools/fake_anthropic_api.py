@@ -30,6 +30,7 @@ class FakeApi:
         self.results = []           # 每次主循环请求带回来的 tool_result：(tool_use_id, 出错没有, 内容开头)
         self.calls = []             # 每一步实际发出的工具调用：(id, 工具, 参数)
         self.others = []            # 别的请求：(路径, 模型)
+        self.prompts_seen = []      # 每次主循环请求里带着的提问（看"接着聊"时前面的对话有没有一起交给模型）
         self.lock = threading.Lock()
 
     def handle(self, path, body):
@@ -42,6 +43,15 @@ class FakeApi:
         with self.lock:
             if self.offered_tools is None:
                 self.offered_tools = [t.get("name") for t in body.get("tools", [])]
+            prompts = []
+            for message in body["messages"]:
+                content = message.get("content")
+                if message.get("role") != "user":
+                    continue
+                texts = [content] if isinstance(content, str) else [
+                    b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text"]
+                prompts.extend(t for t in texts if t and not t.startswith("<system-reminder>"))
+            self.prompts_seen.append(prompts)
             last = body["messages"][-1]
             for block in last.get("content", []) if isinstance(last.get("content"), list) else []:
                 if block.get("type") == "tool_result":
@@ -128,11 +138,12 @@ def serve(api):
     return server
 
 
-def make_brain(server, tmp, workspace, emit):
-    """一个连到假接口的 ClaudeBrain：数据目录都在 tmp 里，工作文件夹是 workspace。"""
+def make_brain(server, tmp, workspace, emit, resume=""):
+    """一个连到假接口的 ClaudeBrain：数据目录都在 tmp 里，工作文件夹是 workspace（"" = 只聊天）；resume：接着哪段对话。"""
     claude_brain.CONFIG_DIR = Path(tmp) / "claude"
     claude_brain.WORKSPACE = Path(tmp) / "empty"
     PROVIDERS["fake"] = Provider(code="fake", models=("claude-haiku-4-5",), prices={"claude-haiku-4-5": (1, 5)},
                                  base_url=f"http://127.0.0.1:{server.server_address[1]}")
-    settings = AssistantSettings(provider="fake", workspace=str(workspace), budget_usd=10, conversation_budget_usd=50)
-    return claude_brain.ClaudeBrain(settings, "sk-fake-not-a-real-key", "zh", emit)
+    settings = AssistantSettings(provider="fake", workspace=str(workspace) if workspace else "", budget_usd=10,
+                                 conversation_budget_usd=50)
+    return claude_brain.ClaudeBrain(settings, "sk-fake-not-a-real-key", "zh", emit, resume=resume)

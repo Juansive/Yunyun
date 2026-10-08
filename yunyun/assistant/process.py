@@ -41,18 +41,19 @@ def subprocess_command(role, *args):
     return sys.executable, ["-m", f"yunyun.assistant.{role}", *args], str(PROJECT_ROOT)
 
 
-def worker_command(language):
-    return subprocess_command("worker", "--language", language)
+def worker_command(language, resume=""):
+    """resume：接着哪一段以前的对话聊（Claude Code 的会话编号）。"""
+    return subprocess_command("worker", "--language", language, *(["--resume", resume] if resume else []))
 
 
 class AssistantProcess(QObject):
     event = Signal(object)   # protocol 里的一个事件
     finished = Signal()      # 子进程没了（只发一次）
 
-    def __init__(self, language, parent=None, command=None):
-        """command：(程序, 参数, 工作目录)，测试时换成假的子进程；平时不用传。"""
+    def __init__(self, language, parent=None, command=None, resume=""):
+        """command：(程序, 参数, 工作目录)，测试时换成假的子进程；平时不用传。resume：接着哪一段以前的对话聊。"""
         super().__init__(parent)
-        program, args, cwd = command or worker_command(language)
+        program, args, cwd = command or worker_command(language, resume)
         self._proc = QProcess(self)
         self._proc.setProgram(program)
         self._proc.setArguments(args)

@@ -30,8 +30,8 @@ def session(qapp, monkeypatch):
     monkeypatch.setattr(i18n, "_current", "zh")
     processes = []
 
-    def make(language, parent):
-        process = FakeProcess(language, parent)
+    def make(language, parent, resume=""):
+        process = FakeProcess(language, parent, resume)
         processes.append(process)
         return process
 
@@ -289,8 +289,8 @@ def test_real_channel_with_fake_worker(qapp):
     from yunyun.assistant.process import AssistantProcess
     processes = []
 
-    def make(language, parent):
-        process = AssistantProcess(language, parent, command=(sys.executable, [str(FAKE_WORKER)], None))
+    def make(language, parent, resume=""):
+        process = AssistantProcess(language, parent, command=(sys.executable, [str(FAKE_WORKER)], None), resume=resume)
         processes.append(process)
         return process
 
@@ -311,8 +311,8 @@ def real_session(qapp, monkeypatch):
     monkeypatch.setattr(i18n, "_current", "zh")
     from yunyun.assistant.process import AssistantProcess
 
-    def make(language, parent):
-        return AssistantProcess(language, parent, command=(sys.executable, [str(FAKE_WORKER)], None))
+    def make(language, parent, resume=""):
+        return AssistantProcess(language, parent, command=(sys.executable, [str(FAKE_WORKER)], None), resume=resume)
 
     s = AssistantSession(make_process=make)
     yield s

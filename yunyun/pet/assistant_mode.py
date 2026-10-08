@@ -5,10 +5,12 @@
 - 发问：芸芸思考（光晕流动），头顶气泡先说进度（"芸芸在想……" / "正在搜索网页……"），出字后逐字说回答的开头几行。
 - 答完：这一问一答变成一张卡片，滑到卡片堆最前面；卡片堆开着时气泡很快收起（全文在卡片里）。
 - 单击卡片：阅读框从卡片堆旁边滑出，显示全文；开着时翻卡片堆，阅读框跟着换；再点同一张就关掉。
-- 新对话（卡片堆右上角 / 输入框里 Ctrl+N）：换一个新的大脑会话，卡片堆里插一张分隔卡。
-  大脑重启过（闲置退出后再唤出）也插一张：芸芸只记得分隔卡之后的内容。
-- 工作文件夹（输入框左边的按钮）：存进设置，子进程启动时读；换文件夹 = 新对话（Claude Code 的工作目录启动后就不能改），
-  分隔卡上写着文件夹名。
+- **卡片堆只放当前这段对话**（2026-10-08 用户选的）：新对话（卡片堆右上角 / 输入框里 Ctrl+N / 换工作文件夹）时清空，
+  上一段在历史对话里（卡片答完就存硬盘，pet/assistant_history）。重启芸芸后卡片堆是空的。
+- 历史对话（右键"历史对话…"、卡片堆右上角"历史"）：面板放在阅读框的位置，列出以前的每段对话；"接着聊"= 切到那段的
+  工作文件夹、用它的会话编号重新启动大脑（Claude Code 的 resume），那段的卡片放回卡片堆。
+- 闲置释放大脑 / 退出助手模式后再唤出（芸芸没重启）：自动接着同一段对话（用最后的会话编号 resume），用户感觉不到。
+- 工作文件夹（输入框左边的按钮）：存进设置，子进程启动时读；换文件夹 = 新对话（Claude Code 的工作目录启动后就不能改）。
 - 确认（改文件、执行命令……）：确认卡片放在阅读框的位置（阅读框先让开），一次一个；等确认时芸芸一直在"思考"。
   收起着的时候来了确认：芸芸用气泡提醒，唤出时卡片再出来。停止 / 新对话 / 退出 = 等着的都算拒绝。
 - 撤销：改了文件的那一问，阅读框里有"撤销这次改动"（点两次）。只有同一个大脑会话里的能撤销（换了对话 / 闲置退出过就不行了），
@@ -17,8 +19,8 @@
   图层跟着芸芸（都是芸芸的从属窗口）。右键"隐藏卡片"才收起，左键芸芸再唤出。
 - 拖动：卡片堆 / 阅读框的空白处按住左键拖，整组一起动，记住相对芸芸的位置（state["offset"]），芸芸走到哪跟到哪；
   不出屏幕。右键"卡片回到芸芸旁边"复位。位置由芸芸保管，退出助手模式再唤出还在。
-- 闲置：输入框收起后 IDLE_EXIT_MS 没再用，只释放大脑（子进程，约 300 MB），卡片照常显示；再唤出时重新启动（算新对话，插分隔卡）。
-- 退出（菜单"退出助手模式" / 芸芸退出）：关掉子进程和所有窗口，发 closed。卡片留在 cards 里（芸芸退出才清掉，不写硬盘）。
+- 闲置：输入框收起后 IDLE_EXIT_MS 没再用，只释放大脑（子进程，约 300 MB），卡片照常显示；再唤出时接着同一段对话。
+- 退出（菜单"退出助手模式" / 芸芸退出）：关掉子进程和所有窗口，发 closed。当前这段的卡片留在 cards 里（芸芸保管）。
 
 pet 只需要提供：body_rect()、say(text, ms)、say_live(text, max_width)、end_live(ms)。
 """
@@ -34,6 +36,7 @@ from yunyun.assistant.session import SETTINGS_ERRORS, AssistantSession, error_te
 from yunyun.pet.assistant_confirm import AssistantConfirm
 from yunyun.pet import assistant_history
 from yunyun.pet.assistant_deck import AssistantCard, AssistantDeck, markdown_to_plain
+from yunyun.pet.assistant_history_panel import AssistantHistoryPanel
 from yunyun.pet.assistant_input import AssistantInput, folder_name
 from yunyun.pet.assistant_reader import AssistantReader
 from yunyun.pet.bubble import bubble_font, elide_lines
@@ -69,23 +72,18 @@ class AssistantMode(QObject):
     CONFIRM_SAY_MS = 15000        # 收起着时来了确认请求：气泡提醒多久
 
     def __init__(self, pet, cards, make_process=None, state=None):
-        """cards：所有卡片（从旧到新）；state：要记着的东西（"offset"：卡片组相对芸芸的偏移，"history_loaded"：读过历史了）。
+        """cards：当前这段对话的卡片（从旧到新）；state：要记着的东西（"offset"：卡片组相对芸芸的偏移）。
         都由芸芸保管，助手模式退出了也还在。"""
         super().__init__(pet)
         self._pet = pet
         self.cards = cards
         self._state = state if state is not None else {}
-        self._cards_shown = False   # 卡片组（卡片堆 + 阅读框 + 确认卡片）该不该显示：唤出时显示，"隐藏卡片"时收起
+        self._cards_shown = False   # 卡片组（卡片堆 + 阅读框 + 确认卡片 + 历史面板）该不该显示：唤出时显示，"隐藏卡片"时收起
         self._reader_card = None    # 隐藏卡片时阅读框正开着的那张：再唤出时一起回来
-        self._released = False      # 闲置时把大脑释放了：再唤出时是新对话
         self._drag_base = None      # 拖动开始时卡片堆的位置
         self.workspace = assistant_settings.load_settings().workspace   # 子进程启动时也是读这一项
-        if not self._state.get("history_loaded"):   # 这次运行芸芸第一次打开助手模式：读出以前的卡片（30 天内）
-            self._state["history_loaded"] = True
-            cards[:0] = assistant_history.load()
-        if cards and cards[-1].kind != "divider":
-            cards.append(self._divider())   # 大脑是新启动的：之前的对话它不记得了
-            self._save_history()
+        # 下次启动大脑时接着哪段对话：卡片堆里还有这段的卡片（退出助手模式再打开）就接着它（芸芸重启后卡片堆是空的）
+        self._resume_next = next((c.session_id for c in reversed(cards) if c.session_id), "")
         self.session = AssistantSession(pet, make_process)
         self.input = AssistantInput(pet)
         self.input.recent_folders = assistant_settings.recent_workspaces
@@ -93,6 +91,7 @@ class AssistantMode(QObject):
         self.deck = AssistantDeck(pet, cards)
         self.reader = AssistantReader(pet)
         self.confirm = AssistantConfirm(pet)
+        self.history = AssistantHistoryPanel(pet)
         self._confirm_count = 0   # 上次看到有几个等确认（多了才提醒）
         self._closed = False
 
@@ -102,11 +101,14 @@ class AssistantMode(QObject):
         self.input.new_conversation_requested.connect(self.new_conversation)
         self.input.collapsed.connect(self._on_collapsed)   # 只是输入框收起：卡片组留着
         self.deck.new_conversation_requested.connect(self.new_conversation)
+        self.deck.history_requested.connect(self.show_history)
         self.deck.card_clicked.connect(self._open_card)
         self.deck.current_changed.connect(self._on_deck_moved)
         self.reader.closed_by_user.connect(self.input.focus)
         self.confirm.answered.connect(self._on_answered)
-        for widget in (self.deck, self.reader, self.confirm):   # 拖哪一个都是整组一起动
+        self.history.continue_requested.connect(self.continue_conversation)
+        self.history.closed_by_user.connect(self.input.focus)
+        for widget in (self.deck, self.reader, self.confirm, self.history):   # 拖哪一个都是整组一起动
             widget.drag_started.connect(self._on_drag_started)
             widget.dragged.connect(self._on_dragged)
             widget.drag_finished.connect(self._on_drag_finished)
@@ -144,15 +146,42 @@ class AssistantMode(QObject):
     def summon(self):
         """唤出（右键"✦ 助手模式"、左键芸芸）：启动大脑（已经开着就不用），输入框展开并拿到焦点，卡片组显示出来。"""
         self._idle_timer.stop()
-        if self._released:   # 闲置时释放过大脑：这是新对话了
-            self._released = False
-            if self.cards and self.cards[-1].kind != "divider":
-                self.cards.append(self._divider())
-                self.deck.newest_added()
-                self._save_history()
-        self.session.start()
+        self._start_brain()
         self.input.open(self._pet.body_rect())
         self._show_cards()
+
+    def show_history(self):
+        """打开历史对话面板（右键"历史对话…"、卡片堆上的"历史"）。有确认在等时先回答确认。"""
+        if self.session.pending_permissions:
+            self._pet.say(i18n.tr("assistant_answer_confirm_first"), 3000)
+            return
+        if not self._cards_shown:
+            self.summon()
+        if self.reader.is_open:
+            self.reader.hide_animated()
+        self.history.show_conversations(assistant_history.conversations(), self._reader_anchor(),
+                                        current_session=self.session.session_id)
+
+    def continue_conversation(self, conversation):
+        """历史对话里点了"接着聊"：切到那段的工作文件夹，卡片堆换成那段的卡片，用它的会话编号重新启动大脑。"""
+        self.history.hide_animated()
+        if conversation.session_id == self.session.session_id:
+            return
+        said = i18n.tr("assistant_continue_said", f"{conversation.updated:%m-%d %H:%M}")
+        folder = conversation.workspace
+        if folder and not os.path.isdir(folder):   # 原来的文件夹被删了 / 改名了：在现在的文件夹里接着聊
+            said = i18n.tr("assistant_continue_folder_missing", folder_name(folder))
+            folder = self.workspace
+        if os.path.normcase(folder) != os.path.normcase(self.workspace):
+            self.workspace = assistant_settings.set_workspace(folder)   # 先存进设置：新的子进程启动时读
+            self.input.set_workspace(self.workspace)
+        self._replace_cards(conversation.cards)
+        self._resume_next = ""
+        self.session.new_conversation(resume=conversation.session_id)
+        if not self.input.is_open:
+            self._idle_timer.start()
+        self._pet.say(said, 3000)
+        self.input.focus()
 
     def hide_cards(self):
         """右键"隐藏卡片"：卡片组和输入框都收起（助手还开着，左键芸芸再唤出，阅读框也会回来）。"""
@@ -163,6 +192,7 @@ class AssistantMode(QObject):
         self.deck.hide_animated()
         self.reader.hide_animated()
         self.confirm.hide_animated()
+        self.history.hide_animated()
 
     def reset_place(self):
         """右键"卡片回到芸芸旁边"：忘掉拖过的位置。"""
@@ -175,19 +205,12 @@ class AssistantMode(QObject):
         self._reposition()
 
     def new_conversation(self, said=None):
-        """忘掉之前的对话（正在回答就先停下），卡片堆里插一张分隔卡。"""
+        """开始新的一段对话（正在回答就先停下）：卡片堆清空，上一段在历史对话里。"""
+        self._resume_next = ""
         self.session.new_conversation()
-        self._released = False
         if not self.input.is_open:   # 输入框收着时点了卡片堆上的"+ 新对话"：新大脑也照常闲置释放
             self._idle_timer.start()
-        if self.cards and self.cards[-1].kind != "divider":
-            self.cards.append(self._divider())
-            self.deck.newest_added()
-        elif self.cards:
-            self.cards[-1] = self._divider()   # 刚插过分隔卡（比如连着换了两次文件夹）：换成新的
-            self.deck.update()
-        self._save_history()
-        self.reader.refresh_undo()   # 换了对话：以前的改动撤销不了了
+        self._replace_cards([])
         self._pet.say(said or i18n.tr("assistant_new_chat_said"), 2500)
 
     def stop_now(self):
@@ -211,6 +234,7 @@ class AssistantMode(QObject):
         self.deck.update()
         self.reader.retranslate()
         self.confirm.retranslate()
+        self.history.retranslate()
 
     def exit(self, wait=False):
         """退出助手模式：输入框、卡片堆立刻消失，关掉子进程。wait=True（芸芸退出时）等子进程真的退出。"""
@@ -223,30 +247,46 @@ class AssistantMode(QObject):
         self.deck.close_now()
         self.reader.close_now()
         self.confirm.close_now()
+        self.history.close_now()
         self.session.close(wait)
         self._pet.end_live(0)
         self.input.deleteLater()
         self.deck.deleteLater()
         self.reader.deleteLater()
         self.confirm.deleteLater()
+        self.history.deleteLater()
         self.closed.emit()
 
     # ---------- 内部 ----------
 
-    def _divider(self):
-        return AssistantCard.divider(folder_name(self.workspace) if self.workspace else "")
+    def _start_brain(self):
+        """大脑没在运行就启动：有"接着哪段"（闲置释放过 / 退出后再打开）就接着那段聊。"""
+        if self.session.process is None:
+            resume, self._resume_next = self._resume_next, ""
+            self.session.start(resume)
 
-    def _save_history(self):
-        """卡片有变化（新卡片、分隔卡、撤销）：存到硬盘（assistant_history，保留 30 天）。"""
-        assistant_history.save(self.cards)
-
-    def clear_history(self):
-        """设置页清空了历史对话：卡片堆、阅读框清空（文件已经由设置页删掉了）。"""
-        self.cards.clear()
+    def _replace_cards(self, cards):
+        """卡片堆换成另一段对话的卡片（[] = 新对话）。阅读框里看的那张不在了就关掉。"""
+        self.cards[:] = list(cards)
         self._reader_card = None
         self.reader.close_now()
         self.deck.reset()
-        self.deck.close_now()
+        if self.cards and self._cards_shown:
+            self._place_deck()
+            self.deck.show_animated()
+        else:
+            self.deck.hide_animated()
+        self.deck.update()
+        self.reader.refresh_undo()
+
+    def _save_history(self):
+        """卡片有变化（新卡片、撤销）：记进硬盘上的历史（assistant_history，按卡片编号合并，保留 30 天）。"""
+        assistant_history.save(self.cards)
+
+    def clear_history(self):
+        """设置页清空了历史对话：卡片堆、阅读框、历史面板清空（文件已经由设置页删掉了）。"""
+        self._replace_cards([])
+        self.history.close_now()
 
     def _column(self):
         """"芸芸 + 输入框"这一列（屏幕坐标）：卡片堆放在它旁边，就不会和头顶的气泡、脚下的输入框重叠。"""
@@ -297,7 +337,7 @@ class AssistantMode(QObject):
         before = self.deck.cards_rect().topLeft()
         self._place_deck()
         delta = self.deck.cards_rect().topLeft() - before
-        for panel in (self.reader, self.confirm):
+        for panel in (self.reader, self.confirm, self.history):
             if not panel.isVisible():
                 continue
             if self.has_custom_place:
@@ -324,6 +364,7 @@ class AssistantMode(QObject):
         if self.reader.is_open and self.reader.card is card:   # 再点同一张：关掉
             self.reader.hide_animated()
             return
+        self.history.hide_animated()   # 历史面板也在这个位置：让开
         self.reader.show_card(card, self._reader_anchor())
 
     def _on_deck_moved(self, index):
@@ -344,6 +385,7 @@ class AssistantMode(QObject):
         if self.reader.is_open:   # 让出位置：确认完了阅读框再回来
             self._reader_card = self.reader.card
             self.reader.hide_animated()
+        self.history.hide_animated()
         self.confirm.show_request(pending[0], self._reader_anchor(), len(pending) - 1, self.workspace)
 
     def _on_permissions_changed(self):
@@ -456,8 +498,8 @@ class AssistantMode(QObject):
     def _on_idle(self):
         if self.busy or self.session.rewinding:   # 还在回答 / 撤销：等它做完再算
             self._idle_timer.start()
-        elif not self.input.is_open and not self._released:
-            # 只释放大脑（约 300 MB），卡片照常显示；再唤出时重新启动（新对话）
-            self._released = True
+        elif not self.input.is_open and self.session.process is not None:
+            # 只释放大脑（约 300 MB），卡片照常显示；再唤出时接着这段对话聊（resume）
+            self._resume_next = self.session.session_id
             self.session.close()
             self.reader.refresh_undo()   # 换了大脑：以前的改动撤销不了了

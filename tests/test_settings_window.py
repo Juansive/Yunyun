@@ -24,7 +24,8 @@ def pet(qapp, tmp_path, monkeypatch):
 
 def test_right_click_menu_has_single_settings_entry(qapp, pet):
     texts = [a.text() for a in pet._build_menu().actions() if a.text()]
-    assert texts[:2] == ["✦ 助手模式", "设置…"] and texts.count("设置…") == 1 and all(a.menu() is None for a in pet._build_menu().actions())   # 没有子菜单了
+    assert texts[:3] == ["✦ 助手模式", "历史对话…", "设置…"] and texts.count("设置…") == 1
+    assert all(a.menu() is None for a in pet._build_menu().actions())   # 没有子菜单了
 
 
 def test_open_settings_pages(qapp, pet):

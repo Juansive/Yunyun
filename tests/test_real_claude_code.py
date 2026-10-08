@@ -19,7 +19,7 @@ pytestmark = pytest.mark.skipif(not os.environ.get("YUNYUN_REAL_CLAUDE_CODE"),
                                 reason="要跑真的 Claude Code：设 YUNYUN_REAL_CLAUDE_CODE=1")
 
 
-@pytest.mark.parametrize("script", ["try_permissions.py", "try_rewind.py", "try_stop.py"])
+@pytest.mark.parametrize("script", ["try_permissions.py", "try_rewind.py", "try_stop.py", "try_resume.py"])
 def test_script_reaches_its_conclusion(script):
     result = subprocess.run([sys.executable, str(PROJECT_ROOT / "tools" / script)], capture_output=True,
                             cwd=PROJECT_ROOT, timeout=300, env={**os.environ, "PYTHONIOENCODING": "utf-8"},

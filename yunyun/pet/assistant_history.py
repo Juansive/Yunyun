@@ -106,12 +106,16 @@ def load(now=None):
 
 
 def save(cards, now=None):
-    """存下所有卡片（顺便去掉过期的）。先写临时文件再替换：写到一半断电也不会把原来的弄坏。"""
+    """把这些卡片记进历史：按卡片编号合并（已有的更新、没有的加上；卡片堆里只是当前这段对话，别的对话不能被冲掉），
+    顺便去掉过期的。分隔卡不存（卡片堆只放一段对话，用不着了）。先写临时文件再替换：写到一半断电也不会把原来的弄坏。"""
     path = history_path()
+    merged = {card.card_id: card for card in load(now) if card.kind == "turn"}
+    merged.update((card.card_id, card) for card in cards if card.kind == "turn")
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(".tmp")
-        content = {"version": VERSION, "cards": [_encode(card) for card in prune(cards, now)]}
+        ordered = sorted(merged.values(), key=lambda card: card.time)
+        content = {"version": VERSION, "cards": [_encode(card) for card in prune(ordered, now)]}
         tmp.write_text(json.dumps(content, ensure_ascii=False), encoding="utf-8")
         os.replace(tmp, path)
     except OSError as e:
@@ -191,6 +195,11 @@ def conversations(now=None):
             cards = [_card_from_transcript(turn, workspace) for turn in transcript.turns]
             conversation = found[transcript.session_id] = Conversation(
                 transcript.session_id, workspace, cards, recovered=True)
+        elif len(transcript.turns) > len(conversation.cards):
+            # 接着聊过一段找回来的对话：前面那些问答只有 Claude Code 的记录里有，补在存下的卡片前面
+            missing = len(transcript.turns) - len(conversation.cards)
+            conversation.cards[:0] = [_card_from_transcript(turn, workspace) for turn in transcript.turns[:missing]]
+            conversation.recovered = True
         conversation.cost_usd = transcript.cost_usd
         conversation.workspace = conversation.workspace or workspace
     return sorted((c for c in found.values() if c.cards), key=lambda c: c.updated, reverse=True)

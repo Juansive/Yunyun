@@ -21,7 +21,7 @@ from claude_agent_sdk import (
     PermissionResultDeny, ResultMessage, ServerToolUseBlock, StreamEvent, ToolResultBlock, ToolUseBlock, UserMessage,
 )
 
-from yunyun.assistant import permissions, proctree, protocol
+from yunyun.assistant import permissions, proctree, protocol, transcripts
 from yunyun.assistant.environment import (   # noqa: F401（clean_environment、hide_child_consoles 也从这里用）
     clean_environment, hide_child_consoles, prepare_process, system_proxy_env,
 )
@@ -69,6 +69,15 @@ def prune_old_sessions(config_dir, days, now=None):
     return removed
 
 
+def previous_cost(session_id):
+    """一段以前的对话一共花了多少（Claude Code 记录里的 cost-state）；找不到就是 0。"""
+    for path in (CONFIG_DIR / "projects").glob(f"*/{session_id}.jsonl"):
+        transcript = transcripts.read_transcript(str(path))
+        if transcript is not None and transcript.cost_usd:
+            return transcript.cost_usd
+    return 0.0
+
+
 def wanted_tools(settings):
     return WEB_TOOLS + (WORK_TOOLS if settings.workspace else [])
 
@@ -93,8 +102,9 @@ def read_project_notes(workspace):
     return text
 
 
-def build_options(settings, api_key, language, stderr=None, gate=None):
-    """启动 Claude Code 的全部选项。gate：PermissionGate（每次用工具前拍板）；测试里可以不传。"""
+def build_options(settings, api_key, language, stderr=None, gate=None, resume=""):
+    """启动 Claude Code 的全部选项。gate：PermissionGate（每次用工具前拍板）；测试里可以不传。
+    resume：接着哪一段对话聊（Claude Code 的会话编号；空 = 新对话）。"""
     provider = settings.info
     env = {
         **launch_env(provider, api_key, settings.effective_model),
@@ -105,6 +115,7 @@ def build_options(settings, api_key, language, stderr=None, gate=None):
     notes = read_project_notes(settings.workspace)
     working = bool(settings.workspace)
     return ClaudeAgentOptions(
+        resume=resume or None,            # 历史对话"接着聊"：Claude Code 读回那段对话的记录
         # 撤销（2.7）：Claude Code 改文件前先备份（放在 CLAUDE_CONFIG_DIR 里），每一问传回一个 uuid，rewind_files 到它
         enable_file_checkpointing=working,
         extra_args={"replay-user-messages": None} if working else {},
@@ -408,11 +419,13 @@ class BrainStartError(Exception):
 class ClaudeBrain:
     """一次助手会话：start() 启动 Claude Code，ask() 问一轮，interrupt() 停下，close() 关掉。事件通过 emit 交出去。"""
 
-    def __init__(self, settings, api_key, language, emit):
+    def __init__(self, settings, api_key, language, emit, resume=""):
+        """resume：接着哪一段对话聊（Claude Code 的会话编号；空 = 新对话）。"""
         self._settings = settings
         self._api_key = api_key
         self._language = language
         self._emit = emit
+        self._resume = resume
         self._client = None
         self._state = TurnState(
             cost_in_usd=settings.info.cost_in_usd,
@@ -437,7 +450,12 @@ class ClaudeBrain:
         if removed:
             log.info("清理了 %d 个 %d 天以前的对话记录 / 备份文件", removed, HISTORY_KEEP_DAYS)
         options = build_options(self._settings, self._api_key, self._language, stderr=self._stderr.append,
-                                gate=self.gate)
+                                gate=self.gate, resume=self._resume)
+        if self._resume:
+            # 接着聊：Claude Code 报的花费会接着那段对话的累计往上加（try_resume.py 实测），先把以前花的当起点，
+            # 不然第一问会把以前的钱再算一遍
+            self._state.session_cost = previous_cost(self._resume)
+            log.info("接着以前的一段对话聊（之前花了 %.4f 美元）", self._state.session_cost)
         self._client = ClaudeSDKClient(options)
         try:
             await self._client.connect()

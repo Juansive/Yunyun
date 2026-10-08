@@ -49,8 +49,8 @@ def world(qapp, tmp_path, monkeypatch):
     monkeypatch.setattr(AssistantMode, "BUBBLE_MS", 10)
     processes = []
 
-    def make(language, parent):
-        process = FakeProcess(language, parent)
+    def make(language, parent, resume=""):
+        process = FakeProcess(language, parent, resume)
         processes.append(process)
         return process
 
@@ -91,11 +91,12 @@ def test_menu_puts_assistant_first_and_fancy(world, monkeypatch):
     pet, _, _ = world
     actions = pet._build_menu().actions()
     assert isinstance(actions[0], FancyAction) and actions[0].text() == "✦ 助手模式"
+    assert menu_texts(pet)[1] == "历史对话…"           # 没开助手模式也有（第二天接着做昨天的事）
     assert "退出助手模式" not in menu_texts(pet)
     has_key(monkeypatch)
     pet.open_assistant()
     texts = menu_texts(pet)
-    assert texts[1:3] == ["隐藏卡片", "退出助手模式"]   # 开着时才有
+    assert texts[1:4] == ["历史对话…", "隐藏卡片", "退出助手模式"]   # 后两项开着时才有
 
 
 def test_without_key_opens_settings_and_says_so(world, monkeypatch):
@@ -205,9 +206,9 @@ def test_collapse_keeps_assistant_then_idle_releases_only_the_brain(qapp, world,
     assert wait_until(qapp, lambda: not mode.input.isVisible())
     mode._idle_timer.timeout.emit()                 # 闲置太久：只释放大脑
     assert processes[0].stopped and pet.assistant is mode and mode.deck.isVisible()
-    pet.open_assistant()                            # 再唤出：新大脑、新对话
-    assert len(processes) == 2 and processes[1].started
-    assert [c.kind for c in mode.cards] == ["turn", "divider"]
+    pet.open_assistant()                            # 再唤出：新大脑，但接着同一段对话聊
+    assert len(processes) == 2 and processes[1].started and processes[1].resume == "sess-1"
+    assert [c.question for c in mode.cards] == ["问题"]
 
 
 def test_left_click_on_yunyun_summons_the_assistant(qapp, world, monkeypatch):
@@ -360,8 +361,8 @@ def test_quit_waits_for_the_real_worker(qapp, world, monkeypatch):
     from yunyun.assistant.process import AssistantProcess
     real = []
 
-    def make(language, parent):
-        process = AssistantProcess(language, parent, command=(sys.executable, [str(FAKE_WORKER)], None))
+    def make(language, parent, resume=""):
+        process = AssistantProcess(language, parent, command=(sys.executable, [str(FAKE_WORKER)], None), resume=resume)
         real.append(process)
         return process
 
@@ -375,9 +376,9 @@ def test_quit_waits_for_the_real_worker(qapp, world, monkeypatch):
 
 # ---------- 卡片堆、新对话（U2） ----------
 
-def finish_turn(pet, process, question, answer="答案", cost=0.0012):
+def finish_turn(pet, process, question, answer="答案", cost=0.0012, session_id="sess-1"):
     ask(pet, question)
-    process.say(protocol.TextDelta(answer), protocol.TurnFinished(cost, cost))
+    process.say(protocol.TextDelta(answer), protocol.TurnFinished(cost, cost, session_id=session_id))
 
 
 def test_each_turn_becomes_a_card(qapp, world, monkeypatch):
@@ -411,23 +412,19 @@ def test_stopped_and_failed_turns_are_marked(world, monkeypatch):
     assert failed.error.startswith(i18n.tr("assistant_error_network")) and not failed.summary
 
 
-def test_cards_survive_exit_and_a_divider_marks_the_restart(qapp, world, monkeypatch):
+def test_exit_and_reopen_continues_the_same_chat(qapp, world, monkeypatch):
+    """芸芸没重启时，退出助手模式再打开：卡片还在，大脑接着同一段对话（resume）。"""
     pet, _, processes = world
     has_key(monkeypatch)
     pet.open_assistant()
     processes[0].say(protocol.Ready("anthropic", "m"))
-    finish_turn(pet, processes[0], "第一段")
+    finish_turn(pet, processes[0], "第一段", session_id="sess-a")
     pet.close_assistant()
     assert wait_until(qapp, lambda: pet.assistant is None)
 
-    pet.open_assistant()                             # 大脑重新启动了：插一张分隔卡
-    cards = pet.assistant.cards
-    assert [c.kind for c in cards] == ["turn", "divider"]
-    assert pet.assistant.deck.isVisible()            # 以前的卡片还能看
-    pet.close_assistant()
-    assert wait_until(qapp, lambda: pet.assistant is None)
-    pet.open_assistant()                             # 中间没问过：不再多插一张
-    assert [c.kind for c in pet.assistant.cards] == ["turn", "divider"]
+    pet.open_assistant()
+    assert [c.question for c in pet.assistant.cards] == ["第一段"]   # 不再插分隔卡
+    assert pet.assistant.deck.isVisible() and processes[1].resume == "sess-a"
 
 
 def test_ctrl_n_starts_a_new_conversation(qapp, world, monkeypatch):
@@ -439,14 +436,15 @@ def test_ctrl_n_starts_a_new_conversation(qapp, world, monkeypatch):
     finish_turn(pet, processes[0], "旧问题")
     QApplication.sendEvent(mode.input._edit, QKeyEvent(
         QEvent.Type.KeyPress, Qt.Key.Key_N, Qt.KeyboardModifier.ControlModifier))
-    assert processes[0].stopped and len(processes) == 2   # 换了一个新的大脑会话
-    assert [c.kind for c in mode.cards] == ["turn", "divider"]
+    assert processes[0].stopped and len(processes) == 2 and processes[1].resume == ""   # 新的大脑会话
+    assert mode.cards == []                                    # 卡片堆只放当前这段：清空
     assert i18n.tr("assistant_new_chat_said") in bubbles(pet)
-    mode.new_conversation()                          # 连按两次：不重复插分隔卡
-    assert [c.kind for c in mode.cards] == ["turn", "divider"]
+    from yunyun.pet import assistant_history
+    assert [c.question for c in assistant_history.load()] == ["旧问题"]   # 上一段在历史里
 
 
 def test_new_conversation_while_answering_keeps_the_half_answer(world, monkeypatch):
+    from yunyun.pet import assistant_history
     pet, machine, processes = world
     has_key(monkeypatch)
     pet.open_assistant()
@@ -456,7 +454,8 @@ def test_new_conversation_while_answering_keeps_the_half_answer(world, monkeypat
     processes[0].say(protocol.TextDelta("说到一半"))
     mode.deck.new_conversation_requested.emit()      # 卡片堆右上角的"＋ 新对话"
     assert not mode.busy and machine.state is PetState.IDLE
-    assert [(c.kind, c.stopped) for c in mode.cards] == [("turn", True), ("divider", False)]
+    assert mode.cards == []
+    assert [(c.question, c.answer, c.stopped) for c in assistant_history.load()] == [("slow", "说到一半", True)]
 
 
 # ---------- 工作文件夹 ----------
@@ -487,7 +486,7 @@ def test_choose_a_work_folder_starts_a_new_conversation(qapp, world, monkeypatch
     assert assistant_settings.load_settings().workspace == str(project)   # 存进设置：新的子进程启动时读
     assert mode.input.workspace == str(project)
     assert processes[0].stopped and len(processes) == 2                   # 换了文件夹 = 新的大脑会话
-    assert (mode.cards[-1].kind, mode.cards[-1].question) == ("divider", "my-project")
+    assert mode.cards == []                                                # 卡片堆清空（上一段在历史里）
     assert i18n.tr("assistant_folder_said", "my-project") in bubbles(pet)
 
     actions = folder_actions(mode)                   # 菜单里出现了最近用过的，打着勾
@@ -498,7 +497,6 @@ def test_choose_a_work_folder_starts_a_new_conversation(qapp, world, monkeypatch
 
     actions[i18n.tr("assistant_folder_none")].trigger()
     assert assistant_settings.load_settings().workspace == "" and len(processes) == 3
-    assert mode.cards[-1].question == "" and len([c for c in mode.cards if c.kind == "divider"]) == 1
     assert assistant_settings.recent_workspaces() == [str(project)]       # 最近用过的还留着
 
 
@@ -588,11 +586,13 @@ def test_reader_follows_the_deck(qapp, two_cards):
     assert wait_until(qapp, lambda: mode.reader.card.question == "第一问")
 
 
-def test_divider_cards_do_not_open_the_reader(qapp, two_cards):
+def test_new_conversation_closes_the_reader_and_empties_the_deck(qapp, two_cards):
     pet, mode = two_cards
+    mode.deck.card_clicked.emit(mode.deck.card(0))
+    assert wait_until(qapp, lambda: mode.reader.is_open)
     mode.new_conversation()
-    mode.deck.card_clicked.emit(mode.deck.card(0))   # 分隔卡
-    assert not mode.reader.isVisible()
+    assert not mode.reader.isVisible() and mode.cards == []
+    assert wait_until(qapp, lambda: not mode.deck.isVisible())
 
 
 def test_collapse_keeps_the_reader_and_exit_closes_it(qapp, two_cards):
@@ -769,7 +769,7 @@ def test_emergency_stop_from_the_menu_even_when_collapsed(qapp, working):
     mode.input.collapse()                                          # 收起着也能停
     assert wait_until(qapp, lambda: not mode.input.isVisible())
     texts = menu_texts(pet)
-    assert texts[1:4] == ["■ 停止助手", "隐藏卡片", "退出助手模式"]   # 停止：干活时才有
+    assert texts[1:5] == ["历史对话…", "■ 停止助手", "隐藏卡片", "退出助手模式"]   # 停止：干活时才有
     stop = next(a for a in pet._build_menu().actions() if a.text() == "■ 停止助手")
     stop.trigger()
     assert process.interrupts == 1 and mode.session.pending_permissions == []
@@ -780,24 +780,59 @@ def test_emergency_stop_from_the_menu_even_when_collapsed(qapp, working):
 
 # ---------- 历史对话 ----------
 
-def test_cards_are_still_there_after_restarting_yunyun(qapp, world, monkeypatch):
+def test_next_day_continue_yesterdays_chat_from_history(qapp, world, monkeypatch, tmp_path):
+    """用户的场景：前一天任务没做完，第二天（重启了芸芸）从历史对话里接着做。"""
+    from yunyun.assistant import settings as settings_module
+    monkeypatch.setattr(AssistantReader, "OPEN_MS", 10)
+    project = tmp_path / "proj"
+    project.mkdir()
+    settings_module.set_workspace(str(project))
     pet, _, processes = world
     has_key(monkeypatch)
     pet.open_assistant()
     processes[0].say(protocol.Ready("anthropic", "m"))
-    finish_turn(pet, processes[0], "重启前的问题", "重启前的回答")
+    finish_turn(pet, processes[0], "修昨天的 bug", "改了一半", session_id="sess-yesterday")
     pet.close_assistant()
+    settings_module.set_workspace("")                 # 第二天在别的文件夹（这里：只聊天）
 
-    another = PetWindow(load_sprites())               # 重新启动芸芸：内存里什么都没有
+    another = PetWindow(load_sprites())               # 重新启动芸芸：卡片堆是空的
     try:
         connect_assistant(another, StateMachine())
-        another.open_assistant()
-        cards = another.assistant.cards
-        assert [(c.kind, c.question) for c in cards] == [("turn", "重启前的问题"), ("divider", "")]
-        assert cards[0].answer == "重启前的回答" and cards[0].generation == 0   # 撤销不了以前的了
+        menu = {a.text(): a for a in another._build_menu().actions()}
+        menu["历史对话…"].trigger()                   # 右键 → 历史对话…（助手模式还没开）
+        mode = another.assistant
+        assert mode.cards == [] and wait_until(qapp, lambda: mode.history.is_open)
+        items = [mode.history._list.item(i) for i in range(mode.history._list.count())]
+        conversation = next(i.data(Qt.ItemDataRole.UserRole) for i in items if i.data(Qt.ItemDataRole.UserRole))
+        assert conversation.title == "修昨天的 bug" and conversation.workspace == str(project)
+        mode.history.open_conversation(conversation)
+        assert "改了一半" in mode.history._detail.toPlainText()
+        mode.history._continue.click()                  # 接着聊
+        assert processes[-1].resume == "sess-yesterday"  # 用昨天那段的会话编号恢复
+        assert settings_module.load_settings().workspace == str(project)   # 切回了那段的工作文件夹
+        assert [c.question for c in mode.cards] == ["修昨天的 bug"]          # 那段的卡片放回卡片堆
+        assert mode.cards[0].generation == 0             # 以前的改动撤销不了了
+        assert wait_until(qapp, lambda: not mode.history.isVisible())
     finally:
         another.close_assistant()
         another.close()
+
+
+def test_history_hides_the_current_chat_and_waits_for_confirms(qapp, world, monkeypatch):
+    pet, _, processes = world
+    has_key(monkeypatch)
+    pet.open_assistant()
+    mode = pet.assistant
+    processes[0].say(protocol.Ready("anthropic", "m"))
+    finish_turn(pet, processes[0], "现在这段", session_id="sess-now")
+    mode.show_history()
+    assert wait_until(qapp, lambda: mode.history.is_open)
+    assert mode.history._list.count() == 0 and mode.history._empty.isVisibleTo(mode.history)   # 正在聊的不列
+    mode.history.hide_animated()
+    ask(pet, "改文件")
+    processes[0].say(protocol.PermissionRequest(1, "Edit", {"file_path": "a.py"}, "edit", True, "F:\\p"))
+    mode.show_history()                               # 有确认在等：先回答确认
+    assert i18n.tr("assistant_answer_confirm_first") in bubbles(pet)
 
 
 def test_clearing_history_in_settings_empties_the_deck(qapp, world, monkeypatch):
@@ -813,7 +848,8 @@ def test_clearing_history_in_settings_empties_the_deck(qapp, world, monkeypatch)
     monkeypatch.setattr(QMessageBox, "question", staticmethod(lambda *a: QMessageBox.StandardButton.Yes))
     pet.settings_window._assistant_page._clear_history.click()
     assert not assistant_history.history_path().exists()
-    assert pet.assistant.cards == [] and not pet.assistant.deck.isVisible()
+    assert pet.assistant.cards == []
+    assert wait_until(qapp, lambda: not pet.assistant.deck.isVisible())
 
 
 # ---------- 撤销 ----------
