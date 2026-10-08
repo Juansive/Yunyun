@@ -84,7 +84,7 @@ async def main():
         print("   发给模型的芸芸工具：", offered)
         print("   操作记录：", decisions, "；出错：", errors)
         print("   记事本：", titles(), "；这一轮记了", finished.remembered if finished else None, "条")
-        checks["记下两条"] = (set(offered) == set(memory.NOTEBOOK_TOOLS) and len(memory.load()) == 2
+        checks["记下两条"] = (set(memory.NOTEBOOK_TOOLS) <= set(offered) and len(memory.load()) == 2
                           and finished is not None and finished.remembered == 2
                           and [d[1] for d in decisions] == ["auto", "auto"])
 

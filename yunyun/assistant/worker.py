@@ -95,9 +95,9 @@ async def serve(stdin, write, language, make_brain, resume=""):
                     log.warning("上一轮还没结束，不接新的提问")   # 界面上回答时不能发送，正常不会走到这里
                 elif running(turn):
                     log.info("正在整理前面的对话，整理完再问")
-                    queued = asyncio.create_task(_ask_after(turn, brain, command.text))
+                    queued = asyncio.create_task(_ask_after(turn, brain, command.text, command.images))
                 else:
-                    turn = asyncio.create_task(brain.ask(command.text))
+                    turn = asyncio.create_task(brain.ask(command.text, command.images))
             elif isinstance(command, protocol.Interrupt):
                 if running(queued) and running(turn):   # 这一问还在等整理：不问了（整理照常做完）
                     queued.cancel()
@@ -122,7 +122,7 @@ async def serve(stdin, write, language, make_brain, resume=""):
         await brain.close()
 
 
-async def _ask_after(previous, brain, text):
+async def _ask_after(previous, brain, text, images=()):
     """等上一轮（和它之后的整理）做完再问。shield：这一问被取消时不连累正在做的整理。"""
     try:
         await asyncio.shield(previous)
@@ -130,7 +130,7 @@ async def _ask_after(previous, brain, text):
         raise
     except Exception:   # 上一轮自己的错已经报过了（ClaudeBrain.ask 里），这里照常问
         log.exception("等上一轮结束时出错")
-    await brain.ask(text)
+    await brain.ask(text, images)
 
 
 def main(argv=None):

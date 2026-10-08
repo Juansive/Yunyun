@@ -807,6 +807,17 @@ TEXTS = {
     "assistant_card_tokens": {"zh": "{} / {} token", "en": "{} / {} tokens", "ja": "{} / {} トークン"},
     "assistant_card_files": {"zh": "改了 {} 个文件", "en": "{} file(s) changed", "ja": "{} 個のファイルを変更"},
     "assistant_card_remembered": {"zh": "记了 {} 条", "en": "{} noted", "ja": "{} 件メモ"},
+    "assistant_card_images": {"zh": "带 {} 张图", "en": "{} image(s)", "ja": "画像 {} 枚"},
+    # 输入框里粘贴 / 拖进来的图片（阶段 5.5、5.6）
+    "assistant_image_question": {"zh": "看看这张图", "en": "Take a look at this image", "ja": "この画像を見て"},
+    "assistant_images_unsupported": {
+        "zh": "现在用的大脑看不了图片：设置 → 助手换一个能看图的服务商，或者把要问的内容打成文字。",
+        "en": "The current model can't read images: choose a provider that can in Settings → Assistant, "
+              "or type the question as text.",
+        "ja": "今のモデルは画像を読めません。設定 → アシスタントで画像に対応したプロバイダーを選ぶか、文字で質問してください。",
+    },
+    "assistant_images_too_many": {"zh": "一次最多带 {} 张图片", "en": "Up to {} images at a time",
+                                  "ja": "画像は一度に {} 枚までです"},
     "assistant_card_undone": {"zh": "已撤销", "en": "Undone", "ja": "取り消し済み"},
     # 历史对话（设置 → 助手）
     "assistant_history_note": {

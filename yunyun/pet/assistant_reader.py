@@ -343,6 +343,8 @@ class AssistantReader(SidePanel):
             parts.append(i18n.tr("assistant_card_files", len(card.files)))
         if card.remembered:
             parts.append(i18n.tr("assistant_card_remembered", card.remembered))
+        if card.images:
+            parts.append(i18n.tr("assistant_card_images", card.images))
         if card.stopped:
             parts.append(i18n.tr("assistant_card_stopped"))
         if card.undone:

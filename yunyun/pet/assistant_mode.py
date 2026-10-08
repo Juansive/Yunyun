@@ -81,7 +81,7 @@ def card_from_turn(turn, workspace=""):
         tuple(turn.files), turn.checkpoint, turn.generation, turn.undone, tuple(turn.actions),
         turn.session_id, workspace,
         context_tokens=turn.context_tokens, context_limit=turn.context_limit, compact=turn.compact,
-        remembered=turn.remembered,
+        remembered=turn.remembered, images=turn.images,
     )
 
 
@@ -127,6 +127,9 @@ class AssistantMode(QObject):
         self._closed = False
 
         self.input.submitted.connect(self._on_submitted)
+        self.input.image_refused.connect(self._on_image_refused)
+        self._update_images_allowed()
+        self.session.model_changed.connect(self._update_images_allowed)
         self.input.workspace_chosen.connect(self.change_workspace)
         self.input.stop_requested.connect(self.stop_now)
         self.input.new_conversation_requested.connect(self.new_conversation)
@@ -478,8 +481,17 @@ class AssistantMode(QObject):
         self.input.focus()   # 确认卡片拿过焦点：还给输入框（不然会被当成"点到别的程序"而收起）
 
     def _on_submitted(self, text):
-        if self.session.ask(text):
+        if self.session.ask(text, self.input.images):   # 粘贴的图片一起发（阶段 5.5）
             self.input.clear_text()
+            self.input.clear_images()
+
+    def _update_images_allowed(self, *_):
+        """现在的大脑能不能看图片：不能的话输入框不收图片（5.6）。大脑启动时（换了服务商）重新看一次。"""
+        self.input.images_allowed = assistant_settings.load_settings().info.images
+
+    def _on_image_refused(self, reason):
+        key = "assistant_images_unsupported" if reason == "unsupported" else "assistant_images_too_many"
+        self._pet.say(i18n.tr(key, AssistantInput.MAX_IMAGES), self.DONE_SAY_MS)
 
     def _on_busy(self, busy):
         self.input.set_busy(busy)

@@ -127,3 +127,49 @@ def test_action_log_names_the_target(qapp, monkeypatch):
     monkeypatch.setattr(i18n, "_current", "zh")
     html = actions_html([Action(datetime.now(), protocol.SCREENSHOT_TOOL, "window", "auto", True)])
     assert "看屏幕" in html and "你刚才用的窗口" in html
+
+
+# ---------- 输入框里粘贴的图片（阶段 5.5） ----------
+
+def test_session_sends_pasted_images_with_the_question(session):
+    session.ask("看看这个", [{"data": "QUJD", "mime": "image/jpeg"}])
+    process = session.processes[0]
+    process.say(protocol.Ready("anthropic", "m"))                   # 大脑还没准备好时先存着，连图片一起
+    assert process.asked == ["看看这个"] and process.asked_images == [({"data": "QUJD", "mime": "image/jpeg"},)]
+    assert session.turns[-1].images == 1
+    process.say(protocol.TurnFinished(0.001, 0.001))
+    assert session.ask("", [{"data": "REVG", "mime": "image/jpeg"}])   # 只有图片：问"看看这张图"
+    assert process.asked[-1] == "看看这张图" and session.turns[-1].question == "看看这张图"
+
+
+def test_brain_sends_images_and_text_as_one_message():
+    import anyio
+    from yunyun.assistant import claude_brain
+    from yunyun.assistant.settings import AssistantSettings
+    sent = []
+
+    class Client:
+        async def query(self, prompt):
+            sent.append(prompt if isinstance(prompt, str) else [m async for m in prompt])
+
+        async def receive_response(self):
+            return
+            yield
+
+    brain = claude_brain.ClaudeBrain(AssistantSettings(), "k", "zh", lambda e: None)
+    brain._client = Client()
+    anyio.run(brain.ask, "看看这张图", ({"data": "QUJD", "mime": "image/png"},))
+    anyio.run(brain.ask, "没有图")
+    message = sent[0][0]["message"]
+    assert message["role"] == "user" and message["content"] == [
+        {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "QUJD"}},
+        {"type": "text", "text": "看看这张图"}]
+    assert sent[1] == "没有图"                                           # 没图片还是普通的一句话
+
+
+def test_transparent_pasted_images_get_a_white_background(qapp):
+    image = QImage(10, 10, QImage.Format.Format_ARGB32)
+    image.fill(Qt.GlobalColor.transparent)
+    data, _, _ = screen_capture.encode(image)
+    decoded = QImage.fromData(base64.b64decode(data))
+    assert QColor(decoded.pixel(5, 5)).lightness() > 240                # 白底，不是黑底

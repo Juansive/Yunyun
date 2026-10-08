@@ -48,8 +48,9 @@ class FakeBrain:
             raise error
         self.emit(protocol.Ready("anthropic", "fake"))
 
-    async def ask(self, text):
+    async def ask(self, text, images=()):
         self.asked.append(text)
+        self.asked_images = getattr(self, "asked_images", []) + [tuple(images)]
         if text == "slow":
             self._interrupted = asyncio.Event()
             await self._interrupted.wait()

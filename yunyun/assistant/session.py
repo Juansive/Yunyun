@@ -96,6 +96,7 @@ class Turn:
     context_limit: int = 0     # 超过多少自动整理（0 = 不整理）
     compact: str = ""          # 这一轮答完后整理前面的对话："" 没整理、"running" 正在整理、"done" 整理好了、"failed" 没做成
     remembered: int = 0        # 这一轮往记事本里记了几条
+    images: int = 0            # 这一问带了几张图片（输入框里粘贴的）
 
     def action(self, tool_id):
         return next((a for a in self.actions if a.tool_id and a.tool_id == tool_id), None)
@@ -198,14 +199,18 @@ class AssistantSession(QObject):
         self._undo_note = []
         process.start()
 
-    def ask(self, text):
-        """发出一个问题；正在回答或是空的就不发，返回 False。"""
+    def ask(self, text, images=()):
+        """发出一个问题；正在回答或是空的就不发，返回 False。
+        images：一起发的图片（{"data": base64, "mime": …}，输入框里粘贴的）；只有图片没有字时，问"看看这张图"。"""
         text = text.strip()
+        images = tuple(images)
+        if images and not text:
+            text = i18n.tr("assistant_image_question")
         if not text or self.busy:
             return False
         if self.rewinding:   # 撤销还没做完：等一下
             return False
-        self._turn = Turn(text)
+        self._turn = Turn(text, images=len(images))
         self.turns.append(self._turn)
         self._tools.clear()
         self.busy_changed.emit(True)
@@ -217,10 +222,10 @@ class AssistantSession(QObject):
             text = UNDO_NOTE.format(files=", ".join(self._undo_note)) + "\n\n" + text
             self._undo_note = []
         if self._process.ready:
-            self._process.ask(text)
+            self._process.ask(text, images)
             self._set_progress(i18n.tr("assistant_compacting" if self.compacting else "assistant_thinking"))
         else:
-            self._pending = text
+            self._pending = (text, images)
             self._set_progress(i18n.tr("assistant_connecting"))
         return True
 
@@ -355,8 +360,8 @@ class AssistantSession(QObject):
             self._model = event.model
             self.model_changed.emit(event.model)
             if self._pending is not None:
-                text, self._pending = self._pending, None
-                process.ask(text)
+                (text, images), self._pending = self._pending, None
+                process.ask(text, images)
                 self._set_progress(i18n.tr("assistant_thinking"))
         elif isinstance(event, protocol.Error):
             if turn is not None and turn.error is None:

@@ -17,7 +17,7 @@ from contextlib import contextmanager
 from ctypes import wintypes
 
 from PySide6.QtCore import QBuffer, QByteArray, QIODevice, Qt
-from PySide6.QtGui import QImage
+from PySide6.QtGui import QImage, QPainter
 
 from yunyun.pet import winapi
 
@@ -189,10 +189,18 @@ def capture(rect):
 
 
 def encode(image, max_side=MAX_SIDE, quality=JPEG_QUALITY):
-    """缩小到最长边 ≤ max_side，存成 JPEG → (base64 文字, 宽, 高)。"""
+    """缩小到最长边 ≤ max_side，存成 JPEG → (base64 文字, 宽, 高)。
+    也给输入框里粘贴的图片用（5.5）：透明的地方铺成白色（JPEG 没有透明，不然会变成黑底）。"""
     if max(image.width(), image.height()) > max_side:
         image = image.scaled(max_side, max_side, Qt.AspectRatioMode.KeepAspectRatio,
                              Qt.TransformationMode.SmoothTransformation)
+    if image.hasAlphaChannel():
+        flat = QImage(image.size(), QImage.Format.Format_RGB32)
+        flat.fill(Qt.GlobalColor.white)
+        painter = QPainter(flat)
+        painter.drawImage(0, 0, image)
+        painter.end()
+        image = flat
     data = QByteArray()
     buffer = QBuffer(data)
     buffer.open(QIODevice.OpenModeFlag.WriteOnly)

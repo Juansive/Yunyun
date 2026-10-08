@@ -89,8 +89,8 @@ class AssistantProcess(QObject):
         if self.is_running():
             self._proc.write(protocol.encode(command))
 
-    def ask(self, text):
-        self.send(protocol.Ask(text))
+    def ask(self, text, images=()):
+        self.send(protocol.Ask(text, tuple(images)))
 
     def interrupt(self):
         self.send(protocol.Interrupt())

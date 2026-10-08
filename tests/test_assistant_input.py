@@ -183,3 +183,92 @@ def test_live_bubble_updates_in_place(qapp):
     stack.show_live("下一轮", anchor)                # 说完后再说：新的气泡
     assert len(stack._bubbles) == 2 and stack._bubbles[1] is not live
     owner.close()
+
+
+# ---------- 粘贴图片、拖入文件（阶段 5.5） ----------
+
+def picture(width=300, height=200, color="#336699"):
+    from PySide6.QtGui import QColor, QImage
+    image = QImage(width, height, QImage.Format.Format_ARGB32)
+    image.fill(QColor(color))
+    return image
+
+
+def mime_with(image=None, files=(), text=None):
+    from PySide6.QtCore import QMimeData, QUrl
+    data = QMimeData()
+    if image is not None:
+        data.setImageData(image)
+    if files:
+        data.setUrls([QUrl.fromLocalFile(str(f)) for f in files])
+    if text is not None:
+        data.setText(text)
+    return data
+
+
+def test_pasted_image_becomes_a_thumbnail_and_is_sent(qapp, box):
+    opened(qapp, box)
+    height = box._pill_h
+    box._edit.insertFromMimeData(mime_with(picture()))
+    assert len(box.images) == 1 and box.images[0]["mime"] == "image/jpeg" and box.images[0]["data"]
+    assert box._thumbs.isVisible() and box._pill_h > height                 # 输入条变高，最上面一排缩略图
+    assert box.text == ""                                                    # 图片不进文字里
+    press(box._edit, Qt.Key.Key_Return)
+    assert box.log == [("submitted", "")]                                    # 只有图片没有字也能发
+    box.clear_images()
+    assert not box._thumbs.isVisible() and box._pill_h == height
+
+
+def test_files_dropped_in(qapp, box, tmp_path):
+    opened(qapp, box)
+    png = tmp_path / "shot.png"
+    picture().save(str(png))
+    doc = tmp_path / "my notes.txt"
+    doc.write_text("hi", encoding="utf-8")
+    box._edit.insertFromMimeData(mime_with(files=[png, doc]))
+    assert len(box.images) == 1                                              # 图片文件 → 缩略图
+    assert box.text == f'"{doc}"'                                            # 别的文件 → 路径（有空格加引号）
+
+
+def test_plain_text_still_pastes_as_text(qapp, box):
+    opened(qapp, box)
+    box._edit.insertFromMimeData(mime_with(text="Traceback (most recent call last)"))
+    assert box.text == "Traceback (most recent call last)" and box.images == []
+
+
+def test_cross_removes_a_thumbnail(qapp, box):
+    from PySide6.QtCore import QPointF
+    from PySide6.QtGui import QMouseEvent
+    opened(qapp, box)
+    box.add_image(picture(color="#FF0000"))
+    box.add_image(picture(color="#00FF00"))
+    target = box._thumbs._close_rect(0).center()
+    event = QMouseEvent(QEvent.Type.MouseButtonPress, QPointF(target), box._thumbs.mapToGlobal(target.toPoint()).toPointF(),
+                        Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier)
+    box._thumbs.mousePressEvent(event)
+    assert len(box.images) == 1 and len(box._thumbs._images) == 1
+
+
+def test_refuses_images_it_cannot_send(qapp, box):
+    refused = []
+    box.image_refused.connect(refused.append)
+    box.images_allowed = False                                               # 大脑看不了图片（5.6）
+    assert not box.add_image(picture())
+    box.images_allowed = True
+    for _ in range(AssistantInput.MAX_IMAGES):
+        assert box.add_image(picture())
+    assert not box.add_image(picture())
+    assert refused == ["unsupported", "too_many"] and len(box.images) == AssistantInput.MAX_IMAGES
+
+
+def test_every_thumbnail_keeps_its_colors(qapp, box):
+    """画第二张时别用上一张 × 的深色画笔把它盖住（2026-10-08 截图发现的）。"""
+    from PySide6.QtGui import QColor
+    box.add_image(picture(color="#FF9183"))
+    box.add_image(picture(color="#6F92FF"))
+    box._thumbs.show()
+    grab = box._thumbs.grab().toImage()
+    ratio = grab.devicePixelRatio()
+    for i, color in enumerate(("#ff9183", "#6f92ff")):
+        center = box._thumbs._rect(i).center()
+        assert QColor(grab.pixel(int(center.x() * ratio), int(center.y() * ratio))).name() == color

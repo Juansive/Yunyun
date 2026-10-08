@@ -10,6 +10,8 @@
 - 动画全部自己画：窗口一开始就是最终大小（四周留出光晕的透明边），动画里只改画的形状，不改窗口大小，所以不抖。
   只在动画进行 / 思考时刷新画面，平时不占 CPU。
 - Enter 发送，Shift+Enter 换行，Ctrl+N 新对话，最多长到 MAX_LINES 行；回答时按钮变成"停止"，可以先打字但发不出去。
+- 粘贴 / 拖进来（阶段 5.5）：图片（剪贴板里的图、图片文件）在输入条最上面排成一排缩略图（× 去掉，最多 MAX_IMAGES 张），
+  发送时一起发（只有图片没有字也能发）；别的文件插入路径。大脑看不了图片时不收（image_refused，总管说一声）。
 - Esc 或者点到别的程序 → 收起（collapsed 信号）；点芸芸自己的窗口不收起。
 - 是芸芸的从属窗口（parent = 芸芸）：芸芸被挡住时它也被挡住。
 """
@@ -18,13 +20,15 @@ import os
 
 from PySide6.QtCore import QEasingCurve, QEvent, QPointF, QRect, QRectF, QSize, Qt, QTimer, QVariantAnimation, Signal
 from PySide6.QtGui import (
-    QActionGroup, QBrush, QColor, QConicalGradient, QFont, QFontMetrics, QLinearGradient, QPainter, QPainterPath, QPen,
+    QActionGroup, QBrush, QColor, QConicalGradient, QFont, QFontMetrics, QImage, QLinearGradient, QPainter,
+    QPainterPath, QPen, QPixmap,
 )
 from PySide6.QtWidgets import (
     QAbstractButton, QApplication, QFileDialog, QFrame, QGraphicsOpacityEffect, QMenu, QTextEdit, QWidget,
 )
 
 from yunyun import i18n
+from yunyun.pet import screen_capture
 from yunyun.pet.bubble import place_block
 
 # 光晕的颜色：天蓝 → 淡紫 → 青（思考时三种颜色绕着边框转）
@@ -47,12 +51,54 @@ def ask_folder(parent, start):
     return QFileDialog.getExistingDirectory(parent, i18n.tr("assistant_folder_dialog"), start)
 
 
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"}
+
+
+def _image_from(data):
+    """剪贴板 / 拖进来的图片数据（QImage 或 QPixmap）→ QImage；不是图片就是空的 QImage。"""
+    if isinstance(data, QImage):
+        return data
+    if isinstance(data, QPixmap):
+        return data.toImage()
+    return QImage()
+
+
+def _quoted(path):
+    return f'"{path}"' if " " in path else path
+
+
 class _Edit(QTextEdit):
-    """透明的多行输入：Enter 发送，Shift+Enter 换行，Esc 收起。"""
+    """透明的多行输入：Enter 发送，Shift+Enter 换行，Esc 收起。
+    粘贴 / 拖进来（阶段 5.5）：图片（剪贴板里的图、图片文件）发 image_pasted，变成上面的缩略图；
+    别的文件插入它的路径；文字照常。"""
 
     submit = Signal()
     escape = Signal()
     new_chat = Signal()
+    image_pasted = Signal(QImage)
+
+    def canInsertFromMimeData(self, source):
+        return source.hasImage() or source.hasUrls() or super().canInsertFromMimeData(source)
+
+    def insertFromMimeData(self, source):
+        files = [url.toLocalFile() for url in source.urls() if url.isLocalFile()] if source.hasUrls() else []
+        if files:
+            others = []
+            for path in files:
+                # 读图用 QImage（CLAUDE.md：QPixmap(路径) 会多缓存一份）
+                image = QImage(path) if os.path.splitext(path)[1].lower() in IMAGE_EXTENSIONS else QImage()
+                if image.isNull():
+                    others.append(os.path.normpath(path))
+                else:
+                    self.image_pasted.emit(image)
+            if others:
+                self.insertPlainText(" ".join(_quoted(p) for p in others))
+            return
+        image = _image_from(source.imageData()) if source.hasImage() else QImage()
+        if not image.isNull():
+            self.image_pasted.emit(image)
+            return
+        super().insertFromMimeData(source)
 
     def __init__(self, parent):
         super().__init__(parent)
@@ -191,6 +237,76 @@ class _FolderButton(QAbstractButton):
                        Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, self._label)
 
 
+class _Thumbs(QWidget):
+    """输入条最上面一排小缩略图（阶段 5.5：粘贴 / 拖进来的图片）；点右上角的 × 去掉那一张（发 removed(第几张)）。"""
+
+    removed = Signal(int)
+    SIZE = 44        # 一张缩略图多大
+    GAP = 8
+    CLOSE = 16       # × 的圆多大
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self._images = []   # 缩略图（QImage，已经裁成正方形）
+        self._hover = -1
+        self.setMouseTracking(True)
+        self.setFixedHeight(self.SIZE + self.CLOSE // 2)
+
+    def set_images(self, images):
+        self._images = list(images)
+        self.setFixedWidth(max(1, len(self._images) * (self.SIZE + self.GAP)))
+        self.update()
+
+    def _rect(self, i):
+        return QRectF(i * (self.SIZE + self.GAP), self.CLOSE / 2, self.SIZE, self.SIZE)
+
+    def _close_rect(self, i):
+        r = self._rect(i)
+        return QRectF(r.right() - self.CLOSE + 4, r.top() - self.CLOSE / 2 + 2, self.CLOSE, self.CLOSE)
+
+    def mouseMoveEvent(self, event):
+        pos = event.position()
+        hover = next((i for i in range(len(self._images)) if self._rect(i).adjusted(0, -8, 4, 0).contains(pos)), -1)
+        if hover != self._hover:
+            self._hover = hover
+            self.setCursor(Qt.CursorShape.PointingHandCursor if hover >= 0 else Qt.CursorShape.ArrowCursor)
+            self.update()
+
+    def leaveEvent(self, event):
+        self._hover = -1
+        self.update()
+
+    def mousePressEvent(self, event):
+        for i in range(len(self._images)):
+            if self._close_rect(i).adjusted(-3, -3, 3, 3).contains(event.position()):
+                self.removed.emit(i)
+                return
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        for i, image in enumerate(self._images):
+            r = self._rect(i)
+            path = QPainterPath()
+            path.addRoundedRect(r, 7, 7)
+            p.save()
+            p.setClipPath(path)
+            p.drawImage(r, image)
+            p.restore()
+            p.setPen(QPen(QColor("#DDE3EE"), 1))
+            p.setBrush(Qt.BrushStyle.NoBrush)   # 只描边（不然会用上一张 × 的深色把这张盖住）
+            p.drawPath(path)
+            c = self._close_rect(i)   # ×：一直显示（鼠标移上去更深），用户一眼就知道能去掉
+            p.setPen(Qt.PenStyle.NoPen)
+            p.setBrush(QColor(55, 65, 81, 230 if i == self._hover else 170))
+            p.drawEllipse(c)
+            p.setPen(QPen(QColor("white"), 1.6))
+            m = 5
+            p.drawLine(QPointF(c.left() + m, c.top() + m), QPointF(c.right() - m, c.bottom() - m))
+            p.drawLine(QPointF(c.right() - m, c.top() + m), QPointF(c.left() + m, c.bottom() - m))
+
+
 class AssistantInput(QWidget):
     submitted = Signal(str)       # 按了 Enter / 发送（文字由接收方决定要不要清空：发出去了才清）
     stop_requested = Signal()     # 回答时按了"停止"
@@ -198,8 +314,11 @@ class AssistantInput(QWidget):
     collapsed = Signal()          # 收起动画结束、窗口已经隐藏
     new_conversation_requested = Signal()   # Ctrl+N
     workspace_chosen = Signal(str)          # 在文件夹菜单里选了一个文件夹（"" = 不用文件夹）
+    image_refused = Signal(str)             # 粘贴的图片没收下："unsupported"（大脑看不了图片）/ "too_many"
 
     WIDTH = 420        # 输入条宽度
+    MAX_IMAGES = 5     # 一问最多带几张图片
+    THUMB_PAD = 8      # 缩略图那一排离输入条上边多远
     GLOW = 26          # 光晕向外延伸多远（窗口四周留出这么多透明边）
     DOT = 46           # 一行时输入条的高度，也是展开前"小圆点"的直径
     PAD_X = 8          # 文件夹按钮到左边框
@@ -231,6 +350,13 @@ class AssistantInput(QWidget):
         self._folder.clicked.connect(self._show_folder_menu)
         self.recent_folders = list   # 最近用过的文件夹（函数，由总管设置；默认没有）
         self._picking = False          # 文件夹菜单 / 选择框开着：焦点暂时不在输入框，不要收起
+        # 粘贴 / 拖进来的图片（阶段 5.5）：[(缩略图, {"data": base64, "mime": …})]
+        self._attachments = []
+        self.images_allowed = True     # 现在的大脑能不能看图片（总管按服务商设置；不能就不收，发 image_refused）
+        self._thumbs = _Thumbs(self)
+        self._thumbs.removed.connect(self._remove_image)
+        self._edit.image_pasted.connect(self.add_image)
+        self.setAcceptDrops(True)      # 拖到输入条别的地方（不只是文字那一块）也收
 
         self._t = 0.0                  # 展开进度：0 = 小圆点（看不见），1 = 完全展开
         self._closing = False
@@ -270,6 +396,43 @@ class AssistantInput(QWidget):
 
     def clear_text(self):
         self._edit.clear()
+
+    @property
+    def images(self):
+        """要一起发的图片：[{"data": base64, "mime": …}]。"""
+        return [data for _, data in self._attachments]
+
+    def add_image(self, image):
+        """收下一张粘贴 / 拖进来的图片：缩小、编码成 JPEG，显示缩略图。收不下就发 image_refused、返回 False。"""
+        if not self.images_allowed:
+            self.image_refused.emit("unsupported")
+            return False
+        if len(self._attachments) >= self.MAX_IMAGES:
+            self.image_refused.emit("too_many")
+            return False
+        data, _, _ = screen_capture.encode(image)
+        side = min(image.width(), image.height())   # 缩略图：从中间裁成正方形
+        thumb = image.copy((image.width() - side) // 2, (image.height() - side) // 2, side, side).scaled(
+            _Thumbs.SIZE * 2, _Thumbs.SIZE * 2, Qt.AspectRatioMode.IgnoreAspectRatio,
+            Qt.TransformationMode.SmoothTransformation)   # 两倍大：高分屏上也清楚
+        self._attachments.append((thumb, {"data": data, "mime": "image/jpeg"}))
+        self._update_thumbs()
+        return True
+
+    def clear_images(self):
+        self._attachments = []
+        self._update_thumbs()
+
+    def _remove_image(self, index):
+        if 0 <= index < len(self._attachments):
+            del self._attachments[index]
+            self._update_thumbs()
+            self._edit.setFocus()
+
+    def _update_thumbs(self):
+        self._thumbs.set_images([thumb for thumb, _ in self._attachments])
+        self._thumbs.setVisible(bool(self._attachments) and self._content_opacity() > 0)
+        self._fit()
 
     def open(self, anchor):
         """在芸芸（anchor：身体的屏幕区域）脚下展开，并拿到键盘焦点。已经开着就只拿焦点。"""
@@ -396,8 +559,17 @@ class AssistantInput(QWidget):
     # ---------- 事件 ----------
 
     def _on_submit(self):
-        if not self._busy and self.text.strip():
+        if not self._busy and (self.text.strip() or self._attachments):   # 只有图片没有字也能发
             self.submitted.emit(self.text)
+
+    def dragEnterEvent(self, event):
+        if self._edit.canInsertFromMimeData(event.mimeData()):
+            event.acceptProposedAction()
+
+    def dropEvent(self, event):
+        self._edit.insertFromMimeData(event.mimeData())
+        event.acceptProposedAction()
+        self._edit.setFocus()
 
     def _on_button(self):
         if self._busy:
@@ -432,9 +604,11 @@ class AssistantInput(QWidget):
         self._edit.document().setTextWidth(self._edit_width())
         text_h = max(line, min(int(self._edit.document().size().height()), line * self.MAX_LINES))
         pad_y = (self.DOT - line) // 2
-        pill_h = max(self.DOT, text_h + 2 * pad_y)
+        thumbs_h = self.THUMB_PAD + self._thumbs.height() if self._attachments else 0   # 有图片：最上面多一排缩略图
+        pill_h = max(self.DOT, text_h + 2 * pad_y) + thumbs_h
         g = self.GLOW
-        self._edit.setGeometry(self._edit_left(), g + pad_y, self._edit_width(), text_h)
+        self._thumbs.move(g + self.PAD_X + 8, g + self.THUMB_PAD - _Thumbs.CLOSE // 2 + 4)
+        self._edit.setGeometry(self._edit_left(), g + thumbs_h + pad_y, self._edit_width(), text_h)
         b = _SendButton.SIZE
         self._button.move(g + self.WIDTH - (self.DOT + b) // 2, g + pill_h - (self.DOT + b) // 2)
         # 文件夹按钮和"发送"一样贴着最后一行（多行时在左下角）
@@ -482,8 +656,8 @@ class AssistantInput(QWidget):
     def _apply_t(self):
         opacity = self._content_opacity()
         visible = opacity > 0
-        for widget in (self._edit, self._button, self._folder):
-            widget.setVisible(visible)
+        for widget in (self._edit, self._button, self._folder, self._thumbs):
+            widget.setVisible(visible and (widget is not self._thumbs or bool(self._attachments)))
             if 0 < opacity < 1:
                 effect = widget.graphicsEffect()
                 if not isinstance(effect, QGraphicsOpacityEffect):

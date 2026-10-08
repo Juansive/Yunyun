@@ -16,6 +16,7 @@ from yunyun.assistant.protocol import (
 
 SAMPLES = [
     protocol.Ask("帮我看看这个报错"),
+    protocol.Ask("看看这张图", ({"data": "QUJD", "mime": "image/jpeg"},)),
     protocol.Interrupt(),
     protocol.PermissionReply(3, False, "这次先不要"),
     protocol.PermissionReply(4, True, remember=True),
@@ -62,7 +63,7 @@ def test_one_message_is_exactly_one_line():
 def test_chinese_is_kept_as_utf8():
     line = encode(Ask("芸芸"))
     assert "芸芸".encode("utf-8") in line                       # 不是 芸 这种转义
-    assert json.loads(line) == {"type": "ask", "text": "芸芸"}
+    assert json.loads(line) == {"type": "ask", "text": "芸芸", "images": []}
 
 
 def test_unknown_fields_are_ignored():

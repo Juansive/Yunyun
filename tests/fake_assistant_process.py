@@ -21,6 +21,7 @@ class FakeProcess(QObject):
         self.started = False
         self.stopped = False
         self.asked = []
+        self.asked_images = []   # 每一问带的图片（和 asked 一一对应）
         self.sent = []       # 别的命令（PermissionReply……）
         self.interrupts = 0
 
@@ -33,8 +34,9 @@ class FakeProcess(QObject):
     def send(self, command):
         self.sent.append(command)
 
-    def ask(self, text):
+    def ask(self, text, images=()):
         self.asked.append(text)
+        self.asked_images.append(tuple(images))
 
     def interrupt(self):
         self.interrupts += 1

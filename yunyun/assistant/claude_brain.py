@@ -483,6 +483,14 @@ def _turn_finished(message, state):
 
 # ---------- 大脑 ----------
 
+async def _with_images(text, images):
+    """带图片的提问：一条用户消息，内容是几张图片 + 文字（SDK 的 query 也收这种消息流）。"""
+    content = [{"type": "image", "source": {"type": "base64", "media_type": image.get("mime") or "image/jpeg",
+                                            "data": image.get("data", "")}} for image in images]
+    content.append({"type": "text", "text": text})
+    yield {"type": "user", "message": {"role": "user", "content": content}, "parent_tool_use_id": None}
+
+
 class BrainStartError(Exception):
     def __init__(self, kind, detail=""):
         super().__init__(detail)
@@ -545,7 +553,11 @@ class ClaudeBrain:
             raise BrainStartError(error_kind(detail), detail) from e
         self._emit(protocol.Ready(self._settings.provider, self._settings.effective_model))
 
-    async def ask(self, text):
+    async def ask(self, text, images=()):
+        """问一轮。images：一起发的图片（{"data": base64, "mime": …}，阶段 5 输入框里粘贴的）。"""
+        if images and not self._settings.info.images:   # 界面上本来就不让粘（5.6），这里兜底
+            log.info("这家服务商看不了图片，%d 张图片没发", len(images))
+            images = ()
         self._state.new_turn()
         self.gate.stopped = False
         if self._state.conversation_full:
@@ -556,8 +568,10 @@ class ClaudeBrain:
             self._emit(protocol.TurnFinished(session_cost_usd=self._state.conversation_cost))
             return
         started, first_text = time.monotonic(), None   # 首字要等多久（只记时间，不记内容）
+        if images:
+            log.info("这一问带了 %d 张图片", len(images))
         try:
-            await self._client.query(text)
+            await self._client.query(_with_images(text, images) if images else text)
             async for message in self._client.receive_response():
                 for event in translate(message, self._state):
                     if isinstance(event, protocol.TextDelta) and first_text is None:

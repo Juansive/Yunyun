@@ -1068,3 +1068,30 @@ def test_failed_undo_says_so(qapp, working):
     process.say(protocol.Rewound("cp-1", False, "No file checkpoint"))
     assert not card.undone and i18n.tr("assistant_undo_failed") in bubbles(pet)
     assert mode._undo_state_for(card) == "ready"                  # 还可以再试
+
+
+def test_pasted_images_go_with_the_question_and_are_cleared(world, monkeypatch):
+    from PySide6.QtGui import QColor, QImage
+    pet, _, processes = world
+    has_key(monkeypatch)
+    pet.open_assistant()
+    process = processes[0]
+    process.say(protocol.Ready("anthropic", "m"))
+    image = QImage(64, 48, QImage.Format.Format_RGB32)
+    image.fill(QColor("#336699"))
+    pet.assistant.input.add_image(image)
+    ask(pet, "这是什么")
+    assert process.asked == ["这是什么"] and len(process.asked_images[0]) == 1
+    assert pet.assistant.input.images == []                         # 发出去了就清掉
+
+
+def test_provider_without_images_refuses_pasted_ones(world, monkeypatch):
+    from dataclasses import replace
+    from PySide6.QtGui import QImage
+    from yunyun.assistant.providers import PROVIDERS
+    pet, _, _ = world
+    has_key(monkeypatch)
+    monkeypatch.setitem(PROVIDERS, "anthropic", replace(PROVIDERS["anthropic"], images=False))
+    pet.open_assistant()
+    assert not pet.assistant.input.add_image(QImage(8, 8, QImage.Format.Format_RGB32))
+    assert any("看不了图片" in text for text in bubbles(pet))          # 5.6：告诉你为什么

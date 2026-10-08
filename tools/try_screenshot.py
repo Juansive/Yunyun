@@ -88,13 +88,55 @@ async def run(label, provider=None, ask=False):
             and asked == (["screenshot"] if ask else []))
 
 
+class PromptApi(FakeApi):
+    """记下每次主循环请求里，用户消息带的块（图片记媒体类型）。"""
+
+    def __init__(self, steps):
+        super().__init__(steps)
+        self.user_blocks = []
+
+    def handle(self, path, body):
+        for message in body.get("messages") or []:
+            content = message.get("content")
+            if message.get("role") == "user" and isinstance(content, list):
+                blocks = [(b.get("type"), (b.get("source") or {}).get("media_type")) if b.get("type") == "image"
+                          else (b.get("type"), str(b.get("text", ""))[:20]) for b in content if isinstance(b, dict)]
+                if any(b[0] == "image" for b in blocks) and blocks not in self.user_blocks:
+                    self.user_blocks.append(blocks)
+        return super().handle(path, body)
+
+
+async def pasted_image():
+    """5.5：输入框里粘贴的图片跟着提问一起发（ClaudeBrain.ask 的 images）。历史记录读回来的提问还是那句话。"""
+    from yunyun.assistant import transcripts
+    tmp = Path(tempfile.mkdtemp(prefix="yunyun-paste-"))
+    api = PromptApi([("text", "图里是一块蓝色")])
+    server = serve(api)
+    events = []
+    try:
+        brain = make_brain(server, tmp, "", events.append)
+        await asyncio.wait_for(brain.start(), 60)
+        await asyncio.wait_for(brain.ask("看看这张图", [{"data": FAKE_JPEG, "mime": "image/jpeg"}]), 60)
+        await brain.close()
+        finished = next(e for e in events if isinstance(e, protocol.TurnFinished))
+        path = next((tmp / "claude" / "projects").glob(f"*/{finished.session_id}.jsonl"))
+        questions = [t.question for t in transcripts.read_transcript(str(path)).turns]
+    finally:
+        server.shutdown()
+        shutil.rmtree(tmp, ignore_errors=True)
+    print("粘贴的图片：用户消息里的块", api.user_blocks, "；历史记录读回来的提问", questions,
+          "；出错", [e for e in events if isinstance(e, protocol.Error)])
+    return any(("image", "image/jpeg") in blocks for blocks in api.user_blocks) and questions == ["看看这张图"]
+
+
 async def main():
     checks = {"Claude 官方": await run("Claude 官方"),
               "DeepSeek": await run("DeepSeek", PROVIDERS["deepseek"]),
-              "截图前先问我": await run("截图前先问我（自动点允许）", ask=True)}
+              "截图前先问我": await run("截图前先问我（自动点允许）", ask=True),
+              "粘贴图片": await pasted_image()}
     print("\n" + "；".join(f"{k} {'✓' if v else '✗'}" for k, v in checks.items()))
-    print("结论：", "✓ 截图工具能用（图片交给了模型；默认不问，设置了就先问；两家都行）" if all(checks.values())
-          else "✗ 有问题，看上面")
+    print("结论：", "✓ 截图工具能用（图片交给了模型；默认不问，设置了就先问；两家都行）；粘贴的图片也交给了模型"
+          if all(checks.values()) else "✗ 有问题，看上面")
 
 
 if __name__ == "__main__":

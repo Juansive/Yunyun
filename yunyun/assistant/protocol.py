@@ -78,9 +78,13 @@ def decode(line):
 
 @_message
 class Ask:
-    """用户问了一句话。"""
+    """用户问了一句话。images：一起发的图片（阶段 5：输入框里粘贴 / 拖进来的），每张 {"data": base64, "mime": "image/jpeg"}。"""
     TYPE: ClassVar[str] = "ask"
     text: str
+    images: tuple = ()
+
+    def __post_init__(self):
+        object.__setattr__(self, "images", tuple(self.images))   # JSON 读回来是列表：统一成元组
 
 
 @_message
