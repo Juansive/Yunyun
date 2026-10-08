@@ -194,7 +194,8 @@ class TurnFinished:
     cost_usd：这一轮花了多少美元（不知道时是 None；DeepSeek 这类是芸芸按它的价格算的，见 Provider.own_pricing）；
     session_cost_usd：这次打开助手以来一共花了多少；stopped：是不是用户点了"停止"；
     checkpoint：撤销这一轮的改动要用的标记（Rewind；没开检查点时是空的）；files：这一轮用 Edit / Write 改成功的文件。
-    context_tokens：对话长度（下一问要带着的前文有多少 token）；context_limit：超过多少自动整理（0 = 不整理）。
+    context_tokens：对话长度（下一问要带着的前文有多少 token）；context_limit：超过多少自动整理（0 = 不整理）；
+    remembered：这一轮往记事本里记了几条（阶段 10）。
     """
     TYPE: ClassVar[str] = "turn_finished"
     cost_usd: float | None = None
@@ -207,6 +208,7 @@ class TurnFinished:
     session_id: str = ""   # Claude Code 的会话编号（历史对话"接着聊"时用它恢复）
     context_tokens: int = 0
     context_limit: int = 0
+    remembered: int = 0
 
     def __post_init__(self):
         object.__setattr__(self, "files", tuple(self.files))   # JSON 读回来是列表：统一成元组

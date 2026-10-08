@@ -182,6 +182,7 @@ def test_paints_every_kind_of_card(qapp, deck):
                       context_tokens=38_000, context_limit=40_000),
         AssistantCard("turn", datetime.now(), "整理中", "答", "答", "$0.0040", stopped=True, files=("a.py",),
                       context_tokens=45_000, context_limit=40_000, compact="running"),   # 底行放不下：省略
+        AssistantCard("turn", datetime.now(), "记住", "记住了", "记住了", "$0.0010", remembered=2),
     ]
     deck.reset()
     deck.show_beside(column())

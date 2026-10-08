@@ -437,6 +437,18 @@ def test_compaction_counts_as_failed_when_the_brain_goes_away(session):
     assert turn.compact == "failed" and not session.compacting
 
 
+def test_notebook_tools_show_progress_and_count(session):
+    session.ask("记住我喜欢简短的回复")
+    process = session.processes[0]
+    process.say(protocol.Ready("anthropic", "m"),
+                protocol.ToolStarted("t1", "mcp__yunyun__remember", "用户喜欢简短的回复"))
+    assert session.progress == "正在记到记事本…… 用户喜欢简短的回复"
+    process.say(protocol.ToolDecision("t1", "mcp__yunyun__remember", "auto", "用户喜欢简短的回复"),
+                protocol.ToolFinished("t1"), protocol.TurnFinished(0.001, 0.001, remembered=1))
+    turn = session.turns[-1]
+    assert turn.remembered == 1 and turn.actions[0].detail == "用户喜欢简短的回复"
+
+
 # ---------- 撤销 ----------
 
 def answered(session, question, files=(), checkpoint=""):

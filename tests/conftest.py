@@ -36,7 +36,7 @@ def no_real_assistant(monkeypatch, tmp_path):
     要测子进程的收发，用 tests/fake_assistant_worker.py、tests/fake_assistant_check.py（传 command=...）。
     """
     import keyring
-    from yunyun.assistant import ledger, process, settings as assistant_settings
+    from yunyun.assistant import ledger, memory, process, settings as assistant_settings
     from yunyun.pet import assistant_history
 
     def refuse(role, *args):
@@ -47,6 +47,7 @@ def no_real_assistant(monkeypatch, tmp_path):
     # 历史卡片、Claude Code 的对话记录：也在临时目录（不碰、不清空用户真实的历史）
     monkeypatch.setattr(assistant_history, "history_path", lambda: tmp_path / "assistant_cards.json")
     monkeypatch.setattr(assistant_history, "claude_data_dir", lambda: tmp_path / "assistant_claude")
+    monkeypatch.setattr(memory, "memory_path", lambda: tmp_path / "assistant_memory.json")   # 记事本也一样
     real_get = keyring.get_password
     monkeypatch.setattr(keyring, "get_password", lambda service, user: None
                         if service == assistant_settings.KEYRING_SERVICE else real_get(service, user))

@@ -26,8 +26,10 @@ from yunyun.pet.ai_page import AISettingsPage
 from yunyun.pet.assistant_page import AssistantSettingsPage
 from yunyun.pet.history_page import HistoryPage
 from yunyun.pet.mail_page import MailAccountsPage
+from yunyun.pet.notebook_page import NotebookPage
 
-PAGES = ["general", "mail", "ai", "assistant", "history", "about"]  # 页面顺序；open_settings(page) 用这些名字
+PAGES = ["general", "mail", "ai", "assistant", "notebook", "history", "about"]  # 页面顺序；open_settings(page) 用这些名字
+ASSISTANT_PAGES = ("assistant", "notebook")   # 助手模式的页：这个版本没有助手模式时藏起来
 
 
 class SettingsWindow(QDialog):
@@ -64,6 +66,10 @@ class SettingsWindow(QDialog):
         return self._assistant_page
 
     @property
+    def notebook_page(self):
+        return self._notebook_page
+
+    @property
     def general_page(self):
         return self._general_page
 
@@ -96,20 +102,21 @@ class SettingsWindow(QDialog):
         for page in PAGES:
             self._sidebar.addItem(tr(f"page_{page}"))
             # 这个版本没有助手模式（打包版要到阶段 9）：藏起这一项，页面序号不变
-            self._sidebar.item(self._sidebar.count() - 1).setHidden(page == "assistant" and not assistant_available())
+            self._sidebar.item(self._sidebar.count() - 1).setHidden(page in ASSISTANT_PAGES and not assistant_available())
 
         self._general_page = GeneralPage(self._pet)
         self._mail_page = MailAccountsPage()
         self._ai_page = AISettingsPage()
         self._assistant_page = AssistantSettingsPage()
         self._assistant_page.history_cleared.connect(self._pet.clear_assistant_history)
+        self._notebook_page = NotebookPage()
         self._history_page = HistoryPage(self._pet.history)
         self._about_page = AboutPage(self._pet)
         self._mail_page.accounts_changed.connect(self.accounts_changed)
         self._mail_page.account_added.connect(self.account_added)
 
         self._stack = QStackedWidget()  # 一叠页面，同时只显示一页（顺序和 PAGES 一样）
-        for widget in (self._general_page, self._mail_page, self._ai_page, self._assistant_page,
+        for widget in (self._general_page, self._mail_page, self._ai_page, self._assistant_page, self._notebook_page,
                        self._history_page, self._about_page):
             self._stack.addWidget(widget)
         self._sidebar.currentRowChanged.connect(self._stack.setCurrentIndex)

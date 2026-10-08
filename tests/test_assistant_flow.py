@@ -771,7 +771,7 @@ def test_no_assistant_entry_when_this_build_has_no_sdk(world, monkeypatch):
     pet.open_settings()
     sidebar = pet.settings_window._sidebar
     hidden = [sidebar.item(i).text() for i in range(sidebar.count()) if sidebar.item(i).isHidden()]
-    assert hidden == ["助手"]
+    assert hidden == ["助手", "记事本"]
     pet.open_settings("history")                     # 别的页序号不变
     assert pet.settings_window.current_page == "history"
 

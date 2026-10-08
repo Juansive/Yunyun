@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
 from shiboken6 import isValid
 
 from yunyun import i18n
+from yunyun.assistant import memory
 from yunyun.pet.assistant_deck import context_status
 from yunyun.pet.side_panel import SidePanel
 
@@ -91,6 +92,8 @@ _ACTION_VERBS = {
     "Bash": "assistant_action_command", "PowerShell": "assistant_action_command",
     "WebSearch": "assistant_action_web_search", "web_search": "assistant_action_web_search",
     "WebFetch": "assistant_action_web_fetch",
+    memory.REMEMBER_TOOL: "assistant_action_remember", memory.RECALL_TOOL: "assistant_action_recall",
+    memory.FORGET_TOOL: "assistant_action_forget",
 }
 _DECISION_COLORS = {"auto": "#8A94A6", "granted": "#2E7D32", "allowed": "#2E7D32", "remembered": "#2E7D32",
                     "denied": "#C62828", "blocked": "#C62828", "stopped": "#B7791F"}
@@ -335,6 +338,8 @@ class AssistantReader(SidePanel):
             parts.append(context)
         if card.files:
             parts.append(i18n.tr("assistant_card_files", len(card.files)))
+        if card.remembered:
+            parts.append(i18n.tr("assistant_card_remembered", card.remembered))
         if card.stopped:
             parts.append(i18n.tr("assistant_card_stopped"))
         if card.undone:

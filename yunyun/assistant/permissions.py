@@ -9,6 +9,7 @@
   .git、.claude 里面的文件（改了可能让程序以后自动运行别的东西）、工作文件夹以外的文件：每次问，不提供"都允许"；
 - 执行命令：每次问，可以选"这次对话里这类命令都允许"（按命令开头记，比如 pytest、git status）；
   删文件、装包、联网下载这类**危险命令**，和看不清在干什么的命令（$(...)、写文件的重定向、bash -c ……）永远每次问；
+- 芸芸的记事本（记一条、查、删一条，阶段 10）：不用问——只动芸芸自己的记事本，你在设置 → 记事本里随时能看、改、删；
 - 别的工具一律拒绝（本来也没开，这里是兜底）。
 
 拿不准的时候一律往"问你"那边靠：多问一次只是麻烦一点，少问一次可能出事。
@@ -17,6 +18,8 @@ import os
 import re
 import shlex
 from dataclasses import dataclass
+
+from yunyun.assistant.memory import NOTEBOOK_TOOLS
 
 ALLOW, ASK, DENY = "allow", "ask", "deny"
 
@@ -48,7 +51,7 @@ def decide(tool, tool_input, workspace, grants=frozenset()):
     grants 里的每一项是 decide 以前给出的 Decision.grant 里的一项：("edit",)、("read", 文件夹)、("command", 命令开头)。
     """
     tool_input = tool_input if isinstance(tool_input, dict) else {}
-    if tool in WEB_TOOLS:
+    if tool in WEB_TOOLS or tool in NOTEBOOK_TOOLS:
         return Decision(ALLOW)
     if tool in READ_TOOLS:
         return _decide_read(tool, tool_input, os.path.realpath(workspace), grants)

@@ -26,7 +26,13 @@ def test_web_tools_never_ask(ws, tool):
     assert decide(tool, {"query": "x"}, ws / "proj").action == ALLOW
 
 
-@pytest.mark.parametrize("tool", ["Task", "mcp__x__y", "KillShell", ""])
+@pytest.mark.parametrize("tool", ["mcp__yunyun__remember", "mcp__yunyun__recall", "mcp__yunyun__forget"])
+def test_notebook_tools_never_ask(ws, tool):
+    """芸芸的记事本（阶段 10）：只动芸芸自己的记事本，你在设置 → 记事本里随时能看、改、删。"""
+    assert decide(tool, {"title": "x", "scope": "user"}, ws / "proj").action == ALLOW
+
+
+@pytest.mark.parametrize("tool", ["Task", "mcp__x__y", "mcp__yunyun__other", "mcp__other__remember", "KillShell", ""])
 def test_unknown_tools_are_denied(ws, tool):
     decision = decide(tool, {}, ws / "proj")
     assert decision.action == DENY and decision.reason

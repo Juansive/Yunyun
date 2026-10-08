@@ -26,7 +26,7 @@ def test_shared_assistant_modules_import_neither_qt_nor_sdk():
     modules = top_level(modules_after(
         "import yunyun.assistant.protocol, yunyun.assistant.settings, yunyun.assistant.providers, "
         "yunyun.assistant.permissions, yunyun.assistant.transcripts, yunyun.assistant.environment, "
-        "yunyun.assistant.check"))
+        "yunyun.assistant.check, yunyun.assistant.memory"))
     assert "claude_agent_sdk" not in modules
     assert "anthropic" not in modules        # check.py 到真的测试连接时才 import 官方 SDK
     assert "PySide6" not in modules
@@ -35,7 +35,8 @@ def test_shared_assistant_modules_import_neither_qt_nor_sdk():
 def test_settings_page_and_panel_stay_light():
     """设置窗口的"助手"页、对话面板在芸芸进程里：不能带进 Agent SDK，也不能带进 anthropic（它们只在小进程里用）。"""
     modules = top_level(modules_after(
-        "import yunyun.pet.assistant_page, yunyun.pet.assistant_mode, yunyun.assistant.process"))
+        "import yunyun.pet.assistant_page, yunyun.pet.assistant_mode, yunyun.assistant.process, "
+        "yunyun.pet.notebook_page"))
     assert "claude_agent_sdk" not in modules
     assert "anthropic" not in modules
 

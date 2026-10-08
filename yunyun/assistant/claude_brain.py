@@ -22,13 +22,15 @@ from claude_agent_sdk import (
     UserMessage,
 )
 
-from yunyun.assistant import permissions, proctree, protocol, transcripts
+from yunyun.assistant import memory, permissions, proctree, protocol, transcripts
 from yunyun.assistant.environment import (   # noqa: F401（clean_environment、hide_child_consoles 也从这里用）
     clean_environment, hide_child_consoles, prepare_process, system_proxy_env,
 )
 from yunyun.assistant.persona import persona
 from yunyun.assistant.providers import Provider, Rates, launch_env, usable_tools, usage_cost
 from yunyun.assistant.settings import HISTORY_KEEP_DAYS, SESSION_DATA_DIRS
+from yunyun.assistant.tools import SERVER as TOOL_SERVER
+from yunyun.assistant.tools import yunyun_server
 from yunyun.paths import data_dir
 
 log = logging.getLogger(__name__)
@@ -120,13 +122,17 @@ def build_options(settings, api_key, language, stderr=None, gate=None, resume=""
     notes = read_project_notes(settings.workspace)
     working = bool(settings.workspace)
     tools = usable_tools(provider, wanted_tools(settings))
+    # 记事本（阶段 10）：目录接在人设后面（这段对话里不变，命中缓存），细节和写入用芸芸自己的工具（进程内 MCP）
+    notebook = memory.index_lines(memory.load(), settings.workspace) if settings.notebook else None
+    server = yunyun_server(settings.workspace, notebook=settings.notebook)
     return ClaudeAgentOptions(
         resume=resume or None,            # 历史对话"接着聊"：Claude Code 读回那段对话的记录
         # 撤销（2.7）：Claude Code 改文件前先备份（放在 CLAUDE_CONFIG_DIR 里），每一问传回一个 uuid，rewind_files 到它
         enable_file_checkpointing=working,
         extra_args={"replay-user-messages": None} if working else {},
         model=settings.effective_model,   # 注意：Haiku 4.5 不支持 effort 参数，所以不传
-        tools=tools,                      # 只有这些工具存在
+        tools=tools,                      # 只有这些内置工具存在（芸芸自己的工具在 mcp_servers 里）
+        mcp_servers={TOOL_SERVER: server} if server else {},
         allowed_tools=[],                 # 一个都不直接放行：全部交给 PermissionGate
         permission_mode="default",        # "要问"的交给 can_use_tool（dontAsk 会把"要问"直接变成拒绝）
         hooks={"PreToolUse": [HookMatcher(hooks=[gate.pre_tool_use])]} if gate else None,
@@ -134,7 +140,7 @@ def build_options(settings, api_key, language, stderr=None, gate=None, resume=""
         setting_sources=[],               # 不读用户自己的 Claude Code 设置，也不读工作文件夹里 .claude/ 的设置
         strict_mcp_config=True,           # 不加载别处配置的 MCP 服务器
         system_prompt={"type": "preset", "preset": "claude_code",
-                       "append": persona(language, working, notes, web_search="WebSearch" in tools)},
+                       "append": persona(language, working, notes, web_search="WebSearch" in tools, notebook=notebook)},
         include_partial_messages=True,    # 逐字显示
         # 每段对话的上限：Claude Code 按整段对话累计算；但它只认 Claude 的价格，自己算钱的服务商由 TurnState 管。
         # 每次回答的上限都由 TurnState 估算
@@ -270,6 +276,8 @@ class TurnState:
     checkpoint: str = ""               # 这一问（Claude Code 传回来的那条用户消息）的 uuid：撤销时 rewind 到它
     files: list = field(default_factory=list)          # 这一轮用 Edit / Write 改成功的文件
     _editing: dict = field(default_factory=dict)       # 正在改的：工具调用 id → 文件
+    remembered: int = 0                                # 这一轮往记事本里记了几条（remember 成功的次数）
+    _remembering: set = field(default_factory=set)     # 正在记的：工具调用 id
     # 对话长度：最近一次模型请求读的前文（输入 + 写缓存 + 读缓存）加上它写的输出 = 下一次请求至少要带着的
     context_tokens: int = 0
     context_limit: int = 0             # 超过多少自动整理（0 = 不整理；AssistantSettings.compact_tokens）
@@ -286,6 +294,8 @@ class TurnState:
         self.checkpoint = ""
         self.files = []
         self._editing = {}
+        self.remembered = 0
+        self._remembering = set()
 
     @property
     def conversation_cost(self):
@@ -358,7 +368,7 @@ def error_kind(text, sdk_error=None):
 
 def _tool_detail(name, tool_input, workspace=""):
     """给人看的线索：搜索的关键词、读的网址、文件（工作文件夹里的显示相对路径）……没有就是空的。"""
-    for key in ("query", "url", "file_path", "notebook_path", "path", "pattern", "command"):
+    for key in ("query", "url", "file_path", "notebook_path", "path", "pattern", "command", "title", "id"):
         value = tool_input.get(key) if isinstance(tool_input, dict) else None
         if isinstance(value, str) and value:
             if key in ("file_path", "notebook_path", "path") and workspace and os.path.isabs(value):
@@ -400,6 +410,8 @@ def translate(message, state):
                 path = (block.input or {}).get("file_path") or (block.input or {}).get("notebook_path")
                 if block.name in permissions.EDIT_TOOLS and isinstance(path, str) and path:
                     state._editing[block.id] = path
+                elif block.name == memory.REMEMBER_TOOL:
+                    state._remembering.add(block.id)
     elif isinstance(message, UserMessage):
         results = [b for b in message.content if isinstance(b, ToolResultBlock)] if isinstance(message.content, list) else []
         if not results and message.uuid and not state.checkpoint:
@@ -409,6 +421,9 @@ def translate(message, state):
             path = state._editing.pop(block.tool_use_id, None)
             if path and not block.is_error and path not in state.files:
                 state.files.append(path)
+            if block.tool_use_id in state._remembering:
+                state._remembering.discard(block.tool_use_id)
+                state.remembered += 0 if block.is_error else 1
     elif isinstance(message, SystemMessage):
         data = message.data if isinstance(message.data, dict) else {}
         if message.subtype == "compact_boundary":     # 整理做完了（try_compact.py 实测的消息）
@@ -459,6 +474,7 @@ def _turn_finished(message, state):
         session_id=message.session_id or "",
         context_tokens=state.context_tokens,
         context_limit=state.context_limit,
+        remembered=state.remembered,
     ))
     return events
 

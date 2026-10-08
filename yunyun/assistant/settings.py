@@ -41,6 +41,7 @@ class AssistantSettings:
     conversation_budget_usd: float = DEFAULT_CONVERSATION_BUDGET_USD  # 每段对话（Claude 官方交给 Claude Code 的 max_budget_usd）
     workspace: str = ""                   # 工作文件夹；空 = 没选（只聊天）。save_settings 不写它，见 set_workspace
     compact_tokens: int = DEFAULT_COMPACT_TOKENS   # 对话超过这么长（token）就自动整理；0 = 不整理
+    notebook: bool = True                 # 用不用记事本（阶段 10 的 B）。save_settings 不写它，见 set_notebook_enabled
 
     @property
     def info(self):
@@ -58,13 +59,14 @@ def load_settings():
     except cfg.ConfigError:
         saved = {}
     workspace = _workspace(saved.get("workspace"))
+    notebook = saved.get("notebook") is not False   # 没设置过 = 开着
     provider = saved.get("provider")
     if provider not in PROVIDERS:
-        return AssistantSettings(workspace=workspace)
+        return AssistantSettings(workspace=workspace, notebook=notebook)
     return AssistantSettings(
         provider, str(saved.get("model") or ""), _budget(saved.get("budget_usd")),
         _conversation_budget(saved.get("conversation_budget_usd")), workspace,
-        compact_tokens=_compact_tokens(saved.get("compact_tokens", DEFAULT_COMPACT_TOKENS)),
+        compact_tokens=_compact_tokens(saved.get("compact_tokens", DEFAULT_COMPACT_TOKENS)), notebook=notebook,
     )
 
 
@@ -77,6 +79,11 @@ def save_settings(settings):
         "conversation_budget_usd": _conversation_budget(settings.conversation_budget_usd),
         "compact_tokens": _compact_tokens(settings.compact_tokens),
     })
+
+
+def set_notebook_enabled(enabled):
+    """设置 → 记事本的总开关（只写这一项，下一段对话开始生效）。"""
+    _update_section({"notebook": bool(enabled)})
 
 
 def _update_section(values):

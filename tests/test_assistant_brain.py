@@ -390,6 +390,41 @@ def test_no_compaction_below_the_limit_or_when_turned_off():
         assert not any(isinstance(e, (protocol.Compacting, protocol.Compacted)) for e in emitted)
 
 
+# ---------- 记事本（阶段 10 的 B） ----------
+
+def test_turn_counts_successful_notebook_entries():
+    state = TurnState()
+    state.new_turn()
+    calls = AssistantMessage(content=[ToolUseBlock("t1", "mcp__yunyun__remember", {"title": "用户喜欢简短", "scope": "user"}),
+                                      ToolUseBlock("t2", "mcp__yunyun__remember", {"title": "x", "scope": "project"}),
+                                      ToolUseBlock("t3", "mcp__yunyun__recall", {"query": "测试"})], model="m")
+    assert translate(calls, state)[0].detail == "用户喜欢简短"                # 操作记录里看得到记了什么
+    translate(UserMessage(content=[ToolResultBlock("t1", "Saved as m1.", is_error=False),
+                                   ToolResultBlock("t2", "No work folder", is_error=True),
+                                   ToolResultBlock("t3", "…", is_error=False)]), state)
+    assert translate(result(total=0.01), state)[-1].remembered == 1           # 只算记成功的
+
+
+def test_notebook_goes_into_the_options(monkeypatch):
+    from yunyun.assistant import memory
+    memory.remember("用户喜欢简短的回复")
+    options = claude_brain.build_options(AssistantSettings(), "sk-ant-test", "zh")
+    assert list(options.mcp_servers) == ["yunyun"]                          # 芸芸自己的工具（进程内 MCP）
+    assert "[m1] 用户喜欢简短的回复" in options.system_prompt["append"]       # 目录接在人设后面
+    off = claude_brain.build_options(AssistantSettings(notebook=False), "sk-ant-test", "zh")
+    assert off.mcp_servers == {} and "m1" not in off.system_prompt["append"]
+
+
+def test_persona_notebook_section():
+    for language in ("zh", "en", "ja"):
+        text = persona(language, notebook=(["[m1] A"], ["[m2] B"]))
+        assert "remember" in text and "[m1] A" in text and "[m2] B" not in text   # 只聊天时没有"这个项目"
+        working = persona(language, working=True, notebook=([], ["[m2] B"]))
+        assert "[m2] B" in working and "{" not in working
+        assert "remember" not in persona(language)                           # 不用记事本：一个字都不提
+    assert "（还没有）" in persona("zh", notebook=([], []))
+
+
 def test_custom_model_has_no_price_so_no_reply_estimate():
     brain = claude_brain.ClaudeBrain(AssistantSettings(model="my-own-model"), "k", "zh", lambda e: None)
     assert brain._state.rates is None
@@ -488,7 +523,7 @@ def test_build_options_deepseek(monkeypatch):
     options = claude_brain.build_options(AssistantSettings(provider="deepseek"), "sk-test", "zh")
     assert options.model == "deepseek-flash"
     assert options.tools == ["WebFetch"]                           # 别家用不了 Anthropic 的网页搜索
-    assert options.system_prompt["append"] == persona("zh", web_search=False)   # 芸芸也知道自己不能搜
+    assert options.system_prompt["append"] == persona("zh", web_search=False, notebook=([], []))   # 芸芸也知道自己不能搜
     assert options.max_budget_usd is None                          # Claude Code 按 Claude 的价格算会早早停下：芸芸自己管
     assert options.env["ANTHROPIC_AUTH_TOKEN"] == "sk-test" and "ANTHROPIC_API_KEY" not in options.env
 
@@ -522,7 +557,7 @@ def test_build_options(monkeypatch):
     assert options.effort is None                                  # Haiku 4.5 不支持 effort
     assert options.max_budget_usd == 0.7   # Claude Code 按整段对话累计算；每次回答的上限芸芸自己估算
     assert options.include_partial_messages
-    assert options.system_prompt == {"type": "preset", "preset": "claude_code", "append": persona("en")}
+    assert options.system_prompt == {"type": "preset", "preset": "claude_code", "append": persona("en", notebook=([], []))}
     assert options.cwd == str(claude_brain.WORKSPACE)
     assert options.env["ANTHROPIC_API_KEY"] == "sk-ant-test"
     assert options.env["CLAUDE_CONFIG_DIR"] == str(claude_brain.CONFIG_DIR)
@@ -534,7 +569,7 @@ def test_build_options_uses_the_chosen_work_folder(monkeypatch, tmp_path):
     options = claude_brain.build_options(AssistantSettings(workspace=str(tmp_path)), "sk-ant-test", "zh")
     assert options.cwd == str(tmp_path)
     assert options.tools == ["WebSearch", "WebFetch", "Read", "Glob", "Grep", "Edit", "Write", "Bash", "PowerShell"]
-    assert options.system_prompt["append"] == persona("zh", working=True)
+    assert options.system_prompt["append"] == persona("zh", working=True, notebook=([], []))
 
 
 def test_project_claude_md_is_read_but_not_its_settings(monkeypatch, tmp_path):

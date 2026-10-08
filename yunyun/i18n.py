@@ -92,6 +92,40 @@ TEXTS = {
     "page_mail": {"zh": "邮箱", "en": "Mail", "ja": "メール"},
     "page_ai": {"zh": "AI", "en": "AI", "ja": "AI"},
     "page_assistant": {"zh": "助手", "en": "Assistant", "ja": "アシスタント"},
+    "page_notebook": {"zh": "记事本", "en": "Notebook", "ja": "メモ帳"},
+    # ---- 设置 → 记事本（pet/notebook_page.py，阶段 10 的 B）----
+    "notebook_enabled": {"zh": "让芸芸用记事本（记住你的习惯、项目的规矩）",
+                         "en": "Let Yunyun keep a notebook (your habits, project rules)",
+                         "ja": "芸芸にメモ帳を使わせる（あなたの習慣・プロジェクトの決まり）"},
+    "notebook_hint": {
+        "zh": "芸芸聊天、干活时会把以后用得上的事记下来（你的偏好、项目的约定、踩过的坑）；你说\"记住……\"时一定记。"
+              "\"关于你\"的每段对话都会用到，项目的只在同一个工作文件夹里用到。记事本只存在你的电脑上，"
+              "每段对话开始时目录会发给你选的服务商。改动从下一段对话开始生效。",
+        "en": "While chatting and working, Yunyun notes things that will be useful later (your preferences, project "
+              "conventions, pitfalls), and always does when you say \"remember …\". Entries about you are used in "
+              "every chat; project entries only in the same work folder. The notebook stays on your computer; its index "
+              "is sent to your chosen provider at the start of each chat. Changes apply from the next chat.",
+        "ja": "芸芸は会話や作業の中で、後で役立つこと（あなたの好み、プロジェクトの決まり、ハマりどころ）を記録します。"
+              "「覚えておいて」と言われたら必ず記録します。「あなたについて」はすべての会話で、プロジェクトの項目は同じ"
+              "作業フォルダーでだけ使われます。メモ帳はパソコンだけに保存され、会話の始めに目次が選んだプロバイダーに送られます。"
+              "変更は次の会話から有効です。",
+    },
+    "notebook_about_you": {"zh": "关于你（{}）", "en": "About you ({})", "ja": "あなたについて（{}）"},
+    "notebook_project": {"zh": "项目：{}（{}）", "en": "Project: {} ({})", "ja": "プロジェクト：{}（{}）"},
+    "notebook_empty": {
+        "zh": "记事本还是空的。和芸芸聊天时说\"记住……\"，或者让她干活时自己记。",
+        "en": "The notebook is empty. Say \"remember …\" to Yunyun, or let her take notes while she works.",
+        "ja": "メモ帳はまだ空です。芸芸に「覚えておいて」と言うか、作業中に記録してもらいましょう。",
+    },
+    "notebook_edit": {"zh": "编辑…", "en": "Edit…", "ja": "編集…"},
+    "notebook_delete": {"zh": "删除", "en": "Delete", "ja": "削除"},
+    "notebook_clear": {"zh": "全部清空", "en": "Clear all", "ja": "すべて消去"},
+    "notebook_clear_confirm": {"zh": "确定要删掉记事本里的全部 {} 条吗？删掉就找不回来了。",
+                               "en": "Delete all {} entries in the notebook? This can't be undone.",
+                               "ja": "メモ帳の {} 件をすべて削除しますか？元に戻せません。"},
+    "notebook_edit_title": {"zh": "编辑记事本", "en": "Edit notebook entry", "ja": "メモ帳を編集"},
+    "notebook_title_label": {"zh": "标题（一句话）", "en": "Title (one line)", "ja": "タイトル（一文）"},
+    "notebook_content_label": {"zh": "细节（可以不填）", "en": "Details (optional)", "ja": "詳細（省略可）"},
     "page_history": {"zh": "历史", "en": "History", "ja": "履歴"},
     "quiet_label": {"zh": "免打扰", "en": "Do not disturb", "ja": "おやすみモード"},
     "quiet_to": {"zh": "至", "en": "to", "ja": "〜"},
@@ -623,6 +657,10 @@ TEXTS = {
     "assistant_tool_edit": {"zh": "正在改……", "en": "Editing…", "ja": "編集中…"},
     "assistant_tool_write": {"zh": "正在写……", "en": "Writing…", "ja": "書いています…"},
     "assistant_tool_command": {"zh": "正在执行命令……", "en": "Running a command…", "ja": "コマンドを実行中…"},
+    "assistant_tool_remember": {"zh": "正在记到记事本……", "en": "Noting it down…", "ja": "メモ帳に記録中…"},
+    "assistant_tool_recall": {"zh": "正在翻记事本……", "en": "Checking the notebook…", "ja": "メモ帳を見ています…"},
+    "assistant_tool_forget": {"zh": "正在从记事本里划掉……", "en": "Crossing it out of the notebook…",
+                              "ja": "メモ帳から消しています…"},
     "assistant_waiting_confirm": {"zh": "等你确认……", "en": "Waiting for your OK…", "ja": "確認を待っています…"},
     # 确认卡片
     "assistant_confirm_command": {"zh": "芸芸想执行一条命令", "en": "Yunyun wants to run a command",
@@ -746,6 +784,7 @@ TEXTS = {
     "assistant_card_empty": {"zh": "（没有回答）", "en": "(No answer)", "ja": "（回答なし）"},
     "assistant_card_tokens": {"zh": "{} / {} token", "en": "{} / {} tokens", "ja": "{} / {} トークン"},
     "assistant_card_files": {"zh": "改了 {} 个文件", "en": "{} file(s) changed", "ja": "{} 個のファイルを変更"},
+    "assistant_card_remembered": {"zh": "记了 {} 条", "en": "{} noted", "ja": "{} 件メモ"},
     "assistant_card_undone": {"zh": "已撤销", "en": "Undone", "ja": "取り消し済み"},
     # 历史对话（设置 → 助手）
     "assistant_history_note": {
@@ -805,6 +844,9 @@ TEXTS = {
     "assistant_action_command": {"zh": "执行", "en": "Run", "ja": "実行"},
     "assistant_action_web_search": {"zh": "搜网页", "en": "Web search", "ja": "ウェブ検索"},
     "assistant_action_web_fetch": {"zh": "看网页", "en": "Read page", "ja": "ページを読む"},
+    "assistant_action_remember": {"zh": "记一条", "en": "Note", "ja": "メモ"},
+    "assistant_action_recall": {"zh": "翻记事本", "en": "Check notes", "ja": "メモを見る"},
+    "assistant_action_forget": {"zh": "划掉一条", "en": "Remove note", "ja": "メモを消す"},
     "assistant_action_failed": {"zh": "（没成功）", "en": " (failed)", "ja": "（失敗）"},
     "assistant_decision_auto": {"zh": "不用问", "en": "No need to ask", "ja": "確認不要"},
     "assistant_decision_granted": {"zh": "之前允许过同类", "en": "Allowed earlier", "ja": "以前に許可済み"},

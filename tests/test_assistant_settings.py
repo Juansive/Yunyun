@@ -203,6 +203,15 @@ def test_compact_limit_is_kept_in_a_sane_range(fake_keyring, saved, expected):
     assert load_settings().compact_tokens == expected
 
 
+def test_notebook_switch_is_on_by_default_and_saved_alone(fake_keyring):
+    cfg.save_config({"assistant": {"provider": "anthropic", "budget_usd": 0.3}})
+    assert load_settings().notebook
+    assistant_settings.set_notebook_enabled(False)
+    assert not load_settings().notebook and load_settings().budget_usd == 0.3   # 只改这一项
+    save_settings(AssistantSettings())                                         # 助手页保存时不碰它
+    assert not load_settings().notebook
+
+
 def test_compact_limit_defaults_to_40k_and_is_saved(fake_keyring):
     cfg.save_config({"assistant": {"provider": "anthropic"}})
     assert load_settings().compact_tokens == 40_000

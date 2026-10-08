@@ -31,7 +31,7 @@ from datetime import datetime
 from PySide6.QtCore import QCoreApplication, QObject, Signal
 
 from yunyun import i18n
-from yunyun.assistant import ledger, protocol, transcripts
+from yunyun.assistant import ledger, memory, protocol, transcripts
 
 log = logging.getLogger(__name__)
 
@@ -40,6 +40,8 @@ _TOOL_TEXT = {
     "Read": "assistant_tool_read", "Glob": "assistant_tool_search_files", "Grep": "assistant_tool_search_files",
     "Edit": "assistant_tool_edit", "Write": "assistant_tool_write", "NotebookEdit": "assistant_tool_edit",
     "Bash": "assistant_tool_command", "PowerShell": "assistant_tool_command",
+    memory.REMEMBER_TOOL: "assistant_tool_remember", memory.RECALL_TOOL: "assistant_tool_recall",
+    memory.FORGET_TOOL: "assistant_tool_forget",
 }
 SETTINGS_ERRORS = {"no_key", "auth", "model", "budget", "reply_budget"}   # 这几种错误在设置页能改好（界面可以给个"去设置"）
 UNDO_NOTE = transcripts.UNDO_NOTE   # 历史对话读回来时要认出它、去掉它，所以放在 transcripts 里
@@ -93,6 +95,7 @@ class Turn:
     context_tokens: int = 0    # 答完这一轮时对话有多长（token）
     context_limit: int = 0     # 超过多少自动整理（0 = 不整理）
     compact: str = ""          # 这一轮答完后整理前面的对话："" 没整理、"running" 正在整理、"done" 整理好了、"failed" 没做成
+    remembered: int = 0        # 这一轮往记事本里记了几条
 
     def action(self, tool_id):
         return next((a for a in self.actions if a.tool_id and a.tool_id == tool_id), None)
@@ -384,6 +387,7 @@ class AssistantSession(QObject):
             turn.input_tokens, turn.output_tokens = event.input_tokens, event.output_tokens
             turn.files, turn.checkpoint, turn.session_id = tuple(event.files), event.checkpoint, event.session_id
             turn.context_tokens, turn.context_limit = event.context_tokens, event.context_limit
+            turn.remembered = event.remembered
             self.session_id = event.session_id or self.session_id
             ledger.record(event.cost_usd)   # 记账：设置页显示今天 / 本月 / 一共花了多少
             self._end_turn(stopped=event.stopped)

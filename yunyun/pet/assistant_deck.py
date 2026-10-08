@@ -55,6 +55,7 @@ class AssistantCard:
     context_tokens: int = 0  # 答完这一问时对话有多长（token）
     context_limit: int = 0   # 超过多少自动整理（0 = 不整理）
     compact: str = ""        # 这一问答完后整理前面的对话：""、"running"、"done"、"failed"（session.Turn.compact）
+    remembered: int = 0      # 这一问往记事本里记了几条
 
     @classmethod
     def divider(cls, folder=""):
@@ -450,7 +451,9 @@ class AssistantDeck(QWidget):
             parts.append((context, color))
         if card.files:
             parts.append((i18n.tr("assistant_card_files", len(card.files)), gray))
-        status = i18n.tr("assistant_card_stopped") if card.stopped else (
+        if card.remembered:
+            parts.append((i18n.tr("assistant_card_remembered", card.remembered), gray))
+        status =i18n.tr("assistant_card_stopped") if card.stopped else (
             i18n.tr("assistant_card_error") if card.error else i18n.tr("assistant_card_undone") if card.undone else "")
         room = w - (s.horizontalAdvance(status) + 8 if status else 0)
         for i, (text, color) in enumerate(parts):   # 一段段接着画（颜色可以不同），放不下的省略

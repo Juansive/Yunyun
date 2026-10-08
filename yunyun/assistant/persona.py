@@ -100,15 +100,70 @@ _PROJECT_NOTES = {
 }
 
 
-def persona(language, working=False, project_notes="", web_search=True):
+# 记事本（阶段 10 的 B）：什么值得记、什么不记（博主说的"过滤写入"），后面接目录（memory.index_lines）
+_NOTEBOOK = {
+    "zh": (
+        "\n\n# 芸芸的记事本\n"
+        "你有一个跨对话保留的记事本（只存在用户电脑上），工具是 remember（记一条 / 改一条）、recall（按编号读细节或按词查）、"
+        "forget（删一条）。下面是目录，每条一行：[编号] 标题。\n"
+        "- 用户说\"记住……\"时，一定用 remember 记下来。\n"
+        "- 你发现值得以后用到的事，也顺手记一条：用户的偏好和习惯（scope=user）；这个项目的约定、常用命令、踩过的坑"
+        "（scope=project，只在选了工作文件夹时）。\n"
+        "- 不记：寒暄、一次性的小事、密码和 Key 这类敏感信息、目录里已经有的（有变化就带上编号改那一条）。\n"
+        "- 过时的、用户要你忘掉的，用 forget 删掉。记、删都不用先问，做完在回答里顺带说一句。\n"
+        "- 标题用一句话写清楚（用户的语言），细节放 content。目录里的内容和眼前的事有关时，先用 recall 看细节再动手。\n"
+    ),
+    "en": (
+        "\n\n# Yunyun's notebook\n"
+        "You have a notebook kept across conversations (only on the user's computer). Tools: remember (add or update "
+        "an entry), recall (read details by id or search by words), forget (delete an entry). Below is the index, "
+        "one line per entry: [id] title.\n"
+        "- When the user says \"remember …\", always save it with remember.\n"
+        "- When you learn something useful later, save it too: the user's preferences and habits (scope=user); this "
+        "project's conventions, common commands and pitfalls (scope=project, only when a work folder is open).\n"
+        "- Don't save small talk, one-off details, secrets such as passwords or keys, or things already in the index "
+        "(if something changed, update that entry by its id).\n"
+        "- Delete outdated entries, or ones the user asks you to forget, with forget. No need to ask before saving or "
+        "deleting; just mention it briefly in your reply.\n"
+        "- Write the title as one clear line in the user's language, details in content. When an index entry is "
+        "relevant to the task, read its details with recall before acting.\n"
+    ),
+    "ja": (
+        "\n\n# 芸芸のメモ帳\n"
+        "会話をまたいで残るメモ帳があります（ユーザーのパソコンだけに保存）。ツールは remember（1 件記録・修正）、"
+        "recall（番号で詳細を読む・言葉で検索）、forget（1 件削除）です。以下が目次で、1 件 1 行：[番号] タイトル。\n"
+        "- ユーザーが「覚えておいて」と言ったら、必ず remember で記録してください。\n"
+        "- 後で役立つことに気づいたら、それも記録してください：ユーザーの好みや習慣（scope=user）、"
+        "このプロジェクトの決まり・よく使うコマンド・ハマりどころ（scope=project、作業フォルダーがあるときだけ）。\n"
+        "- 記録しないもの：雑談、その場限りの小さなこと、パスワードやキーなどの機密情報、目次にすでにあること"
+        "（変わったときは番号を付けてその項目を修正）。\n"
+        "- 古くなったものや、忘れてと言われたものは forget で削除。記録・削除の前に確認は不要で、回答の中で一言触れれば十分です。\n"
+        "- タイトルはユーザーの言語で一文に、詳細は content に。目次の項目が今の作業に関係するときは、先に recall で詳細を読んでください。\n"
+    ),
+}
+_NOTEBOOK_HEADINGS = {   # (关于用户, 这个项目, 还没有)
+    "zh": ("关于用户：", "这个项目：", "（还没有）"),
+    "en": ("About the user:", "This project:", "(nothing yet)"),
+    "ja": ("ユーザーについて：", "このプロジェクト：", "（まだありません）"),
+}
+
+
+def persona(language, working=False, project_notes="", web_search=True, notebook=None):
     """这种语言的人设（不认识的语言用中文）。working：选了工作文件夹；project_notes：工作文件夹里 CLAUDE.md 的内容；
-    web_search：有没有网页搜索工具（DeepSeek 这类没有）。"""
+    web_search：有没有网页搜索工具（DeepSeek 这类没有）；notebook：记事本的目录 (关于用户的几行, 这个项目的几行)，
+    None = 不用记事本。"""
     if language not in _BASE:
         language = "zh"
     web = _WEB[language][0 if web_search else 1]
     text = _BASE[language] + (_WORKING if working else _CHAT_ONLY)[language].format(web=web)
     if not web_search:
         text += _NO_WEB_SEARCH[language]
+    if notebook is not None:
+        user, project = notebook
+        about_user, this_project, empty = _NOTEBOOK_HEADINGS[language]
+        text += _NOTEBOOK[language] + about_user + "\n" + ("\n".join(user) or empty)
+        if working:
+            text += "\n" + this_project + "\n" + ("\n".join(project) or empty)
     if project_notes.strip():
         text += _PROJECT_NOTES[language] + project_notes.strip()
     return text

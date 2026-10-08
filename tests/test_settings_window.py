@@ -32,7 +32,8 @@ def test_open_settings_pages(qapp, pet):
     pet.open_settings()
     w = pet.settings_window
     assert w.isVisible() and w.current_page == "general"
-    assert [w._sidebar.item(i).text() for i in range(w._sidebar.count())] == ["通用", "邮箱", "AI", "助手", "历史", "关于"]
+    assert [w._sidebar.item(i).text() for i in range(w._sidebar.count())] == [
+        "通用", "邮箱", "AI", "助手", "记事本", "历史", "关于"]
     pet.open_mail_accounts()                       # 已经开着：翻页，不会开第二个窗口
     assert pet.settings_window is w and w.current_page == "mail"
     for page in PAGES:

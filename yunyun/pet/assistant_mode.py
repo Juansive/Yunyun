@@ -76,6 +76,7 @@ def card_from_turn(turn, workspace=""):
         tuple(turn.files), turn.checkpoint, turn.generation, turn.undone, tuple(turn.actions),
         turn.session_id, workspace,
         context_tokens=turn.context_tokens, context_limit=turn.context_limit, compact=turn.compact,
+        remembered=turn.remembered,
     )
 
 
