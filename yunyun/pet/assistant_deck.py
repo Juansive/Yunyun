@@ -12,15 +12,17 @@
 - 最新的在最前面；滚轮往下翻是更早的。新卡片来了：从右上方滑到最前面，原来那张退到后面。
 - 新对话 / 大脑重启时，插一张淡色的分隔卡"新对话 · 14:20"：芸芸只记得它之后的内容。
 - 单击当前卡片 → card_clicked（阅读框，U3）；单击露出来的别的卡片 → 翻到那张。
+- 按住左键拖（超过系统的拖动阈值才算）→ drag_started / dragged(从按下起移动了多少) / drag_finished，
+  卡片堆自己不动，由总管决定放哪（相对芸芸记住位置，见 assistant_mode）。
 - 窗口不拿键盘焦点（WindowDoesNotAcceptFocus）：看卡片时输入框照样能打字。
 - 所有卡片画在这一个窗口里，错位、缩放、淡化都按一个连续的"翻到第几张"来算，翻动画才顺。
 """
 from dataclasses import dataclass
 from datetime import datetime
 
-from PySide6.QtCore import QEasingCurve, QPointF, QRect, QRectF, Qt, QVariantAnimation, Signal
+from PySide6.QtCore import QEasingCurve, QPoint, QPointF, QRect, QRectF, Qt, QVariantAnimation, Signal
 from PySide6.QtGui import QBrush, QColor, QFont, QFontMetrics, QLinearGradient, QPainter, QPainterPath, QPen
-from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QApplication, QWidget
 
 from yunyun import i18n
 from yunyun.pet import winapi
@@ -65,6 +67,9 @@ class AssistantDeck(QWidget):
     card_clicked = Signal(object)            # 单击了当前卡片（AssistantCard）
     new_conversation_requested = Signal()    # 点了"+ 新对话"
     current_changed = Signal(int)            # 翻到了另一张（或者最前面换成了新卡片）；阅读框跟着换
+    drag_started = Signal()
+    dragged = Signal(QPoint)                 # 从按下的地方起一共移动了多少（屏幕坐标）
+    drag_finished = Signal()
 
     CARD_W = 290
     PAD = 14
@@ -101,6 +106,8 @@ class AssistantDeck(QWidget):
         self._hovering = False
         self._pressed = None          # 按下的是第几张
         self._press_t = 0.0
+        self._press_at = None         # 按下的位置（屏幕坐标）：移动超过阈值就算拖动
+        self._dragging = False
         self._anchor = QRect()
         self._placement = None
 
@@ -140,9 +147,13 @@ class AssistantDeck(QWidget):
 
     def show_beside(self, column):
         """在 column（"芸芸 + 输入框"那一列，屏幕坐标）旁边淡入；没有卡片就不显示。"""
+        self.follow(column)
+        self.show_animated()
+
+    def show_animated(self):
+        """在现在的位置淡入（位置由 follow / move_cards_to 定）；没有卡片就不显示。"""
         if not self._cards:
             return
-        self.follow(column)
         self._hiding = False
         if not self.isVisible():
             self._shown = 0.0
@@ -166,6 +177,10 @@ class AssistantDeck(QWidget):
         w, h = self.width() - 2 * m, self.height() - 2 * m
         x, y, self._placement = place_block(self._anchor, w, h, gap=self.GAP, current=self._placement, prefer="side")
         self.move(int(x) - m, int(y) - m)
+
+    def move_cards_to(self, top_left):
+        """卡片区域的左上角放到 top_left（屏幕坐标；拖过以后用这个，不再自动放在旁边）。"""
+        self.move(top_left - QPoint(self.MARGIN, self.MARGIN))
 
     def newest_added(self):
         """最新一张刚加进来：从"更新的那张"的位置（右上后方）滑到最前面；在翻看旧卡片时不打扰，只是计数变了。"""
@@ -400,6 +415,17 @@ class AssistantDeck(QWidget):
 
     def mouseMoveEvent(self, event):
         self._set_hover(True)
+        if self._press_at is not None and event.buttons() & Qt.MouseButton.LeftButton:
+            moved = event.globalPosition().toPoint() - self._press_at
+            if not self._dragging and moved.manhattanLength() >= QApplication.startDragDistance():
+                self._dragging = True                       # 是拖动，不是单击：取消"按下"的效果
+                self._pressed = None
+                self._animate(self._press, self._press_t, 0.0)
+                self.setCursor(Qt.CursorShape.ClosedHandCursor)
+                self.drag_started.emit()
+            if self._dragging:
+                self.dragged.emit(moved)
+                return
         self.setCursor(Qt.CursorShape.PointingHandCursor if self._card_at(event.position()) is not None
                        or self._new_chat_rect().contains(event.position()) else Qt.CursorShape.ArrowCursor)
 
@@ -420,11 +446,19 @@ class AssistantDeck(QWidget):
         if self._hover_header > 0.5 and self._new_chat_rect().contains(event.position()):
             self.new_conversation_requested.emit()
             return
+        self._press_at = event.globalPosition().toPoint()
+        self._dragging = False
         self._pressed = self._card_at(event.position())
         if self._pressed == self._target:
             self._animate(self._press, self._press_t, 1.0)
 
     def mouseReleaseEvent(self, event):
+        self._press_at = None
+        if self._dragging:   # 拖完了：不算单击
+            self._dragging = False
+            self.setCursor(Qt.CursorShape.ArrowCursor)
+            self.drag_finished.emit()
+            return
         pressed, self._pressed = self._pressed, None
         self._animate(self._press, self._press_t, 0.0)
         if pressed is None or self._card_at(event.position()) != pressed:

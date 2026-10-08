@@ -81,6 +81,7 @@ class PetWindow(QWidget):
         self._settings_window = None  # 设置窗口（用到时才创建，关掉就销毁）
         self._assistant = None        # 助手模式（用到时才创建，退出就销毁）
         self._assistant_cards = []    # 助手的问答卡片（从旧到新）：退出助手模式也留着，芸芸退出才清掉，不写硬盘
+        self._assistant_place = {}    # 卡片组拖到了哪（相对芸芸的偏移）：退出助手模式也记着
         self._history = None          # 邮件提醒的历史记录（main 里设置）
         self._quiet_hours = None      # 免打扰时段（main 里设置）
 
@@ -579,7 +580,10 @@ class PetWindow(QWidget):
             # 没拖过阈值、松开时离按下的位置也很近 → 算单击；否则是一次拖动
             moved = (event.globalPosition().toPoint() - self._press_pos).manhattanLength()
             if not self._dragging and moved < QApplication.startDragDistance():
-                self.clicked.emit()
+                if self._assistant is not None:
+                    self._assistant.summon()   # 助手模式开着：左键 = 唤出输入框和卡片（2026-10-08 用户要求）
+                else:
+                    self.clicked.emit()
             if self._dragging:
                 self._end_drag()
 
@@ -654,6 +658,10 @@ class PetWindow(QWidget):
             if self._assistant is not None:
                 if self._assistant.busy:
                     menu.addAction(tr("menu_assistant_stop"), self.stop_assistant)
+                if self._assistant.cards_shown:   # 卡片常亮：要收起就在这里（左键芸芸再唤出）
+                    menu.addAction(tr("menu_assistant_hide_cards"), self._assistant.hide_cards)
+                if self._assistant.has_custom_place:
+                    menu.addAction(tr("menu_assistant_reset_place"), self._assistant.reset_place)
                 menu.addAction(tr("menu_assistant_exit"), self.close_assistant)
             menu.addSeparator()
         # "设置…"：所有设置都在设置窗口里（"…"表示点了会打开一个窗口，这是桌面软件的惯例）
@@ -699,7 +707,7 @@ class PetWindow(QWidget):
             return
         if self._assistant is None:
             from yunyun.pet.assistant_mode import AssistantMode
-            mode = AssistantMode(self, self._assistant_cards)
+            mode = AssistantMode(self, self._assistant_cards, place=self._assistant_place)
             mode.busy_changed.connect(self.assistant_busy_changed)
             mode.closed.connect(self._on_assistant_closed)
             self.language_changed.connect(mode.retranslate)

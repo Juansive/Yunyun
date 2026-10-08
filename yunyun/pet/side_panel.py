@@ -2,7 +2,8 @@
 
 - 放在 anchor（芸芸 + 输入框 + 卡片堆占的区域）旁边，哪边空间大放哪边（bubble.place_block）；
 - 从 anchor 那边滑出、淡入，收起时反过来；
-- 焦点去了别的程序 → dismissed（助手模式整个收起）；
+- 焦点去了别的程序 → dismissed（总管决定要不要理：现在卡片常亮，不理）；
+- 按住空白处（四周留白、各行之间）拖 → drag_started / dragged(移动了多少) / drag_finished，由总管挪整组（卡片堆 + 它）；
 - 白底圆角 + 柔和的阴影，边框颜色可以换（border_color）。
 
 子类负责内容和大小（resize 之后调 _place / _apply_open），出现时调 _show_animated()。
@@ -15,7 +16,10 @@ from yunyun.pet.bubble import place_block
 
 
 class SidePanel(QWidget):
-    dismissed = Signal()   # 焦点去了别的程序：助手模式整个收起
+    dismissed = Signal()   # 焦点去了别的程序
+    drag_started = Signal()
+    dragged = Signal(QPoint)   # 从按下的地方起一共移动了多少（屏幕坐标）
+    drag_finished = Signal()
 
     MARGIN = 12          # 窗口四周留白（给阴影）
     PAD = 18
@@ -34,6 +38,8 @@ class SidePanel(QWidget):
         self._target_pos = QPoint()
         self._shown = 0.0
         self._hiding = False
+        self._press_at = None   # 在空白处按下的位置：移动超过阈值就算拖动
+        self._dragging = False
         self._open = QVariantAnimation(self, duration=self.OPEN_MS, easingCurve=QEasingCurve.Type.OutCubic)
         self._open.valueChanged.connect(self._on_open)
         self._open.finished.connect(self._on_open_finished)
@@ -58,6 +64,13 @@ class SidePanel(QWidget):
         self._anchor = QRect(anchor)
         if self.isVisible():
             self._place()
+            self._apply_open()
+
+    def shift(self, delta):
+        """整体平移 delta（拖动卡片组时：保持和卡片堆的相对位置，不重新选边）。"""
+        self._anchor.translate(delta)
+        self._target_pos += delta
+        if self.isVisible():
             self._apply_open()
 
     # ---------- 位置和动画 ----------
@@ -103,6 +116,35 @@ class SidePanel(QWidget):
         if self._hiding:
             self._hiding = False
             self.hide()
+
+    # ---------- 拖动（只有点在空白处才会到这里：文字、按钮自己处理鼠标） ----------
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._press_at = event.globalPosition().toPoint()
+            self._dragging = False
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self._press_at is not None and event.buttons() & Qt.MouseButton.LeftButton:
+            moved = event.globalPosition().toPoint() - self._press_at
+            if not self._dragging and moved.manhattanLength() >= QApplication.startDragDistance():
+                self._dragging = True
+                self.setCursor(Qt.CursorShape.ClosedHandCursor)
+                self.drag_started.emit()
+            if self._dragging:
+                self.dragged.emit(moved)
+                return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        self._press_at = None
+        if self._dragging:
+            self._dragging = False
+            self.unsetCursor()
+            self.drag_finished.emit()
+            return
+        super().mouseReleaseEvent(event)
 
     # ---------- 事件 ----------
 

@@ -7,8 +7,9 @@ import time
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import QEvent, Qt
+from PySide6.QtCore import QEvent, QPoint, Qt
 from PySide6.QtGui import QKeyEvent
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 from shiboken6 import isValid
 
@@ -20,6 +21,7 @@ from yunyun.assistant import settings as assistant_settings
 from yunyun.main import connect_assistant
 from yunyun.pet.assistant_input import AssistantInput
 from yunyun.pet.assistant_mode import AssistantMode
+from yunyun.pet.assistant_reader import AssistantReader
 from yunyun.pet.menu import FancyAction
 from yunyun.pet.sprites import load_sprites
 from yunyun.pet.state import PetState, StateMachine
@@ -93,7 +95,7 @@ def test_menu_puts_assistant_first_and_fancy(world, monkeypatch):
     has_key(monkeypatch)
     pet.open_assistant()
     texts = menu_texts(pet)
-    assert texts[1] == "退出助手模式"               # 开着时才有
+    assert texts[1:3] == ["隐藏卡片", "退出助手模式"]   # 开着时才有
 
 
 def test_without_key_opens_settings_and_says_so(world, monkeypatch):
@@ -184,23 +186,132 @@ def test_mail_and_assistant_thinking_do_not_cancel_each_other(world, monkeypatch
     assert machine.state is PetState.IDLE
 
 
-def test_collapse_keeps_assistant_then_idle_exit(qapp, world, monkeypatch):
+def test_collapse_keeps_assistant_then_idle_releases_only_the_brain(qapp, world, monkeypatch):
     pet, _, processes = world
     has_key(monkeypatch)
     pet.open_assistant()
     mode = pet.assistant
+    processes[0].say(protocol.Ready("anthropic", "m"))
+    finish_turn(pet, processes[0], "问题")
     mode.input.collapse()
     assert wait_until(qapp, lambda: not mode.input.isVisible())
     assert pet.assistant is mode and not processes[0].stopped   # 收起 ≠ 退出
+    assert mode.deck.isVisible()                                # 卡片常亮
     assert mode._idle_timer.isActive()
 
     pet.open_assistant()                            # 唤出：停止计时
     assert not mode._idle_timer.isActive() and mode.input.is_open
     mode.input.collapse()
     assert wait_until(qapp, lambda: not mode.input.isVisible())
-    mode._idle_timer.timeout.emit()                 # 闲置太久
-    assert processes[0].stopped
-    assert wait_until(qapp, lambda: pet.assistant is None)
+    mode._idle_timer.timeout.emit()                 # 闲置太久：只释放大脑
+    assert processes[0].stopped and pet.assistant is mode and mode.deck.isVisible()
+    pet.open_assistant()                            # 再唤出：新大脑、新对话
+    assert len(processes) == 2 and processes[1].started
+    assert [c.kind for c in mode.cards] == ["turn", "divider"]
+
+
+def test_left_click_on_yunyun_summons_the_assistant(qapp, world, monkeypatch):
+    pet, _, _ = world
+    clicks = []
+    pet.clicked.connect(lambda: clicks.append(1))
+    QTest.mouseClick(pet, Qt.MouseButton.LeftButton, pos=pet.body_rect().center() - pet.pos())
+    assert pet.assistant is None and clicks == [1]              # 没开助手模式：还是原来的单击
+    has_key(monkeypatch)
+    pet.open_assistant()
+    mode = pet.assistant
+    mode.input.collapse()
+    assert wait_until(qapp, lambda: not mode.input.isVisible())
+    clicks.clear()
+    QTest.mouseClick(pet, Qt.MouseButton.LeftButton, pos=pet.body_rect().center() - pet.pos())
+    assert mode.input.is_open and clicks == []                  # 开着助手模式：左键 = 唤出输入框
+
+
+def test_hide_cards_from_the_menu_and_summon_brings_the_reader_back(qapp, world, monkeypatch):
+    monkeypatch.setattr(AssistantReader, "OPEN_MS", 10)
+    pet, _, processes = world
+    has_key(monkeypatch)
+    pet.open_assistant()
+    mode = pet.assistant
+    processes[0].say(protocol.Ready("anthropic", "m"))
+    finish_turn(pet, processes[0], "问题")
+    mode._open_card(mode.cards[-1])
+    assert wait_until(qapp, lambda: mode.reader.is_open)
+    assert "隐藏卡片" in menu_texts(pet)
+    next(a for a in pet._build_menu().actions() if a.text() == "隐藏卡片").trigger()
+    assert wait_until(qapp, lambda: not mode.deck.isVisible() and not mode.reader.isVisible()
+                      and not mode.input.isVisible())
+    assert "隐藏卡片" not in menu_texts(pet) and pet.assistant is mode
+    pet.open_assistant()
+    assert wait_until(qapp, lambda: mode.deck.isVisible() and mode.reader.is_open)   # 刚才开着的阅读框也回来了
+    assert mode.reader.card is mode.cards[-1]
+
+
+def test_cards_can_be_dragged_and_follow_yunyun(qapp, world, monkeypatch):
+    pet, _, processes = world
+    has_key(monkeypatch)
+    pet.move(300, 200)
+    pet.open_assistant()
+    mode = pet.assistant
+    processes[0].say(protocol.Ready("anthropic", "m"))
+    finish_turn(pet, processes[0], "问题")
+    before = mode.deck.cards_rect().topLeft()
+    mode.deck.drag_started.emit()
+    mode.deck.dragged.emit(QPoint(-40, 30))
+    mode.deck.drag_finished.emit()
+    moved = mode.deck.cards_rect().topLeft()
+    assert moved == before + QPoint(-40, 30) and mode.has_custom_place
+    pet.move(pet.pos() + QPoint(20, -10))            # 芸芸走了：卡片保持相对位置跟着
+    assert mode.deck.cards_rect().topLeft() == moved + QPoint(20, -10)
+    assert "卡片回到芸芸旁边" in menu_texts(pet)
+    mode.reset_place()
+    assert not mode.has_custom_place and mode.deck.cards_rect().topLeft() != moved + QPoint(20, -10)
+
+
+def test_dragging_the_reader_moves_the_whole_group(qapp, two_cards):
+    pet, mode = two_cards
+    mode.deck.card_clicked.emit(mode.deck.card(0))
+    assert wait_until(qapp, lambda: mode.reader.is_open and mode.reader._shown == 1.0)
+    deck_before, reader_before = mode.deck.cards_rect().topLeft(), mode.reader.pos()
+    mode.reader.drag_started.emit()
+    mode.reader.dragged.emit(QPoint(15, 20))
+    mode.reader.drag_finished.emit()
+    assert mode.deck.cards_rect().topLeft() == deck_before + QPoint(15, 20)
+    assert mode.reader.pos() == reader_before + QPoint(15, 20)   # 阅读框跟着卡片堆
+
+
+def test_dragged_cards_stay_on_screen(qapp, world, monkeypatch):
+    pet, _, processes = world
+    has_key(monkeypatch)
+    pet.open_assistant()
+    mode = pet.assistant
+    processes[0].say(protocol.Ready("anthropic", "m"))
+    finish_turn(pet, processes[0], "问题")
+    mode.deck.drag_started.emit()
+    mode.deck.dragged.emit(QPoint(-100000, -100000))
+    area = QApplication.primaryScreen().availableGeometry()
+    assert area.contains(mode.deck.cards_rect().topLeft())
+
+
+def test_a_real_mouse_drag_on_the_deck_moves_it_but_a_click_still_opens(qapp, world, monkeypatch):
+    monkeypatch.setattr(AssistantReader, "OPEN_MS", 10)
+    pet, _, processes = world
+    has_key(monkeypatch)
+    pet.move(300, 200)
+    pet.open_assistant()
+    mode = pet.assistant
+    processes[0].say(protocol.Ready("anthropic", "m"))
+    finish_turn(pet, processes[0], "问题")
+    assert wait_until(qapp, lambda: mode.deck._shown == 1.0)
+    deck = mode.deck
+    on_card = deck._card_rect(0.0).center().toPoint()
+    before = deck.cards_rect().topLeft()
+    QTest.mousePress(deck, Qt.MouseButton.LeftButton, pos=on_card)
+    QTest.mouseMove(deck, on_card + QPoint(30, 25))
+    QTest.mouseRelease(deck, Qt.MouseButton.LeftButton, pos=on_card + QPoint(30, 25))
+    assert deck.cards_rect().topLeft() != before and not mode.reader.isVisible()   # 拖动：不算单击
+    on_card = deck._card_rect(0.0).center().toPoint()
+    QTest.mouseClick(deck, Qt.MouseButton.LeftButton, pos=on_card)
+    assert wait_until(qapp, lambda: mode.reader.is_open)                            # 单击：照样打开
 
 
 def test_idle_exit_waits_for_the_answer(qapp, world, monkeypatch):
@@ -428,7 +539,8 @@ def test_saved_folder_is_shown_and_used_next_time(world, monkeypatch, tmp_path):
     assert str(tmp_path) in pet.assistant.input._folder.toolTip()
 
 
-def test_deck_follows_the_input(qapp, world, monkeypatch):
+def test_deck_stays_when_the_input_collapses(qapp, world, monkeypatch):
+    """2026-10-08 用户要求：点到别的程序（比如看文档）时卡片常亮，只有输入框收起。"""
     pet, _, processes = world
     has_key(monkeypatch)
     pet.move(100, 100)
@@ -437,10 +549,9 @@ def test_deck_follows_the_input(qapp, world, monkeypatch):
     processes[0].say(protocol.Ready("anthropic", "m"))
     finish_turn(pet, processes[0], "问题")
     assert mode.deck.isVisible()
-    mode.input.collapse()                            # 收起：卡片堆一起淡出
-    assert wait_until(qapp, lambda: not mode.deck.isVisible())
-    pet.open_assistant()
-    assert wait_until(qapp, lambda: mode.deck.isVisible())
+    mode.input.collapse()
+    assert wait_until(qapp, lambda: not mode.input.isVisible())
+    assert mode.deck.isVisible() and mode.cards_shown
 
 
 # ---------- 阅读框（U3） ----------
@@ -484,25 +595,25 @@ def test_divider_cards_do_not_open_the_reader(qapp, two_cards):
     assert not mode.reader.isVisible()
 
 
-def test_collapse_and_exit_close_the_reader(qapp, two_cards):
+def test_collapse_keeps_the_reader_and_exit_closes_it(qapp, two_cards):
     pet, mode = two_cards
     mode.deck.card_clicked.emit(mode.deck.card(0))
     assert wait_until(qapp, lambda: mode.reader.isVisible())
     mode.input.collapse()
-    assert wait_until(qapp, lambda: not mode.reader.isVisible() and not mode.deck.isVisible())
-    pet.open_assistant()
-    mode.deck.card_clicked.emit(mode.deck.card(0))
+    assert wait_until(qapp, lambda: not mode.input.isVisible())
+    assert mode.reader.is_open and mode.deck.isVisible()      # 输入框收起，阅读框和卡片堆留着
     reader = mode.reader
     pet.close_assistant()
     assert not reader.isVisible()
 
 
-def test_reader_losing_focus_collapses_everything(qapp, two_cards):
+def test_reader_losing_focus_stays_open(qapp, two_cards):
     pet, mode = two_cards
     mode.deck.card_clicked.emit(mode.deck.card(0))
-    mode.reader.dismissed.emit()                     # 焦点去了别的程序
-    assert wait_until(qapp, lambda: not mode.input.isVisible() and not mode.reader.isVisible())
-    assert pet.assistant is mode                     # 只是收起，助手还开着
+    assert wait_until(qapp, lambda: mode.reader.is_open)
+    mode.reader.dismissed.emit()                     # 焦点去了别的程序（比如点了文档）
+    qapp.processEvents()
+    assert mode.reader.is_open and mode.deck.isVisible()
 
 
 def test_no_assistant_entry_when_this_build_has_no_sdk(world, monkeypatch):
@@ -587,10 +698,10 @@ def test_reader_makes_way_for_the_confirm_card(qapp, working):
     assert not mode.reader.isVisible()
 
 
-def test_confirm_while_collapsed_reminds_then_shows_on_summon(qapp, working):
+def test_confirm_while_cards_hidden_reminds_then_shows_on_summon(qapp, working):
     pet, _, process = working
     mode = pet.assistant
-    mode.input.collapse()
+    mode.hide_cards()
     assert wait_until(qapp, lambda: not mode.input.isVisible())
     process.say(permission(1), permission(2))
     assert not mode.confirm.isVisible()
@@ -599,14 +710,39 @@ def test_confirm_while_collapsed_reminds_then_shows_on_summon(qapp, working):
     assert wait_until(qapp, lambda: mode.confirm.is_open and mode.confirm.request.request_id == 1)
 
 
-def test_collapse_hides_the_confirm_but_keeps_it_waiting(qapp, working):
+def test_confirm_shows_even_when_only_the_input_is_collapsed(qapp, working):
+    pet, _, process = working
+    mode = pet.assistant
+    mode.input.collapse()                                          # 只是在看别的东西：卡片组还显示着
+    assert wait_until(qapp, lambda: not mode.input.isVisible())
+    process.say(permission())
+    assert wait_until(qapp, lambda: mode.confirm.is_open)
+    assert i18n.tr("assistant_confirm_waiting_said") not in bubbles(pet)
+
+
+def test_collapse_keeps_the_confirm_waiting_and_visible(qapp, working):
     pet, _, process = working
     mode = pet.assistant
     process.say(permission())
     assert wait_until(qapp, lambda: mode.confirm.is_open)
     mode.input.collapse()
-    assert wait_until(qapp, lambda: not mode.confirm.isVisible())
-    assert process.sent == [] and len(mode.session.pending_permissions) == 1
+    assert wait_until(qapp, lambda: not mode.input.isVisible())
+    assert mode.confirm.is_open and process.sent == [] and len(mode.session.pending_permissions) == 1
+    mode.confirm._allow_button.click()                             # 收起着也能直接点
+    assert process.sent == [protocol.PermissionReply(1, True, "", False)]
+
+
+def test_reader_steps_aside_for_a_confirm_and_comes_back(qapp, working):
+    pet, _, process = working
+    mode = pet.assistant
+    process.say(protocol.TurnFinished(0.001, 0.001))
+    mode._open_card(mode.cards[-1])
+    assert wait_until(qapp, lambda: mode.reader.is_open)
+    ask(pet, "再来")
+    process.say(permission())
+    assert wait_until(qapp, lambda: mode.confirm.is_open and not mode.reader.isVisible())
+    mode.confirm._allow_button.click()
+    assert wait_until(qapp, lambda: mode.reader.is_open and mode.reader.card is mode.cards[-1])
 
 
 def test_stop_and_exit_drop_the_confirm(qapp, working):
@@ -633,7 +769,7 @@ def test_emergency_stop_from_the_menu_even_when_collapsed(qapp, working):
     mode.input.collapse()                                          # 收起着也能停
     assert wait_until(qapp, lambda: not mode.input.isVisible())
     texts = menu_texts(pet)
-    assert texts[1] == "■ 停止助手" and texts[2] == "退出助手模式"   # 干活时才有
+    assert texts[1:4] == ["■ 停止助手", "隐藏卡片", "退出助手模式"]   # 停止：干活时才有
     stop = next(a for a in pet._build_menu().actions() if a.text() == "■ 停止助手")
     stop.trigger()
     assert process.interrupts == 1 and mode.session.pending_permissions == []

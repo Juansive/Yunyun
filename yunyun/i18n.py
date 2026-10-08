@@ -21,6 +21,9 @@ TEXTS = {
     "menu_settings": {"zh": "设置…", "en": "Settings…", "ja": "設定…"},
     "menu_assistant": {"zh": "✦ 助手模式", "en": "✦ Assistant mode", "ja": "✦ アシスタントモード"},
     "menu_assistant_stop": {"zh": "■ 停止助手", "en": "■ Stop the assistant", "ja": "■ アシスタントを停止"},
+    "menu_assistant_hide_cards": {"zh": "隐藏卡片", "en": "Hide cards", "ja": "カードを隠す"},
+    "menu_assistant_reset_place": {"zh": "卡片回到芸芸旁边", "en": "Put cards back next to Yunyun",
+                                   "ja": "カードを芸芸のそばに戻す"},
     "menu_assistant_exit": {"zh": "退出助手模式", "en": "Exit assistant mode", "ja": "アシスタントモードを終了"},
     "menu_language": {"zh": "语言", "en": "Language", "ja": "言語"},
     "menu_always_on_top": {"zh": "始终在上", "en": "Always on Top", "ja": "常に最前面"},
@@ -648,9 +651,9 @@ TEXTS = {
     "assistant_confirm_remember_edit": {"zh": "这次对话改文件都允许", "en": "Allow edits for this chat",
                                         "ja": "この会話では編集を許可"},
     "assistant_confirm_waiting_said": {
-        "zh": "有件事要你确认：右键我 →「✦ 助手模式」",
-        "en": "I need your OK on something: right-click me → \"✦ Assistant mode\"",
-        "ja": "確認してほしいことがあるよ：私を右クリック →「✦ アシスタントモード」",
+        "zh": "有件事要你确认：点我一下～",
+        "en": "I need your OK on something — click me!",
+        "ja": "確認してほしいことがあるよ：私をクリックしてね～",
     },
     "assistant_stopped": {"zh": "（已停止）", "en": "(Stopped)", "ja": "（停止しました）"},
     "assistant_cost": {   # 这一轮花费、这次对话累计（美元）
