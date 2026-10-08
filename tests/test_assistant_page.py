@@ -11,17 +11,31 @@ from yunyun.pet.assistant_page import AssistantSettingsPage
 
 
 class FakeCheck(QObject):
-    """代替 KeyCheck：记下被要求测什么，然后（在下一轮事件循环里）给出预先设定的结果。"""
+    """代替 KeyCheck：记下被要求测什么，然后（在下一轮事件循环里）给出预先设定的结果（和余额）。"""
     done = Signal(object)
+    balance = Signal(object)
     requests = []
     result = None
+    balance_result = None   # 查得到的余额（None = 不发 balance 信号）
+    delay_ms = 0
+    finished = []           # 真的给出了结果的
 
-    def __init__(self, provider, model, key):
+    def __init__(self, provider, model, key, what="check"):
         super().__init__()
-        FakeCheck.requests.append((provider, model, key))
+        self.what = what
+        FakeCheck.requests.append((provider, model, key) if what == "check" else (what, provider, key))
+        # 定时器挂在自己下面：和真的 KeyCheck（QProcess 挂在它下面）一样，被删掉就不会再给结果
+        self._timer = QTimer(self, singleShot=True, interval=FakeCheck.delay_ms)
+        self._timer.timeout.connect(self._finish)
 
     def start(self):
-        QTimer.singleShot(0, lambda: self.done.emit(FakeCheck.result))
+        self._timer.start()
+
+    def _finish(self):
+        FakeCheck.finished.append(self.what)
+        if FakeCheck.balance_result is not None:
+            self.balance.emit(FakeCheck.balance_result)
+        self.done.emit(FakeCheck.result)
 
 
 @pytest.fixture
@@ -30,7 +44,8 @@ def keys(monkeypatch):
     store = {}
     monkeypatch.setattr(assistant_settings, "get_api_key", lambda provider: store.get(provider))
     monkeypatch.setattr(assistant_settings, "set_api_key", lambda provider, key: store.__setitem__(provider, key))
-    FakeCheck.requests, FakeCheck.result = [], None
+    FakeCheck.requests, FakeCheck.result, FakeCheck.balance_result = [], None, None
+    FakeCheck.delay_ms, FakeCheck.finished = 0, []
     return store
 
 
@@ -156,4 +171,71 @@ def test_spending_and_balance_link(qapp, keys):
     ledger.record(1.0)
     page.show()                                      # 每次显示这一页都刷新
     assert "$1.01" in page._spent.text()
+    assert FakeCheck.requests == []                  # Anthropic 没有查余额的接口：不去查
     page.close()
+
+
+def choose(page, provider):
+    page._provider.setCurrentIndex(page._provider.findData(provider))
+
+
+def test_deepseek_balance_shows_when_the_page_is_shown(qapp, keys):
+    keys["deepseek"] = "sk-ds"
+    FakeCheck.balance_result = {"available": True, "items": [{"currency": "CNY", "total": "110.00"}]}
+    page = make_page()
+    choose(page, "deepseek")                         # 换到能查余额的服务商：马上查
+    assert wait_until(qapp, lambda: "¥110.00" in page._spent.text())
+    assert FakeCheck.requests == [("balance", "deepseek", "sk-ds")]
+    assert "platform.deepseek.com/usage" in page._spent.text()
+    choose(page, "anthropic")                        # 别家不显示 DeepSeek 的余额
+    assert "¥" not in page._spent.text() and "platform.claude.com" in page._spent.text()
+    page.close()
+
+
+def test_deepseek_balance_not_enough_and_no_key(qapp, keys):
+    page = make_page()
+    choose(page, "deepseek")
+    assert FakeCheck.requests == []                  # 还没存 Key：不查
+    keys["deepseek"] = "sk-ds"
+    FakeCheck.balance_result = {"available": False, "items": [{"currency": "USD", "total": "0.37"}]}
+    page.show()
+    assert wait_until(qapp, lambda: "$0.37" in page._spent.text())
+    assert "不够用了" in page._spent.text()
+    page.close()
+
+
+def test_balance_reply_after_the_page_is_gone(qapp, keys):
+    """查余额时设置窗口就关了、这一页删掉了：结果不能再回到删掉的页面上（查询挂在页面下面，一起删掉）。"""
+    import time
+
+    import shiboken6
+    keys["deepseek"] = "sk-ds"
+    FakeCheck.balance_result = {"available": True, "items": [{"currency": "CNY", "total": "1.00"}]}
+    FakeCheck.delay_ms = 100
+    page = make_page()
+    choose(page, "deepseek")
+    gone = []
+    page._balance_check.destroyed.connect(lambda: gone.append(True))
+    shiboken6.delete(page)                           # 马上删掉（deleteLater 要等事件循环）
+    end = time.time() + 0.3
+    while time.time() < end:                         # 等过了假查询给结果的时间
+        qapp.processEvents()
+    assert gone and FakeCheck.finished == []         # 查询跟着页面删掉了，没有再回调
+
+
+def test_test_and_save_shows_the_balance_it_found(qapp, keys):
+    page = make_page()
+    choose(page, "deepseek")
+    page._key.setText("sk-ds-new")
+    FakeCheck.balance_result = {"available": True, "items": [{"currency": "CNY", "total": "5.20"}]}
+    page._test_and_save()
+    assert wait_until(qapp, lambda: "¥5.20" in page._spent.text())
+    assert FakeCheck.requests == [("deepseek", "deepseek-flash", "sk-ds-new")]
+    assert keys == {"deepseek": "sk-ds-new"}
+
+
+def test_balance_text():
+    from yunyun.pet.assistant_page import balance_text
+    assert balance_text({"items": [{"currency": "CNY", "total": "1.5"}, {"currency": "USD", "total": "2"}]}) == "¥1.5 + $2"
+    assert balance_text({"items": [{"currency": "EUR", "total": "3"}]}) == "3 EUR"
+    assert balance_text({}) == "—"

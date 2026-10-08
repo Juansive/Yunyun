@@ -480,6 +480,16 @@ TEXTS = {
         "en": '<a href="{}">Check your balance online</a>',
         "ja": '<a href="{}">残高を公式サイトで確認</a>',
     },
+    "assistant_balance": {   # 能查余额的服务商（DeepSeek）：金额 + 官网链接
+        "zh": '账户余额：{}（<a href="{}">去官网看明细</a>）',
+        "en": 'Account balance: {} (<a href="{}">details</a>)',
+        "ja": 'アカウント残高：{}（<a href="{}">公式サイトで詳細</a>）',
+    },
+    "assistant_balance_empty": {
+        "zh": '账户余额：{}，不够用了，<a href="{}">充值</a>后才能用。',
+        "en": 'Account balance: {}. That\'s not enough; <a href="{}">top up</a> before using it.',
+        "ja": 'アカウント残高：{}。足りないため、<a href="{}">チャージ</a>してから使ってください。',
+    },
     "assistant_conversation_budget": {"zh": "每段对话最多花", "en": "Max per chat", "ja": "1 つの会話の上限"},
     "assistant_budget_low": {
         "zh": "⚠ 每次回答的上限有点低：每问一次至少要 1 美分左右，低于 $0.05 时芸芸可能总是答到一半就停。",

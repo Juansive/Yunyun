@@ -167,21 +167,24 @@ class AssistantProcess(QObject):
 
 
 class KeyCheck(QObject):
-    """在小进程（check.py）里测试连接：Key、模型、网络。不问 Claude 任何问题，不花钱。
+    """在小进程（check.py）里测试连接（Key、模型、网络）或查余额。不问模型任何问题，不花钱。
 
-        check = KeyCheck("anthropic", "claude-haiku-4-5", key)
-        check.done.connect(...)   # None = 没问题；protocol.Error = 哪里不对（kind 是 ERROR_KINDS 里的）
+        check = KeyCheck("anthropic", "claude-haiku-4-5", key)      # what="balance"：只查余额（模型不用给）
+        check.balance.connect(...)   # 查到了余额（check.py 里 balance 的样子）；在 done 之前发，查不到就不发
+        check.done.connect(...)      # None = 没问题；protocol.Error = 哪里不对（kind 是 ERROR_KINDS 里的）
         check.start()
     """
 
     done = Signal(object)
+    balance = Signal(object)
 
-    def __init__(self, provider, model, api_key, parent=None, command=None):
+    def __init__(self, provider, model, api_key, parent=None, command=None, what="check"):
         """command：(程序, 参数, 工作目录)，测试时换成假的；平时不用传。"""
         super().__init__(parent)
         program, args, cwd = command or subprocess_command("check")
         # Key 走标准输入，不放在命令行参数里（别的程序看得到命令行）
-        self._request = (json.dumps({"provider": provider, "model": model, "key": api_key}) + "\n").encode("utf-8")
+        self._request = (json.dumps({"provider": provider, "model": model, "key": api_key, "what": what})
+                         + "\n").encode("utf-8")
         self._proc = QProcess(self)
         self._proc.setProgram(program)
         self._proc.setArguments(args)
@@ -214,6 +217,8 @@ class KeyCheck(QObject):
             log.warning("测试连接的小进程没有给出结果（退出码 %s）", exit_code)
             self._report(protocol.Error("worker", f"测试连接没有结果（{exit_code}）"))
             return
+        if isinstance(result.get("balance"), dict) and not self._reported:
+            self.balance.emit(result["balance"])
         if result.get("ok"):
             self._report(None)
         else:

@@ -1,6 +1,7 @@
 """假的"测试连接"小进程（测试用）：读一行 JSON，按模型名决定回答，不联网。
 
     ok          {"ok": true}
+    （what=balance）{"ok": true, "balance": 一块钱人民币}
     slow        一直不回答（测超时）
     crash       什么也不说就退出（测"没有结果"）
     bad-kind    回一个不认识的出错种类（应该当成 other）
@@ -20,12 +21,16 @@ from yunyun.assistant import protocol   # noqa: E402
 def main():
     request = json.loads(next(protocol.read_lines(0)))
     model = request["model"]
+    if request.get("what") == "balance":
+        model = "balance"
     if model == "crash":
         os._exit(3)
     if model == "slow":
         time.sleep(30)
     if model == "ok":
         result = {"ok": True}
+    elif model == "balance":
+        result = {"ok": True, "balance": {"available": True, "items": [{"currency": "CNY", "total": "1.00"}]}}
     elif model == "bad-kind":
         result = {"ok": False, "kind": "nonsense", "detail": "?"}
     else:

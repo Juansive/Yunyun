@@ -4,8 +4,12 @@
 - 服务商下拉框的内容来自 assistant/providers.py：阶段 3 在那里加了服务商，这里自动出现；
 - 模型下拉框列出这家的模型和价格，最后一项"自己填写模型名…"（新模型出来了不用等芸芸更新）；
 - **Key 不会显示出来**：保存过的话输入框是空的，只提示"已保存"；要换才粘贴新的，留空就继续用原来的；
-- "测试并保存"在小进程里查一下这个模型（Models API），确认 Key、模型名、网络都没问题——**不花钱**。
+- "测试并保存"在小进程里查一下这个模型（Models API / 那家的模型列表），确认 Key、模型名、网络都没问题——**不花钱**；
+- 有查余额接口的服务商（DeepSeek）：每次显示这一页、测试成功时，在"花了多少"下面显示账户余额（也在小进程里查，不花钱）。
 """
+import html
+import logging
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QComboBox, QDoubleSpinBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton, QVBoxLayout,
@@ -23,18 +27,31 @@ from yunyun.assistant.settings import (
 )
 from yunyun.pet import assistant_history
 
+log = logging.getLogger(__name__)
+_CURRENCY_SIGNS = {"CNY": "¥", "USD": "$"}
+
+
+def balance_text(balance):
+    """{"items": [{"currency": "CNY", "total": "110.00"}]} → "¥110.00"（几种货币用 + 连起来）。"""
+    parts = [f"{_CURRENCY_SIGNS[item['currency']]}{item['total']}" if item.get("currency") in _CURRENCY_SIGNS
+             else f"{item.get('total', '')} {item.get('currency', '')}".strip()
+             for item in balance.get("items") or [] if isinstance(item, dict)]
+    return " + ".join(parts) or "—"
+
 
 class AssistantSettingsPage(QWidget):
     settings_saved = Signal()
     history_cleared = Signal()   # 清空了历史对话（文件已经删了）：芸芸把内存里的卡片也清掉
 
     def __init__(self, parent=None, make_check=KeyCheck):
-        """make_check(服务商, 模型, Key) → 有 done 信号和 start() 的对象；测试时换成假的。"""
+        """make_check(服务商, 模型, Key, what="check" / "balance") → 有 done、balance 信号和 start() 的对象；测试时换成假的。"""
         super().__init__(parent)
         tr = i18n.tr
         self._make_check = make_check
         self._check = None
         self._pending = None   # 正在测试的 (设置, 新粘贴的 Key)
+        self._balance_check = None   # 正在查余额的
+        self._balance = None         # 查到的余额：(服务商, check.py 里 balance 的样子)
 
         layout = QVBoxLayout(self)
         form = self._form = QFormLayout()
@@ -157,6 +174,8 @@ class AssistantSettingsPage(QWidget):
         self._key.clear()
         self._status.clear()
         self._update_provider_texts()
+        self.refresh_spending()
+        self._query_balance()
 
     def _update_provider_texts(self):
         info = self._info
@@ -167,16 +186,46 @@ class AssistantSettingsPage(QWidget):
         self._key.setPlaceholderText(i18n.tr("assistant_key_saved" if saved else "assistant_key_placeholder"))
 
     def refresh_spending(self):
-        """今天 / 本月 / 一共花了多少（每次显示这一页时刷新：刚问过问题就能看到）。"""
+        """今天 / 本月 / 一共花了多少（每次显示这一页时刷新：刚问过问题就能看到）+ 账户余额（查到了的话）。"""
         spent = ledger.summary()
         text = i18n.tr("assistant_spent", ledger.money(spent.today), ledger.money(spent.month), ledger.money(spent.total))
-        if self._info.billing_url:
-            text += "<br>" + i18n.tr("assistant_spent_balance", self._info.billing_url)
+        info = self._info
+        if self._balance is not None and self._balance[0] == info.code:
+            balance = self._balance[1]
+            key = "assistant_balance" if balance.get("available", True) else "assistant_balance_empty"
+            text += "<br>" + i18n.tr(key, html.escape(balance_text(balance)), info.billing_url)
+        elif info.billing_url:
+            text += "<br>" + i18n.tr("assistant_spent_balance", info.billing_url)
         self._spent.setText(text)
 
     def showEvent(self, event):
         super().showEvent(event)
         self.refresh_spending()
+        self._query_balance()
+
+    def _query_balance(self):
+        """这家能查余额、又存过 Key：在小进程里查一下（不花钱），查到了显示在"花了多少"下面。"""
+        info = self._info
+        if not info.balance_url or self._balance_check is not None:
+            return
+        key = assistant_settings.get_api_key(info.code)
+        if not key:
+            return
+        self._balance_check = check = self._make_check(info.code, "", key, what="balance")
+        check.setParent(self)   # 设置窗口关掉、这一页没了，查询也跟着结束（结果不会再回到已经删掉的页面上）
+        check.balance.connect(lambda balance, code=info.code: self._on_balance(code, balance))
+        check.done.connect(self._on_balance_done)
+        check.start()
+
+    def _on_balance(self, provider, balance):
+        self._balance = (provider, balance)
+        self.refresh_spending()
+
+    def _on_balance_done(self, error):
+        self._balance_check.deleteLater()
+        self._balance_check = None
+        if error is not None:   # 查不到就还显示"去官网看"的链接
+            log.info("查不到账户余额（%s）", error.kind)
 
     def _update_budget_warning(self):
         warnings = []
@@ -214,6 +263,8 @@ class AssistantSettingsPage(QWidget):
         self._set_busy(True)
         self._show_status(i18n.tr("assistant_testing"))
         self._check = self._make_check(info.code, model, key)
+        self._check.setParent(self)   # 同上：这一页没了，测试也跟着结束
+        self._check.balance.connect(lambda balance, code=info.code: self._on_balance(code, balance))   # 测通了顺便查的
         self._check.done.connect(self._on_check_done)
         self._check.start()
 
@@ -221,6 +272,7 @@ class AssistantSettingsPage(QWidget):
         self._set_busy(False)
         settings, typed_key = self._pending
         self._pending = None
+        self._check.deleteLater()
         self._check = None
         if error is not None:
             message = i18n.tr(f"assistant_error_{error.kind}")

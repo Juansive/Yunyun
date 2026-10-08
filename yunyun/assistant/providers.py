@@ -49,6 +49,9 @@ class Provider:
     cache_write: float = CACHE_WRITE           # 写缓存是输入价的几倍（Anthropic 贵 25%；不另收钱的就是 1）
     key_url: str = ""                          # 去哪里申请 API Key
     billing_url: str = ""                      # 看账户余额的网页（Anthropic 没有查余额的接口）
+    # "测试并保存"怎么测（都不花钱）：空 = Anthropic 的 Models API（官方 SDK）；有地址 = 查这个模型列表（OpenAI 格式，Bearer）
+    models_url: str = ""
+    balance_url: str = ""                      # 查余额的接口（DeepSeek 有；Anthropic 没有）
     base_url: str = ""                         # 接口地址；空 = Claude 官方（Claude Code 默认的地址）
     key_env: str = "ANTHROPIC_API_KEY"         # Key 用哪个环境变量传：官方是 x-api-key 头；不少兼容接口要 ANTHROPIC_AUTH_TOKEN
     alias_models: bool = False                 # 把 Claude Code 的模型别名都指到用户选的模型（接别家时要）
@@ -117,6 +120,8 @@ PROVIDERS = {
             cache_write=1.0,
             key_url="https://platform.deepseek.com/api_keys",
             billing_url="https://platform.deepseek.com/usage",
+            models_url="https://api.deepseek.com/models",          # 也能看出模型名写没写错
+            balance_url="https://api.deepseek.com/user/balance",
             base_url="https://api.deepseek.com/anthropic",
             key_env="ANTHROPIC_AUTH_TOKEN",    # 官方给 Claude Code 的配置用这个（Authorization: Bearer）
             alias_models=True,

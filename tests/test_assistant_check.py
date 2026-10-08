@@ -96,6 +96,110 @@ def test_check_cleans_inherited_variables_before_creating_the_client(monkeypatch
     assert order == ["clean", "proxy", "client"]
 
 
+# ---------- DeepSeek：查模型列表、查余额（get_json 换成假的） ----------
+
+DEEPSEEK_MODELS = {"object": "list", "data": [{"id": "deepseek-flash", "object": "model"},
+                                              {"id": "deepseek-v4-pro", "object": "model"}]}
+DEEPSEEK_BALANCE = {"is_available": True, "balance_infos": [
+    {"currency": "CNY", "total_balance": "110.00", "granted_balance": "10.00", "topped_up_balance": "100.00"}]}
+
+
+@pytest.fixture
+def fake_http(monkeypatch):
+    """get_json 换成按网址回答的假函数；记下问了哪些网址、用的什么 Key。"""
+    answers, calls = {}, []
+    monkeypatch.setattr(check_module, "system_proxy_env", lambda: {})
+    monkeypatch.setattr(check_module, "clean_environment", lambda: [])
+
+    def get_json(url, key):
+        calls.append((url, key))
+        answer = answers.get(url)
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+    monkeypatch.setattr(check_module, "get_json", get_json)
+    answers["https://api.deepseek.com/models"] = DEEPSEEK_MODELS
+    answers["https://api.deepseek.com/user/balance"] = DEEPSEEK_BALANCE
+    return answers, calls
+
+
+def test_deepseek_check_uses_its_model_list(fake_http, fake_sdk):
+    _, calls = fake_http
+    assert check_module.check("deepseek", "deepseek-v4-pro", "sk-ds") == (None, "")
+    assert calls == [("https://api.deepseek.com/models", "sk-ds")] and fake_sdk.created == []   # 不用 Anthropic 的 SDK
+    kind, detail = check_module.check("deepseek", "deepseek-typo", "sk-ds")   # 它会悄悄换成 flash：这里要查出来
+    assert kind == "model" and "deepseek-flash" in detail
+
+
+def test_deepseek_check_errors(fake_http):
+    answers, _ = fake_http
+    answers["https://api.deepseek.com/models"] = check_module.CheckError("auth", "401: Authentication Fails")
+    assert check_module.check("deepseek", "deepseek-flash", "bad") == ("auth", "401: Authentication Fails")
+
+
+def test_run_check_adds_the_balance(fake_http):
+    assert check_module.run({"provider": "deepseek", "model": "deepseek-flash", "key": "k"}) == {
+        "ok": True, "balance": {"available": True, "items": [{"currency": "CNY", "total": "110.00"}]}}
+    assert check_module.run({"provider": "deepseek", "key": "k", "what": "balance"})["balance"]["items"][0]["total"] == "110.00"
+
+
+def test_run_check_passes_even_if_balance_fails(fake_http):
+    answers, _ = fake_http
+    answers["https://api.deepseek.com/user/balance"] = check_module.CheckError("network", "timed out")
+    assert check_module.run({"provider": "deepseek", "model": "deepseek-flash", "key": "k"}) == {"ok": True}
+    assert check_module.run({"provider": "deepseek", "key": "k", "what": "balance"}) == {
+        "ok": False, "kind": "network", "detail": "timed out"}
+
+
+def test_anthropic_has_no_balance(fake_sdk, fake_http):
+    _, calls = fake_http
+    assert check_module.run({"provider": "anthropic", "model": "claude-haiku-4-5", "key": "k"}) == {
+        "ok": True, "balance": None}
+    assert calls == []
+
+
+class FakeResponse:
+    def __init__(self, body):
+        self.body = body
+
+    def read(self):
+        return self.body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+
+@pytest.mark.parametrize("code, kind", [(401, "auth"), (402, "billing"), (429, "rate_limit"), (500, "other")])
+def test_get_json_http_errors(monkeypatch, code, kind):
+    import io
+    import urllib.error
+
+    def urlopen(request, timeout):
+        assert request.get_header("Authorization") == "Bearer sk-x"
+        body = io.BytesIO(b'{"error": {"message": "Authentication Fails"}}')
+        raise urllib.error.HTTPError(request.full_url, code, "err", {}, body)
+    monkeypatch.setattr(check_module.urllib.request, "urlopen", urlopen)
+    with pytest.raises(check_module.CheckError) as info:
+        check_module.get_json("https://api.deepseek.com/models", "sk-x")
+    assert info.value.kind == kind and "Authentication Fails" in info.value.detail
+
+
+def test_get_json_network_and_ok(monkeypatch):
+    import urllib.error
+
+    def offline(request, timeout):
+        raise urllib.error.URLError("getaddrinfo failed")
+    monkeypatch.setattr(check_module.urllib.request, "urlopen", offline)
+    with pytest.raises(check_module.CheckError) as info:
+        check_module.get_json("https://api.deepseek.com/models", "k")
+    assert info.value.kind == "network"
+    monkeypatch.setattr(check_module.urllib.request, "urlopen", lambda request, timeout: FakeResponse(b'{"a": 1}'))
+    assert check_module.get_json("https://api.deepseek.com/models", "k") == {"a": 1}
+
+
 # ---------- 芸芸这头的 KeyCheck（用假的小进程） ----------
 
 def wait_until(qapp, condition, timeout=10.0):
@@ -140,6 +244,16 @@ def test_key_check_timeout(qapp, monkeypatch):
     check, results = run_check(qapp, "slow")
     assert results[0] == protocol.Error("network", "测试连接超时")
     assert wait_until(qapp, lambda: not check.is_running())          # 超时后把小进程结束掉了
+
+
+def test_key_check_balance_comes_before_done(qapp):
+    order = []
+    check = KeyCheck("deepseek", "", "sk-ds", command=(sys.executable, [str(FAKE_CHECK)], None), what="balance")
+    check.balance.connect(lambda balance: order.append(("balance", balance)))
+    check.done.connect(lambda error: order.append(("done", error)))
+    check.start()
+    assert wait_until(qapp, lambda: len(order) == 2)
+    assert order == [("balance", {"available": True, "items": [{"currency": "CNY", "total": "1.00"}]}), ("done", None)]
 
 
 def test_key_check_program_missing(qapp):
