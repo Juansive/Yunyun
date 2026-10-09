@@ -157,6 +157,7 @@ class PetWindow(QWidget):
 
         # ---- 动画相关 ----
         self._sprites = sprites
+        self._assistant_look = False   # 现在用的是不是助手模式的形象（_set_assistant_look）
         self._state = None
         self._current = None      # 当前显示的原图（QPixmap）
         self._scaled_cache = {}   # 缩放后的图缓存，避免每次重绘都重新缩放
@@ -228,12 +229,21 @@ class PetWindow(QWidget):
         self.setGeometry(x, y, size, size)
         self._reload_timer.start()   # 拖滑块时先用现有的图缩放，停下来再按新大小载入（变大不糊、变小省内存）
 
+    def _set_assistant_look(self, on):
+        """开着助手模式时换成助手的形象（assets/pet/assistant/，没画的组用平时的），退出时换回来。"""
+        if on != self._assistant_look:
+            self._assistant_look = on
+            self._reload_sprites()
+
     def _reload_sprites(self):
-        from yunyun.pet.sprites import load_sprites
+        """按现在的大小重新载入图片；开着助手模式时载入助手的形象。正在播的那一组换成新图接着播。"""
+        from yunyun.pet.sprites import ASSISTANT_DIR, load_sprites
         try:
             sprites = load_sprites(max_size=self.sprite_pixels(self._scale))
+            if self._assistant_look:
+                sprites = load_sprites(ASSISTANT_DIR, self.sprite_pixels(self._scale), base=sprites)
         except FileNotFoundError as e:
-            log.warning("按新大小重新载入图片失败，继续用原来的：%s", e)
+            log.warning("重新载入图片失败，继续用原来的：%s", e)
             return
         old, self._sprites = self._sprites, sprites
         self._current = _same_frame(old, sprites, self._current)
@@ -781,6 +791,7 @@ class PetWindow(QWidget):
             mode.closed.connect(self._on_assistant_closed)
             self.language_changed.connect(mode.retranslate)
             self._assistant = mode
+            self._set_assistant_look(True)
         self._assistant.summon()
 
     @property
@@ -815,6 +826,7 @@ class PetWindow(QWidget):
         mode, self._assistant = self._assistant, None
         if mode is not None:
             mode.deleteLater()
+        self._set_assistant_look(False)
 
     def open_mail_accounts(self):
         self.open_settings("mail")

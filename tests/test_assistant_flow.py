@@ -76,6 +76,19 @@ def menu_texts(pet):
     return [a.text() for a in pet._build_menu().actions() if not a.isSeparator()]
 
 
+def test_assistant_mode_wears_its_own_look_while_open(world, monkeypatch):
+    """开着助手模式时换成助手的形象（assets/pet/assistant/），退出时换回来（见 test_assistant_look.py）。"""
+    pet, _, _ = world
+    has_key(monkeypatch)
+    looks = []
+    monkeypatch.setattr(pet, "_set_assistant_look", looks.append)
+    pet.open_assistant()
+    pet.open_assistant()   # 再唤出：不用再换
+    assert looks == [True]
+    pet.close_assistant()
+    assert looks == [True, False]
+
+
 def test_screenshot_request_says_so_and_answers_with_the_picture(world, monkeypatch):
     """大脑要看屏幕：气泡说"我看一下屏幕哦"，截图（这里是 conftest 的假截图）交回给大脑。"""
     pet, _, processes = world

@@ -27,6 +27,8 @@ from PySide6.QtGui import QImage, QPixmap
 from yunyun.paths import resource_path
 
 ASSET_DIR = resource_path("assets", "pet")   # 开发版在项目文件夹里，打包后在 exe 旁边的 _internal 里
+# 助手模式的形象（2026-10-09 用户要的）：文件名和上面一样，开着助手模式时用；这里没有的组用平时那套的
+ASSISTANT_DIR = ASSET_DIR / "assistant"
 
 
 @dataclass
@@ -44,33 +46,43 @@ class Sprites:
     talking: list[QPixmap]  # 可选：没有就是激动的图
 
 
-def load_sprites(folder=ASSET_DIR, max_size=None):
+_REQUIRED = ("idle", "working_down", "excited", "thinking", "sleeping")
+# 可选的组：没有就用哪一组的图（None = 空着）。busy / waiting 是助手模式（阶段 4）加的，talking 是 2026-10-09 加的
+_STAND_INS = {"busy": "thinking", "waiting": "thinking", "talking": "excited", "lifted": None}
+
+
+def load_sprites(folder=ASSET_DIR, max_size=None, base=None):
     """读取全部图片。max_size：比它大的图缩小到不超过 max_size × max_size（物理像素），None = 保持原样。
+    base：另一套已经读好的图（Sprites）——folder 里没有的组用它的（助手模式的形象，见 ASSISTANT_DIR）。
 
     注意：QPixmap 必须在创建 QApplication 之后才能用。
     """
-    def load(path):
-        return _load(path, max_size)
+    loaded = {}
 
-    def series(prefix, required=True):
-        return _load_series(folder, prefix, required, max_size)
+    def own(name):
+        """folder 里的这一组（没有是 []）。读过的不再读：替代的组和原来那组是同一个列表。"""
+        if name not in loaded:
+            loaded[name] = _load_series(folder, name, max_size)
+        return loaded[name]
 
-    idle = series("idle")
-    thinking = series("thinking")
-    excited = series("excited")
-    tray_path = folder / "tray.png"
+    def group(name):
+        """这一组：folder 里的 → folder 里的替代组（比如"在干活"用"思考"）→ base 的；必需的都没有就报错。"""
+        frames = own(name) or (own(_STAND_INS[name]) if _STAND_INS.get(name) else [])
+        if frames:
+            return frames
+        if base is not None:
+            return getattr(base, name)
+        if name in _REQUIRED:
+            raise FileNotFoundError(f"缺少图片：{folder / (name + '_1.png')}")
+        return []
+
+    groups = {name: group(name) for name in (*_REQUIRED, *_STAND_INS)}
+    up, tray = folder / "working_up.png", folder / "tray.png"
     return Sprites(
-        idle=idle,
-        working_up=load(folder / "working_up.png"),
-        working_down=series("working_down"),
-        excited=excited,
-        thinking=thinking,
-        sleeping=series("sleeping"),
-        lifted=series("lifted", required=False),
-        tray=load(tray_path) if tray_path.exists() else idle[0],
-        busy=series("busy", required=False) or thinking,          # 助手模式（阶段 4）加的，画师的图到之前可能没有
-        waiting=series("waiting", required=False) or thinking,
-        talking=series("talking", required=False) or excited,      # 2026-10-09 加的
+        **groups,
+        working_up=base.working_up if base is not None and not up.exists() else _load(up, max_size),
+        # 托盘图标一直用平时那套的
+        tray=base.tray if base is not None else _load(tray, max_size) if tray.exists() else groups["idle"][0],
     )
 
 
@@ -87,8 +99,8 @@ def _load(path, max_size=None):
     return QPixmap.fromImage(image)
 
 
-def _load_series(folder, prefix, required=True, max_size=None):
-    """读取 prefix_1.png、prefix_2.png …，按编号（数字）排序。可选的一组图没有时返回空列表。"""
+def _load_series(folder, prefix, max_size=None):
+    """读取 prefix_1.png、prefix_2.png …，按编号（数字）排序。没有就返回空列表（folder 不存在也是）。"""
     def number(path):
         suffix = path.stem[len(prefix) + 1:]  # "idle_12" → "12"
         return int(suffix) if suffix.isdigit() else None
@@ -98,6 +110,4 @@ def _load_series(folder, prefix, required=True, max_size=None):
         (p for p in folder.glob(f"{prefix}_*.png") if number(p) is not None),
         key=number,
     )
-    if not paths and required:
-        raise FileNotFoundError(f"缺少图片：{folder / (prefix + '_1.png')}")
     return [_load(p, max_size) for p in paths]   # 一张张解码、马上缩小，内存里不会同时有很多张大图

@@ -62,11 +62,13 @@ def _sqlite():
 
 def _sprites():
     from PySide6.QtWidgets import QApplication
-    from yunyun.pet.sprites import ASSET_DIR, load_sprites
+    from yunyun.pet.sprites import ASSET_DIR, ASSISTANT_DIR, load_sprites
     app = QApplication.instance() or QApplication([])   # QPixmap 需要先有 QApplication（不显示窗口）
     sprites = load_sprites()
+    load_sprites(ASSISTANT_DIR, base=sprites)   # 助手模式的形象也能读（没画的组用平时的）
     frames = len(sprites.idle) + len(sprites.working_down) + len(sprites.excited) + len(sprites.thinking)
-    return f"{ASSET_DIR}（{frames}+ 张图），界面风格 {app.style().name()}"
+    own = len(list(ASSISTANT_DIR.glob("*.png")))
+    return f"{ASSET_DIR}（{frames}+ 张图；助手模式自己的 {own} 张），界面风格 {app.style().name()}"
 
 
 def _claude_code():

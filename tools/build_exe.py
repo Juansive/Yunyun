@@ -218,6 +218,8 @@ def run_pyinstaller(icon, version_file):
     ]
     for source, target in EXTRA_DATA:
         args += ["--add-data", f"{source}{os.pathsep}{target}"]
+    if any((ASSETS / "assistant").glob("*.png")):   # 助手模式的形象：画好了才有（一张都没有时写上去，打包会报找不到文件）
+        args += ["--add-data", f"{ASSETS / 'assistant' / '*.png'}{os.pathsep}assets/pet/assistant"]
     for name in HIDDEN_IMPORTS:
         args += ["--hidden-import", name]
     for name in COPY_METADATA:
