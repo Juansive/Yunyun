@@ -43,7 +43,7 @@ from yunyun.assistant import settings as assistant_settings
 from yunyun.assistant.session import SETTINGS_ERRORS, AssistantSession, error_text
 from yunyun.assistant.transcripts import tool_detail
 from yunyun.pet import assistant_history, screen_capture, winapi
-from yunyun.pet.assistant_confirm import AssistantConfirm, title_key
+from yunyun.pet.assistant_confirm import AssistantConfirm, element_text, title_key
 from yunyun.pet.assistant_deck import AssistantCard, AssistantDeck, markdown_to_plain
 from yunyun.pet.assistant_history_panel import AssistantHistoryPanel
 from yunyun.pet.assistant_input import AssistantInput, folder_name
@@ -515,7 +515,7 @@ class AssistantMode(QObject):
         pending = self.session.pending_permissions
         if pending:
             request = pending[0]
-            detail = tool_detail(request.input, self.workspace)
+            detail = element_text(request.element) if request.element else tool_detail(request.input, self.workspace)
             title = i18n.tr(title_key(request))
             return "confirm", i18n.tr("assistant_notice_confirm", title, detail) if detail else title
         if self._done_notice:

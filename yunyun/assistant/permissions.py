@@ -16,6 +16,10 @@
   只能打开开始菜单里有的（名字对不上直接拒绝，叫模型先找）；
 - 芸芸的浏览器（阶段 6.2，2026-10-09 用户定的）：打开网页、读、后退不用问；只能打开 http / https 的网址
   （file:// 之类会绕过"读工作文件夹以外要问"，直接拒绝）；
+  点击、输入、选下拉框（6.2b）：每次问，可以选"这次对话在这个网站都允许"（按网站记）；
+  提交表单、下单、付款、发送、发布、删除、下载这类**做了就撤不回**的：每次问、标红、不给"都允许"（搜索不算）；
+  密码、卡号、验证码这类输入框：一律拒绝，请用户自己在浏览器窗口里填。
+  元素是什么由芸芸自己看网页得出（ElementFacts，claude_brain.PermissionGate 去问浏览器），不信模型的说法；
 - 别的工具一律拒绝（本来也没开，这里是兜底）。
 
 拿不准的时候一律往"问你"那边靠：多问一次只是麻烦一点，少问一次可能出事。
@@ -24,10 +28,12 @@ import os
 import re
 import shlex
 from dataclasses import dataclass
+from urllib.parse import urlsplit
 
 from yunyun.assistant.memory import NOTEBOOK_TOOLS
 from yunyun.assistant.protocol import (
-    BROWSER_BACK_TOOL, BROWSER_OPEN_TOOL, BROWSER_READ_TOOL, FIND_APP_TOOL, OPEN_APP_TOOL, SCREENSHOT_TOOL,
+    BROWSER_ACTION_TOOLS, BROWSER_BACK_TOOL, BROWSER_CLICK_TOOL, BROWSER_OPEN_TOOL, BROWSER_READ_TOOL,
+    BROWSER_SELECT_TOOL, BROWSER_TYPE_TOOL, FIND_APP_TOOL, OPEN_APP_TOOL, SCREENSHOT_TOOL,
 )
 
 ALLOW, ASK, DENY = "allow", "ask", "deny"
@@ -38,9 +44,57 @@ EDIT_TOOLS = ("Edit", "Write", "NotebookEdit")
 SHELL_TOOLS = ("Bash", "PowerShell")   # Windows 上有 Git Bash 时 Claude Code 用 Bash，没有就用 PowerShell
 
 # 要问你的几种情况（界面按它显示说明）
-KINDS = ("read_outside", "edit", "edit_sensitive", "write_outside", "command", "screenshot", "open_app")
+KINDS = ("read_outside", "edit", "edit_sensitive", "write_outside", "command", "screenshot", "open_app",
+         "web_click", "web_type", "web_select")
+WEB_KINDS = {BROWSER_CLICK_TOOL: "web_click", BROWSER_TYPE_TOOL: "web_type", BROWSER_SELECT_TOOL: "web_select"}
 
 SENSITIVE_DIRS = (".git", ".claude")   # 工作文件夹里这些文件夹里的东西，改了可能让程序以后自动运行别的东西
+
+
+@dataclass(frozen=True)
+class ElementFacts:
+    """芸芸自己看网页得出的：模型要点 / 输入 / 选的那个元素是什么（assistant/browser.py 的 element_facts）。"""
+    site: str = ""          # 哪个网站（"bilibili.com"）："都允许"按它记
+    element: str = ""       # 给人看的：快照里那一行（button "提交订单"）
+    label: str = ""         # 元素上的字（按钮文字、值、aria-label……），看是不是"付款""删除"这类
+    submit: bool = False    # 表单的提交按钮
+    download: bool = False  # 下载链接
+    search: bool = False    # 搜索框 / 搜索表单（搜索不算提交）
+    sensitive: bool = False  # 密码、卡号、验证码这类输入框
+    problem: str = ""       # 看不了这个元素（浏览器没开、编号过期了）：告诉模型的原因
+
+
+# 做了就撤不回的：按钮上的字（短的才看，长的多半是一大块内容）
+_RISKY_WORDS = re.compile(
+    r"提交|下单|确认订单|购买|买入|支付|付款|结算|结账|充值|转账|捐款|捐赠|发送|发布|发表|删除|注销|退订"
+    r"|\b(submit|buy|purchase|pay|checkout|donate|transfer|send|publish|delete|unsubscribe)\b|place order|check out",
+    re.I)
+RISKY_LABEL_CHARS = 40
+
+
+def is_risky(tool, tool_input, element):
+    """提交表单、下单、付款、发送、发布、删除、下载这类：每次都问、不给"都允许"。搜索不算。"""
+    if element.download:
+        return True
+    if element.search:
+        return False
+    if tool == BROWSER_TYPE_TOOL and tool_input.get("submit"):
+        return True
+    if tool == BROWSER_CLICK_TOOL and element.submit:
+        return True
+    label = element.label.strip()
+    return bool(label) and len(label) <= RISKY_LABEL_CHARS and bool(_RISKY_WORDS.search(label))
+
+
+def site_of(url):
+    """网址 → 网站（"都允许"按它记）：www.bilibili.com、search.bilibili.com → bilibili.com；
+    a.example.com.cn → example.com.cn；IP、localhost 原样。"""
+    host = (urlsplit(str(url or "")).hostname or "").lower().rstrip(".")
+    labels = host.split(".")
+    if not host or len(labels) <= 2 or re.fullmatch(r"[\d.]+", host) or ":" in host:
+        return host
+    keep = 3 if labels[-2] in ("com", "net", "org", "gov", "edu", "co", "ac", "or", "ne", "go") else 2
+    return ".".join(labels[-keep:])
 
 
 @dataclass(frozen=True)
@@ -54,12 +108,13 @@ class Decision:
     by_grant: bool = False  # ALLOW 是因为你之前选了"这次对话都允许"（操作记录里区分开）
 
 
-def decide(tool, tool_input, workspace, grants=frozenset(), ask_screenshot=False, apps=None):
+def decide(tool, tool_input, workspace, grants=frozenset(), ask_screenshot=False, apps=None, element=None):
     """Claude 想用 tool（参数 tool_input），工作文件夹是 workspace，这次对话里你已经"都允许"了 grants → Decision。
 
     grants 里的每一项是 decide 以前给出的 Decision.grant 里的一项：("edit",)、("read", 文件夹)、("command", 命令开头)、
-    ("screenshot",)、("open_app", 软件名)。ask_screenshot：设置里选了"截图前先问我"；
-    apps：开始菜单里的软件名（小写，assistant/apps.names()），打开软件时查名字；None = 不查。
+    ("screenshot",)、("open_app", 软件名)、("web", 网站)。ask_screenshot：设置里选了"截图前先问我"；
+    apps：开始菜单里的软件名（小写，assistant/apps.names()），打开软件时查名字；None = 不查；
+    element：网页上要点 / 输入 / 选的那个元素（ElementFacts），浏览器操作时芸芸自己看的。
     """
     tool_input = tool_input if isinstance(tool_input, dict) else {}
     if tool in WEB_TOOLS or tool in NOTEBOOK_TOOLS or tool in (FIND_APP_TOOL, BROWSER_READ_TOOL, BROWSER_BACK_TOOL):
@@ -76,6 +131,8 @@ def decide(tool, tool_input, workspace, grants=frozenset(), ask_screenshot=False
         return Decision(ASK, "screenshot", (("screenshot",),))
     if tool == OPEN_APP_TOOL:
         return _decide_open_app(str(tool_input.get("name") or "").strip(), grants, apps)
+    if tool in BROWSER_ACTION_TOOLS:
+        return _decide_web_action(tool, tool_input, grants, element)
     if tool in READ_TOOLS:
         return _decide_read(tool, tool_input, os.path.realpath(workspace), grants)
     if tool in EDIT_TOOLS:
@@ -98,6 +155,21 @@ def browser_url(text):
     if scheme and scheme.group(1).lower() in ("http", "https") and url[len(scheme.group(0)):].startswith("//"):
         return url
     return ""
+
+
+def _decide_web_action(tool, tool_input, grants, element):
+    if element is None or element.problem:
+        return Decision(DENY, reason=element.problem if element else "Yunyun couldn't look at this element.")
+    kind = WEB_KINDS[tool]
+    if tool == BROWSER_TYPE_TOOL and element.sensitive:
+        return Decision(DENY, reason="This looks like a password, payment or verification-code field. Yunyun never "
+                                     "types into these: ask the user to type it in the browser window themselves.")
+    if is_risky(tool, tool_input, element):
+        return Decision(ASK, kind, scope=element.site, danger=True)
+    grant = ("web", element.site)
+    if grant in grants:
+        return Decision(ALLOW, by_grant=True)
+    return Decision(ASK, kind, (grant,), element.site)
 
 
 def _decide_open_app(name, grants, apps):

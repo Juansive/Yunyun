@@ -180,7 +180,8 @@ class PermissionRequest:
     """Claude 想用一个需要你同意的工具，等你回答（PermissionReply）。
 
     kind：permissions.KINDS 里的一种（界面按它显示说明）；can_remember：能不能选"这次对话都允许"，
-    scope：那样的话管到哪里（命令开头 / 文件夹）；danger：危险命令 / 敏感文件，要醒目地提醒。
+    scope：那样的话管到哪里（命令开头 / 文件夹 / 网站）；danger：危险命令 / 敏感文件 / 撤不回的网页操作，要醒目地提醒；
+    element：网页操作时芸芸自己看到的那个元素（快照里那一行，比如 button "提交订单"；不是模型说的）。
     """
     TYPE: ClassVar[str] = "permission_request"
     request_id: int
@@ -191,6 +192,7 @@ class PermissionRequest:
     scope: str = ""
     danger: bool = False
     tool_id: str = ""      # 是哪一次工具调用（和 ToolStarted 的 tool_id 一样；操作记录用）
+    element: str = ""
 
 
 @_message
@@ -232,6 +234,10 @@ OPEN_APP_TOOL = "mcp__yunyun__open_app"
 BROWSER_OPEN_TOOL = "mcp__yunyun__browser_open"   # 芸芸的浏览器（assistant/tools/browser.py）：打开网页、读、后退
 BROWSER_READ_TOOL = "mcp__yunyun__browser_read"
 BROWSER_BACK_TOOL = "mcp__yunyun__browser_back"
+BROWSER_CLICK_TOOL = "mcp__yunyun__browser_click"   # 6.2b：点击、输入、选下拉框（要问你）
+BROWSER_TYPE_TOOL = "mcp__yunyun__browser_type"
+BROWSER_SELECT_TOOL = "mcp__yunyun__browser_select"
+BROWSER_ACTION_TOOLS = (BROWSER_CLICK_TOOL, BROWSER_TYPE_TOOL, BROWSER_SELECT_TOOL)
 
 
 @_message

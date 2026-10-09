@@ -168,23 +168,41 @@ class PermissionGate:
     DENIED = "The user denied this action."
     STOPPED = "The user stopped the current task."
 
-    def __init__(self, workspace, emit, ask_screenshot=False):
+    def __init__(self, workspace, emit, ask_screenshot=False, browser=None):
+        """browser：assistant.browser.Browser（网页上点击、输入前，问它这个元素是什么）。"""
         self.workspace = str(workspace)
         self.ask_screenshot = ask_screenshot   # 设置里选了"截图前先问我"
+        self.browser = browser
         self.grants = set()
         self.stopped = False  # 这一轮被停下了：之后迟到的确认请求直接拒绝（下一轮开始时 ClaudeBrain.ask 清掉）
         self._emit = emit
         self._pending = {}    # request_id → (Future, Decision)
         self._next_id = 1
 
-    def decide(self, tool, tool_input):
+    def decide(self, tool, tool_input, element=None):
         known = apps.names() if tool == protocol.OPEN_APP_TOOL else None   # 打开软件：只认开始菜单里有的名字
-        return permissions.decide(tool, tool_input, self.workspace, self.grants, self.ask_screenshot, known)
+        return permissions.decide(tool, tool_input, self.workspace, self.grants, self.ask_screenshot, known, element)
 
-    def _record(self, tool_id, tool, tool_input, decision):
+    async def _look(self, tool, tool_input):
+        """拍板前要先看清的东西：软件列表（第一次要读 1 秒多，在别的线程读好，decide 里就不卡了）；
+        网页上要点 / 输入的元素是什么（permissions.ElementFacts，芸芸自己看的，不信模型的说法）。"""
+        if tool == protocol.OPEN_APP_TOOL:
+            await asyncio.to_thread(apps.list_apps)
+        elif tool in protocol.BROWSER_ACTION_TOOLS:
+            if self.browser is None:
+                return permissions.ElementFacts(problem="Yunyun has no browser here.")
+            ref = tool_input.get("ref") if isinstance(tool_input, dict) else None
+            return await self.browser.element_facts(ref)
+        return None
+
+    def _record(self, tool_id, tool, tool_input, decision, element=None):
         """操作记录：这次工具调用最后怎么定的（protocol.DECISIONS），给芸芸发一条 ToolDecision。"""
         if tool in permissions.SHELL_TOOLS and isinstance(tool_input, dict):
             detail = str(tool_input.get("command") or "")[:500]   # 命令记全文（太长的截一下）
+        elif element is not None and not element.problem:
+            detail = " · ".join(x for x in (element.site, element.element) if x)   # 网页：哪个网站、哪个元素
+            if tool == protocol.BROWSER_TYPE_TOOL and isinstance(tool_input, dict):
+                detail += f" ← {str(tool_input.get('text') or '')[:100]}"
         else:
             detail = _tool_detail(tool, tool_input, self.workspace)
         self._emit(protocol.ToolDecision(tool_id or "", tool, decision, detail))
@@ -192,40 +210,40 @@ class PermissionGate:
     async def pre_tool_use(self, hook_input, tool_use_id, context):
         """PreToolUse hook：所有工具调用都先经过这里。"""
         tool, tool_input = hook_input.get("tool_name", ""), hook_input.get("tool_input")
-        if tool == protocol.OPEN_APP_TOOL:
-            await asyncio.to_thread(apps.list_apps)   # 软件列表第一次要读 1 秒多：先在别的线程读好，decide 里就不卡了
-        decision = self.decide(tool, tool_input)
+        element = await self._look(tool, tool_input)
+        decision = self.decide(tool, tool_input, element)
         log.info("工具 %s：%s%s", tool, decision.action, f"（{decision.kind}）" if decision.kind else "")
         output = {"hookEventName": "PreToolUse", "permissionDecision": decision.action}
         if decision.action == permissions.DENY:
             output["permissionDecisionReason"] = decision.reason
-            self._record(tool_use_id, tool, tool_input, "blocked")
+            self._record(tool_use_id, tool, tool_input, "blocked", element)
         elif decision.action == permissions.ASK:
             output["permissionDecisionReason"] = f"Yunyun asks the user ({decision.kind})"   # 记录等问完再发
         else:
             output["permissionDecisionReason"] = "Allowed by Yunyun's rules"
-            self._record(tool_use_id, tool, tool_input, "granted" if decision.by_grant else "auto")
+            self._record(tool_use_id, tool, tool_input, "granted" if decision.by_grant else "auto", element)
         return {"hookSpecificOutput": output}
 
     async def can_use_tool(self, tool, tool_input, context):
         """hook 说"要问"的工具：问芸芸（界面上的确认卡片），等回答。"""
         tool_id = getattr(context, "tool_use_id", None) or ""
-        decision = self.decide(tool, tool_input)   # 再看一次：等着的时候你可能刚选了"都允许"
+        element = await self._look(tool, tool_input)
+        decision = self.decide(tool, tool_input, element)   # 再看一次：等着的时候你可能刚选了"都允许"
         if decision.action == permissions.ALLOW:
-            self._record(tool_id, tool, tool_input, "granted" if decision.by_grant else "auto")
+            self._record(tool_id, tool, tool_input, "granted" if decision.by_grant else "auto", element)
             return PermissionResultAllow()
         if decision.action == permissions.DENY:
-            self._record(tool_id, tool, tool_input, "blocked")
+            self._record(tool_id, tool, tool_input, "blocked", element)
             return PermissionResultDeny(message=decision.reason)
         if self.stopped:
-            self._record(tool_id, tool, tool_input, "stopped")
+            self._record(tool_id, tool, tool_input, "stopped", element)
             return PermissionResultDeny(message=self.STOPPED)
         request_id, self._next_id = self._next_id, self._next_id + 1
         future = asyncio.get_running_loop().create_future()
         self._pending[request_id] = (future, decision)
         self._emit(protocol.PermissionRequest(
             request_id, tool, tool_input if isinstance(tool_input, dict) else {}, decision.kind,
-            bool(decision.grant), decision.scope, decision.danger, tool_id))
+            bool(decision.grant), decision.scope, decision.danger, tool_id, element.element if element else ""))
         try:
             reply = await future
         finally:
@@ -234,12 +252,12 @@ class PermissionGate:
         log.info("确认 %d（%s）：%s%s", request_id, decision.kind, "允许" if reply.allow else "拒绝",
                  "，这次对话都允许" if remember else "")
         if not reply.allow:
-            self._record(tool_id, tool, tool_input, "stopped" if self.stopped else "denied")
+            self._record(tool_id, tool, tool_input, "stopped" if self.stopped else "denied", element)
             message = self.DENIED + (f" Reason: {reply.reason}" if reply.reason else "")
             return PermissionResultDeny(message=message)
         if remember:
             self.grants.update(decision.grant)
-        self._record(tool_id, tool, tool_input, "remembered" if remember else "allowed")
+        self._record(tool_id, tool, tool_input, "remembered" if remember else "allowed", element)
         return PermissionResultAllow()
 
     def reply(self, reply):
@@ -528,10 +546,11 @@ class ClaudeBrain:
             context_limit=settings.compact_tokens,
         )
         self.compacting = False   # 正在整理前面的对话（worker 据此把这时来的提问排到整理之后）
-        self.gate = PermissionGate(settings.workspace or WORKSPACE, emit, ask_screenshot=settings.screenshot_ask)
-        self.bridge = Bridge(emit)   # 请芸芸进程截图、打开软件（服务商看不了图片就没有截图工具，见 build_options）
         # 芸芸的浏览器（阶段 6.2）：第一次用时才打开；开 / 关告诉芸芸（开着时不闲置释放）
         self.browser = Browser(on_change=lambda is_open: emit(protocol.BrowserChanged(is_open)))
+        self.gate = PermissionGate(settings.workspace or WORKSPACE, emit, ask_screenshot=settings.screenshot_ask,
+                                   browser=self.browser)
+        self.bridge = Bridge(emit)   # 请芸芸进程截图、打开软件（服务商看不了图片就没有截图工具，见 build_options）
         self._stderr = deque(maxlen=30)   # Claude Code 的错误输出：启动失败时看最后几行
 
     async def start(self):

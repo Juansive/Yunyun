@@ -5,13 +5,19 @@
 - 进程：助手子进程 → node.exe（Playwright 的驱动）→ msedge.exe。都在助手的作业对象里：关掉助手时跟着结束；
   点"停止"时 proctree 放过驱动这一支（不然浏览器会被一起关掉）。实测驱动 + Edge 约 400 MB 私有内存。
 - 看网页用 Playwright 的 aria 快照（mode="ai"）：每个元素带编号 [ref=e5]，按编号能找到元素（框架里的也行，f1e2）。
-  **快照里输入框的值是原样的（密码、卡号也是）**：交给模型之前把敏感输入框的值换成 (hidden)（mask_values）。
+  **快照里输入框的值是原样的（密码、卡号也是）**：交给模型之前把敏感输入框的值换成 (hidden)（mask_values）；
+  网址里像密码 / 卡号 / 令牌的参数也一样（clean_url：GET 提交的表单会把密码放进网址，try_browser.py 实测发现的）。
+- 点击、输入、选下拉框（6.2b）：先由权限规则问过你（element_facts 告诉规则这个元素是什么：提交按钮？下载？搜索？密码框？）；
+  密码框这类在 type() 里再查一遍，一律不填。点了打开新标签页就跟过去；你在窗口里切了标签页，也跟着你看的那个。
 - 你自己关掉浏览器窗口也没关系：下次用时重新打开。
 """
 import asyncio
 import logging
 import re
+from dataclasses import dataclass
+from urllib.parse import unquote_plus
 
+from yunyun.assistant.permissions import ElementFacts, site_of
 from yunyun.paths import data_dir
 
 log = logging.getLogger(__name__)
@@ -33,12 +39,47 @@ SENSITIVE_JS = r"""e => {
   return /(passw|pwd|密码|口令|card.?(num|no)|cc.?num|cvv|cvc|security.?code|卡号|安全码|验证码|otp|\bpin\b)/.test(hint);
 }"""
 
+# 要点 / 输入的元素是什么（6.2b，给权限规则用，见 permissions.ElementFacts）。搜索框、搜索表单单独认出来：搜索不算提交
+FACTS_JS = r"""e => {
+  const isSensitive = """ + SENSITIVE_JS + r""";
+  const tag = e.tagName.toLowerCase();
+  const type = (e.type || '').toLowerCase();
+  const label = [e.innerText, typeof e.value === 'string' && type !== 'password' ? e.value : '',
+                 e.getAttribute('aria-label'), e.getAttribute('title'), e.getAttribute('alt')]
+    .filter(x => typeof x === 'string' && x.trim()).map(x => x.trim()).join(' ').slice(0, 200);
+  const form = e.form || e.closest('form');
+  const submit = !!form && ((tag === 'button' && type === 'submit') || (tag === 'input' && (type === 'submit' || type === 'image')));
+  const link = e.closest('a[href]');
+  const download = !!link && (link.hasAttribute('download')
+    || /\.(zip|rar|7z|tar|gz|exe|msi|dmg|apk|iso|bin|torrent)(\?|#|$)/i.test(link.href));
+  const hint = s => /search|搜索|搜尋|查询|查找|検索/i.test(typeof s === 'string' ? s : '');
+  const search = type === 'search' || e.getAttribute('role') === 'searchbox'
+    || /^(q|query|wd|kw|keyword|keywords|search|s)$/i.test(e.name || '') || hint(e.placeholder) || hint(e.getAttribute('aria-label'))
+    || (!!form && (form.getAttribute('role') === 'search' || !!form.querySelector('input[type=search]')
+                   || hint(form.getAttribute('action')) || hint(form.id) || hint(form.getAttribute('class'))))
+    || (submit && hint(label));
+  return {label, submit, download, search, sensitive: isSensitive(e)};
+}"""
+
 # 快照里带值的一行：  - textbox "名字" [ref=e3]: 张三    （名字在 [ref=…] 前面，所以名字里有冒号也不怕）
 _VALUE_LINE = re.compile(r"^(?P<head>\s*- .*?\[ref=(?P<ref>[A-Za-z0-9]+)\][^\n:]*): (?P<value>.+)$", re.M)
 
 
+AFTER_ACTION_S = 0.3         # 点击、输入之后先等一下，让网页的脚本把变化画出来
+_REF = re.compile(r"^[A-Za-z0-9]{1,20}$")   # 元素编号只能是 e5、f1e2 这样（不让拼出别的选择器）
+
+
 class BrowserError(Exception):
     """浏览器没做成：message 是给模型看的英文。"""
+
+
+@dataclass(frozen=True)
+class PageView:
+    """做完一件事以后的网页：网址、标题、快照（敏感输入框的值已经遮掉）；note：给模型的说明（"打开了新标签页"）。"""
+    url: str
+    title: str
+    snapshot: str
+    note: str = ""
 
 
 def start_playwright():
@@ -59,6 +100,33 @@ def mask_values(snapshot, refs):
                            snapshot)
 
 
+# 网址里像密码、卡号、令牌的参数（GET 提交的表单会把密码放进网址；登录回调带着 code / token）：值不给模型看
+_SECRET_PARAM = re.compile(r"pass|pwd|^pw$|secret|token|card|^cc|cvv|cvc|otp|^pin$|^code$|auth|session|^sid$"
+                           r"|^key$|api.?key|signature|^sig$", re.I)
+
+
+def clean_url(url):
+    """交给模型的网址：参数名像密码 / 卡号 / 令牌的，值换成 (hidden)。"""
+    url = str(url or "")
+    cuts = [i for i in (url.find("?"), url.find("#")) if i >= 0]
+    if not cuts:
+        return url
+
+    def hide(match):
+        name = unquote_plus(match.group(2))
+        return f"{match.group(1)}{match.group(2)}={HIDDEN}" if _SECRET_PARAM.search(name) else match.group(0)
+    return url[:min(cuts)] + re.sub(r"([?&#;])([^=&#;]*)=([^&#;]*)", hide, url[min(cuts):])
+
+
+def describe(snapshot, ref):
+    """快照里这个编号的那一行，去掉编号这些标记：button "提交订单"、textbox "搜索"。找不到是 ""。"""
+    for line in snapshot.splitlines():
+        if f"[ref={ref}]" in line:
+            head = line.strip().lstrip("- ").split(f"[ref={ref}]")[0]
+            return re.sub(r"\s*\[[^\]]*\]", "", head).strip()[:120]
+    return ""
+
+
 def _friendly(error):
     """Playwright 的报错 → 给模型看的一句话（只取第一行，去掉调用日志）。"""
     text = str(error).strip().splitlines()[0] if str(error).strip() else type(error).__name__
@@ -76,6 +144,7 @@ class Browser:
         self._playwright = None
         self._context = None
         self._page = None
+        self._last = (None, "")       # 最近一次快照：(哪个标签页, 快照)。确认卡片上写元素是什么时用
 
     @property
     def is_open(self):
@@ -144,23 +213,24 @@ class Browser:
             self._changed(False)
         await self._stop_playwright()
 
-    def _current(self):
-        """现在用的标签页：原来那个关了就用最后一个。"""
-        if self._page is not None and not self._page.is_closed():
+    async def _page_now(self):
+        """现在用哪个标签页：你在窗口里切到了别的标签页就跟过去（看得见的那个）；原来那个关了就用最后一个。"""
+        await self._ensure()
+        pages = [p for p in self._context.pages if not p.is_closed()]
+        if not pages:
+            self._page = await self._context.new_page()
             return self._page
-        pages = [p for p in self._context.pages if not p.is_closed()] if self._context else []
-        self._page = pages[-1] if pages else None
+        if len(pages) > 1:
+            visible = [p for p in pages if await _is_visible(p)]
+            if visible and self._page not in visible:
+                self._page = visible[-1]
+        if self._page is None or self._page.is_closed():
+            self._page = pages[-1]
         return self._page
 
-    async def _page_now(self):
-        await self._ensure()
-        page = self._current()
-        if page is None:
-            page = self._page = await self._context.new_page()
-        return page
-
-    async def _run(self, action):
-        """做一件事；浏览器半路没了（窗口被关、驱动被结束）就重新打开再试一次。"""
+    async def _run(self, action, retry=True):
+        """做一件事。浏览器半路没了（窗口被关、驱动被结束）：retry 就重新打开再做一次（只给打开、读、后退用——
+        点击、输入不重做，免得做两遍）。"""
         async with self._lock:
             for attempt in (1, 2):
                 try:
@@ -168,13 +238,24 @@ class Browser:
                 except BrowserError:
                     raise
                 except Exception as e:
-                    closed = self._context is None or "closed" in str(e).lower()
-                    if attempt == 1 and closed:
-                        log.info("浏览器没了，重新打开")
+                    if await self._alive():   # 浏览器好好的：就是这件事没做成
+                        raise BrowserError(_friendly(e)) from e
+                    if self._context is not None:   # 还没收到 close 事件（_forget）：自己收拾
+                        log.info("浏览器没了")
                         self._context = self._page = None
+                        self._changed(False)
                         await self._stop_playwright()
-                        continue
-                    raise BrowserError(_friendly(e)) from e
+                    if not (retry and attempt == 1):
+                        raise BrowserError("The browser was closed. Open the page again with browser_open.") from e
+
+    async def _alive(self):
+        if self._context is None:
+            return False
+        try:
+            await asyncio.wait_for(self._context.cookies("https://example.invalid"), 3)
+            return True
+        except Exception:
+            return False
 
     # ---------- 看网页 ----------
 
@@ -202,8 +283,74 @@ class Browser:
             return await self._snapshot(page)
         return await self._run(go_back)
 
+    # ---------- 点击、输入、选择（6.2b：权限规则先问过你了） ----------
+
+    async def element_facts(self, ref):
+        """编号 ref 的元素是什么（permissions.ElementFacts）：权限规则据此决定问不问、怎么问。
+        浏览器没开就不开（problem 里说一声）；编号不对 / 过期了也在 problem 里说。"""
+        if not _REF.match(str(ref or "")):
+            return ElementFacts(problem="Give the element's ref from the latest snapshot, like e5.")
+        if not self.is_open:
+            return ElementFacts(problem="Yunyun's browser isn't open. Open a page with browser_open first.")
+        async with self._lock:
+            try:
+                page = await self._page_now()
+                facts = await page.locator(f"aria-ref={ref}").evaluate(FACTS_JS, timeout=3_000)
+            except Exception as e:
+                return ElementFacts(problem=f"No element [ref={ref}] on the current page ({_friendly(e)}). "
+                                            "Read the page again with browser_read to get fresh refs.")
+            snapped_page, snapshot = self._last
+            element = describe(snapshot, ref) if snapped_page is page else ""
+            label = str(facts.get("label") or "")
+            return ElementFacts(site=site_of(page.url), element=element or label[:60], label=label,
+                                submit=bool(facts.get("submit")), download=bool(facts.get("download")),
+                                search=bool(facts.get("search")), sensitive=bool(facts.get("sensitive")))
+
+    async def click(self, ref):
+        async def do(page):
+            before = set(self._context.pages)
+            await page.locator(_ref_selector(ref)).click()
+            return await self._after_action(page, before)
+        return await self._run(do, retry=False)
+
+    async def type(self, ref, text, submit=False):
+        """把输入框的内容换成 text；submit：再按一下回车。密码、卡号这类再查一遍，一律不填。"""
+        async def do(page):
+            box = page.locator(_ref_selector(ref))
+            if await box.evaluate(SENSITIVE_JS):
+                raise BrowserError("This looks like a password, payment or verification-code field; "
+                                   "ask the user to type it themselves.")
+            before = set(self._context.pages)
+            await box.fill(str(text))
+            if submit:
+                await box.press("Enter")
+            return await self._after_action(page, before)
+        return await self._run(do, retry=False)
+
+    async def select(self, ref, values):
+        """下拉框选上 values（按选项的值或显示的字都行）。"""
+        async def do(page):
+            before = set(self._context.pages)
+            await page.locator(_ref_selector(ref)).select_option([str(v) for v in values])
+            return await self._after_action(page, before)
+        return await self._run(do, retry=False)
+
+    async def _after_action(self, page, before):
+        """点击 / 输入之后：等网页变好；打开了新标签页就跟过去（以后读的都是它）。"""
+        await asyncio.sleep(AFTER_ACTION_S)
+        await _settle(page)
+        opened = [p for p in self._context.pages if p not in before and not p.is_closed()]
+        if opened:
+            self._page = opened[-1]
+            await _settle(self._page)
+            view = await self._snapshot(self._page)
+            return PageView(view.url, view.title, view.snapshot, "It opened in a new tab; you are now on that tab.")
+        if page.is_closed():   # 点了以后这一页自己关了（有些"关闭"按钮）
+            return await self._snapshot(await self._page_now())
+        return await self._snapshot(page)
+
     async def _snapshot(self, page):
-        """(网址, 标题, 快照)：敏感输入框的值换成 (hidden)；看不清是不是敏感的，也当敏感。"""
+        """PageView：敏感输入框的值换成 (hidden)；看不清是不是敏感的，也当敏感。"""
         text = await page.aria_snapshot(mode="ai", timeout=ACTION_TIMEOUT_MS)
         hidden = []
         for ref in valued_refs(text):
@@ -214,7 +361,23 @@ class Browser:
                 hidden.append(ref)
         if hidden:
             log.info("快照里遮掉了 %d 个输入框的值", len(hidden))
-        return page.url, await page.title(), mask_values(text, hidden)
+        text = mask_values(text, hidden)
+        self._last = (page, text)
+        return PageView(clean_url(page.url), await page.title(), text)
+
+
+def _ref_selector(ref):
+    if not _REF.match(str(ref or "")):
+        raise BrowserError("Give the element's ref from the latest snapshot, like e5.")
+    return f"aria-ref={ref}"
+
+
+async def _is_visible(page):
+    """这个标签页是不是窗口里正显示着的（只有正显示的那个是 visible）。"""
+    try:
+        return await asyncio.wait_for(page.evaluate("document.visibilityState"), 1) == "visible"
+    except Exception:
+        return False
 
 
 async def _stop(playwright):

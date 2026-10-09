@@ -17,6 +17,7 @@
 """
 import html
 import os
+import re
 
 from PySide6.QtCore import QRect, Qt, Signal
 from PySide6.QtGui import QColor, QGuiApplication
@@ -84,13 +85,28 @@ def title_key(request):
         return "assistant_confirm_read_outside" if request.tool == "Read" else "assistant_confirm_search_outside"
     if request.kind == "edit":
         return "assistant_confirm_write" if request.tool == "Write" else "assistant_confirm_edit"
-    if request.kind in ("edit_sensitive", "write_outside", "screenshot", "open_app"):
+    if request.kind in ("edit_sensitive", "write_outside", "screenshot", "open_app") or request.kind in WEB_KINDS:
         return f"assistant_confirm_{request.kind}"
     return "assistant_confirm_other"
 
 
+WEB_KINDS = ("web_click", "web_type", "web_select")   # 网页上点击、输入、选择（阶段 6.2b）
+WEB_ROLES = ("button", "link", "textbox", "searchbox", "combobox", "checkbox", "radio", "tab", "menuitem", "option",
+             "switch", "listbox", "img")
+
+
+def element_text(element):
+    """快照里的那一行 → 给人看的：button "提交订单" → 按钮「提交订单」；认不得的原样。"""
+    match = re.match(r'^(\w+)\s+"(.*)"$', element.strip())
+    if match and match.group(1) in WEB_ROLES:
+        return i18n.tr("assistant_web_element", i18n.tr(f"assistant_web_role_{match.group(1)}"), match.group(2))
+    return element.strip()
+
+
 def note_key(request):
     """标题下面的一行说明（为什么每次都问）；没有就是 None。"""
+    if request.danger and request.kind in WEB_KINDS:
+        return "assistant_confirm_note_web_risky"
     if request.danger and request.kind == "command":
         return "assistant_confirm_note_danger"
     if request.kind == "edit_sensitive":
@@ -115,6 +131,18 @@ def detail_html(request, workspace):
     if request.kind == "open_app":   # 开始菜单里的名字 + 只打开、不操作里面
         return (f'<div><b>{html.escape(str(data.get("name", "")))}</b></div>'
                 f'<div style="color:#6B7280;">{html.escape(i18n.tr("assistant_confirm_open_app_note"))}</div>')
+    if request.kind in WEB_KINDS:   # 网站、元素（芸芸自己看的）、要输入的字 / 要选的项
+        rows = [f'<div style="color:#6B7280;">{html.escape(request.scope)}</div>' if request.scope else "",
+                f'<div><b>{html.escape(element_text(request.element))}</b></div>' if request.element else ""]
+        if request.kind == "web_type":
+            rows.append(f'<div {MONO}>{html.escape(str(data.get("text", "")))}</div>')
+            if data.get("submit") is True:
+                rows.append(f'<div style="color:#6B7280;">{html.escape(i18n.tr("assistant_confirm_web_enter"))}</div>')
+        elif request.kind == "web_select":
+            values = data.get("values")
+            values = [values] if isinstance(values, str) else values if isinstance(values, list) else []
+            rows.append(f'<div {MONO}>{html.escape(" · ".join(str(v) for v in values))}</div>')
+        return "".join(rows)
     path = show_path(str(data.get("file_path") or data.get("notebook_path") or data.get("path") or ""), workspace)
     head = f'<b>{html.escape(path)}</b>' if path else ""
     if request.tool in ("Glob", "Grep"):
@@ -143,6 +171,8 @@ def remember_text(request):
         return i18n.tr("assistant_confirm_remember_screenshot")
     if request.kind == "open_app":
         return i18n.tr("assistant_confirm_remember_open_app")
+    if request.kind in WEB_KINDS:
+        return i18n.tr("assistant_confirm_remember_web", request.scope)
     return i18n.tr("assistant_confirm_remember_edit")
 
 

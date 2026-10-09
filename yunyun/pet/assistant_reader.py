@@ -97,6 +97,8 @@ _ACTION_VERBS = {
     protocol.FIND_APP_TOOL: "assistant_action_find_app", protocol.OPEN_APP_TOOL: "assistant_action_open_app",
     protocol.BROWSER_OPEN_TOOL: "assistant_action_browser_open", protocol.BROWSER_READ_TOOL: "assistant_action_browser_read",
     protocol.BROWSER_BACK_TOOL: "assistant_action_browser_back",
+    protocol.BROWSER_CLICK_TOOL: "assistant_action_browser_click", protocol.BROWSER_TYPE_TOOL: "assistant_action_browser_type",
+    protocol.BROWSER_SELECT_TOOL: "assistant_action_browser_select",
 }
 _DECISION_COLORS = {"auto": "#8A94A6", "granted": "#2E7D32", "allowed": "#2E7D32", "remembered": "#2E7D32",
                     "denied": "#C62828", "blocked": "#C62828", "stopped": "#B7791F"}

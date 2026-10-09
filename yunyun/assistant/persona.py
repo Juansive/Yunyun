@@ -112,20 +112,25 @@ _APPS = {
 # 芸芸的浏览器（阶段 6.2：tools/browser.py）
 _BROWSER = {
     "zh": "\n- 你有自己的浏览器（一个用户看得见的 Edge 窗口，登录状态和用户自己的浏览器分开）：browser_open 打开网页、"
-          "browser_read 重新读当前页、browser_back 后退。用户让你打开某个网页 / 网站、网页要登录或者要运行脚本时用它；"
-          "只是读一篇文章，用 WebFetch 也行。现在还不能在网页上点击、输入；需要的话请用户在那个窗口里自己操作，做完你再读。"
-          "要登录、输密码、付款时，一律请用户自己在窗口里操作。",
+          "browser_read 重新读当前页、browser_back 后退；browser_click 点击、browser_type 输入、browser_select 选下拉框"
+          "（用最新快照里的编号，比如 e5；芸芸会先问用户）。用户让你打开某个网页 / 网站、在网站上操作、网页要登录或者要运行脚本时用它；"
+          "只是读一篇文章，用 WebFetch 也行。登录、输密码 / 卡号 / 验证码、付款一律请用户自己在窗口里操作（你输入会被拒绝），"
+          "用户说做完了你再读。提交、下单、付款、发送、删除之前，先在回答里说清楚要做什么。",
     "en": "\n- You have your own browser (an Edge window the user can see, with logins separate from the user's own "
-          "browsers): browser_open opens a page, browser_read reads the current page again, browser_back goes back. "
-          "Use it when the user asks you to open a page or website, or when a page needs a login or JavaScript; for "
-          "simply reading an article WebFetch is fine too. You can't click or type on pages yet; if needed, ask the "
-          "user to do it in that window, then read the page again. Logging in, passwords and payments are always "
-          "left to the user.",
+          "browsers): browser_open opens a page, browser_read reads the current page again, browser_back goes back; "
+          "browser_click clicks, browser_type types, browser_select chooses in a drop-down (use refs from the latest "
+          "snapshot, like e5; Yunyun asks the user first). Use it when the user asks you to open a page or website or "
+          "do something on it, or when a page needs a login or JavaScript; for simply reading an article WebFetch is "
+          "fine too. Logging in, passwords, card numbers, verification codes and payments are always left to the user "
+          "in that window (Yunyun refuses to type them); read the page again once they say it's done. Before "
+          "submitting, ordering, paying, sending or deleting, say clearly in your reply what you're about to do.",
     "ja": "\n- 自分のブラウザー（ユーザーにも見える Edge のウィンドウ。ログイン状態はユーザー自身のブラウザーとは別）があります："
-          "browser_open でページを開き、browser_read で今のページを読み直し、browser_back で戻ります。"
-          "ページやサイトを開いてと言われたとき、ログインやスクリプトが必要なページで使います。記事を読むだけなら WebFetch でも構いません。"
-          "ページ上のクリックや入力はまだできないので、必要ならユーザーにそのウィンドウで操作してもらい、終わったら読み直してください。"
-          "ログイン・パスワード入力・支払いは必ずユーザー自身に任せてください。",
+          "browser_open でページを開き、browser_read で今のページを読み直し、browser_back で戻ります。browser_click でクリック、"
+          "browser_type で入力、browser_select でドロップダウンを選びます（最新のスナップショットの番号、例えば e5 を使います。"
+          "芸芸が先にユーザーに確認します）。ページやサイトを開いて・操作してと言われたとき、ログインやスクリプトが必要なページで使います。"
+          "記事を読むだけなら WebFetch でも構いません。ログイン、パスワード・カード番号・確認コードの入力、支払いは必ずユーザー自身に"
+          "そのウィンドウでやってもらい（あなたが入力しようとすると拒否されます）、終わったと言われたら読み直してください。"
+          "送信・注文・支払い・削除の前には、何をするのか回答の中ではっきり伝えてください。",
 }
 
 # 能不能搜索网页（服务商不支持时没有 WebSearch 工具，见 providers.usable_tools）：(能, 不能)

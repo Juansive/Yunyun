@@ -44,7 +44,8 @@ _TOOL_TEXT = {
     memory.FORGET_TOOL: "assistant_tool_forget", protocol.SCREENSHOT_TOOL: "assistant_tool_screenshot",
     protocol.FIND_APP_TOOL: "assistant_tool_find_app", protocol.OPEN_APP_TOOL: "assistant_tool_open_app",
     protocol.BROWSER_OPEN_TOOL: "assistant_tool_browser_open", protocol.BROWSER_READ_TOOL: "assistant_tool_browser_read",
-    protocol.BROWSER_BACK_TOOL: "assistant_tool_browser_back",
+    protocol.BROWSER_BACK_TOOL: "assistant_tool_browser_back", protocol.BROWSER_CLICK_TOOL: "assistant_tool_browser_click",
+    protocol.BROWSER_TYPE_TOOL: "assistant_tool_browser_type", protocol.BROWSER_SELECT_TOOL: "assistant_tool_browser_select",
 }
 SETTINGS_ERRORS = {"no_key", "auth", "model", "budget", "reply_budget"}   # 这几种错误在设置页能改好（界面可以给个"去设置"）
 UNDO_NOTE = transcripts.UNDO_NOTE   # 历史对话读回来时要认出它、去掉它，所以放在 transcripts 里
