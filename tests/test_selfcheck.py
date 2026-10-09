@@ -2,7 +2,9 @@
 from yunyun import selfcheck
 
 
-def test_self_check_passes_in_dev(qapp, tmp_path):
+def test_self_check_passes_in_dev(qapp, tmp_path, monkeypatch):
+    # 要真的启动 claude.exe / Edge 的两项不在这里跑（测试里绝不真开 Edge）：见 test_real_claude_code.py
+    monkeypatch.setattr(selfcheck, "CHECKS", [c for c in selfcheck.CHECKS if c[1] not in selfcheck.HEAVY_CHECKS])
     report = tmp_path / "report.txt"
     code = selfcheck.run(report)
     text = report.read_text(encoding="utf-8")

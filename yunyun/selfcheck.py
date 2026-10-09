@@ -5,7 +5,11 @@
 要到用户电脑上才出问题。所以构建完马上在 exe 里真的跑一遍。
 
 自检不显示窗口、不联网、不读写用户的任何数据（不碰邮箱、配置和凭据管理器里的内容）。
+最后两项（助手模式要用的 Claude Code 和浏览器）会真的启动 claude.exe（只问版本号）和不显示窗口的 Edge（临时配置、不打开网页）。
 """
+import os
+import subprocess
+import tempfile
 from pathlib import Path
 
 
@@ -65,6 +69,44 @@ def _sprites():
     return f"{ASSET_DIR}（{frames}+ 张图），界面风格 {app.style().name()}"
 
 
+def _claude_code():
+    """助手模式的入口会出现；助手子进程（Agent SDK、芸芸的工具）和"测试连接"小进程（官方 SDK）要用的模块都在；
+    SDK 找得到它自带的 claude.exe，而且能启动。"""
+    import anthropic  # noqa: F401
+    import yunyun.assistant.check  # noqa: F401
+    import yunyun.assistant.claude_brain  # noqa: F401
+    from claude_agent_sdk._internal.transport.subprocess_cli import SubprocessCLITransport
+    from yunyun import features
+    from yunyun.assistant import environment
+    if not features.assistant_available():
+        raise RuntimeError("features.assistant_available() 是假的：右键菜单里不会出现助手模式")
+    cli = SubprocessCLITransport._find_bundled_cli(None)   # SDK 自己找 claude.exe 的办法（打包时 build_exe 把它放进去）
+    if cli is None:
+        raise RuntimeError("SDK 找不到自带的 claude.exe")
+    with tempfile.TemporaryDirectory() as config_dir:   # Claude Code 的配置放临时文件夹：不碰任何人的设置
+        env = dict(os.environ)
+        environment.clean_environment(env)
+        env["CLAUDE_CONFIG_DIR"] = config_dir
+        result = subprocess.run([cli, "--version"], env=env, capture_output=True, text=True, timeout=60, check=True,
+                                creationflags=subprocess.CREATE_NO_WINDOW)
+    return f"{result.stdout.strip()}（{cli}）"
+
+
+def _browser():
+    """芸芸的浏览器：Playwright 的驱动（node.exe）能启动，系统里的 Edge 能打开（不显示窗口、临时配置、不打开网页）。"""
+    import asyncio
+    from playwright.async_api import async_playwright
+
+    async def edge_version():
+        async with async_playwright() as playwright:
+            browser = await playwright.chromium.launch(channel="msedge", headless=True)
+            version = browser.version
+            await browser.close()
+            return version
+
+    return f"Edge {asyncio.run(edge_version())}"
+
+
 CHECKS = [
     ("模块", _modules),
     ("键盘监听", _keyboard),
@@ -72,4 +114,7 @@ CHECKS = [
     ("SSL", _ssl),
     ("SQLite", _sqlite),
     ("图片和界面", _sprites),
+    ("助手的大脑（Claude Code）", _claude_code),
+    ("芸芸的浏览器（Playwright + Edge）", _browser),
 ]
+HEAVY_CHECKS = (_claude_code, _browser)   # 要真的启动 claude.exe / Edge：平时的测试里不跑（见 tests/test_real_claude_code.py）

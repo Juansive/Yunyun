@@ -30,3 +30,10 @@ def test_script_reaches_its_conclusion(script):
     out = result.stdout.decode("utf-8", errors="replace")
     conclusion = next((line for line in out.splitlines() if line.startswith("结论")), "（没有结论）")
     assert result.returncode == 0 and "✓" in conclusion, out[-2000:]
+
+
+@pytest.mark.parametrize("name", ["_claude_code", "_browser"])
+def test_heavy_self_checks_pass_in_dev(name):
+    """打包后自检里要真的启动 claude.exe / 不显示窗口的 Edge 的两项，在开发环境里也要能过。"""
+    from yunyun import selfcheck
+    assert getattr(selfcheck, name)()

@@ -9,19 +9,24 @@
     dist\\芸芸\\芸芸.exe                 双击运行。整个"芸芸"文件夹要放在一起（exe 要用的文件在旁边的 _internal 里）
     dist\\芸芸\\使用说明.txt             给拿到 zip 的人看的说明（来自 docs\\使用说明.txt，版本号会自动填上）
     dist\\芸芸\\更新日志.txt             每一版更新了什么（来自 docs\\更新日志.txt）
-    dist\\Yunyun-<版本>-windows.zip      把上面的文件夹压缩好，方便发给别人；解压后双击里面的 芸芸.exe
-    releases\\Yunyun-<旧版本>-windows.zip 以前各版本的压缩包（打新版时自动从 dist\\ 挪过来，不删）
+    ..\\Yunyun\\Yunyun-<版本>-windows.zip 把上面的文件夹压缩好，发给别人用这个（F:\\cwx\\yunyun\\Yunyun，用户定的地方）；
+                                        解压后双击里面的 芸芸.exe
+    releases\\Yunyun-<旧版本>-windows.zip 以前各版本的压缩包（打新版时自动挪过来，不删）
 
-步骤：生成图标和版本信息 → PyInstaller 打包 → 在"没装 Python"的环境里运行 exe 的自检 → 放进使用说明 → 压缩成 zip。
+步骤：生成图标和版本信息 → PyInstaller 打包 → 在"没装 Python"的环境里运行 exe 的自检、试一下助手子进程 →
+放进使用说明 → 检查没有不该发出去的文件 → 压缩成 zip。
 
 为什么用 onedir（一个文件夹）而不是 onefile（单个 exe）：onefile 每次启动都要先把几十 MB 的文件
 解压到临时文件夹，启动慢，也更容易被杀毒软件误报。
 """
+import importlib.util
+import json
 import os
 import shutil
 import struct
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -36,15 +41,31 @@ GUIDE = ROOT / "docs" / "使用说明.txt"
 CHANGELOG = ROOT / "docs" / "更新日志.txt"
 BUILD = ROOT / "build"          # 中间文件，可以随时删掉
 DIST = ROOT / "dist"            # 打包结果（最新的一版）
+SHARE = ROOT.parent / "Yunyun"  # 发给别人的压缩包放这里（F:\cwx\yunyun\Yunyun，用户定的），只留最新的一版
 RELEASES = ROOT / "releases"    # 以前各版本的压缩包，留着溯源（太大，不提交到 Git）
+NOT_FOR_SHARING = {"CLAUDE.md", "开发交接.md"}   # 开发用的说明，绝不能进压缩包（打包前再查一遍）
 
 # 运行时才决定加载的模块：PyInstaller 分析 import 语句时看不到，要明确告诉它
 HIDDEN_IMPORTS = [
     "pynput.keyboard._win32",     # pynput 按操作系统选后端（import pynput 时键盘、鼠标两个都会加载）
     "pynput.mouse._win32",
     "keyring.backends.Windows",   # keyring 靠"入口点"找后端……
+    "keyring.backends.null",      # 试助手子进程时用它（什么 Key 都读不到），见 check_worker
 ]
 COPY_METADATA = ["keyring"]       # ……入口点写在包的元数据（dist-info）里，所以元数据也要带上
+
+
+def package_dir(name):
+    """装好的包在哪个文件夹（只找、不 import）。"""
+    return Path(importlib.util.find_spec(name).submodule_search_locations[0])
+
+
+# 助手模式要用、但不是 Python 代码的程序：PyInstaller 不会自己带，放到 exe 里和开发版一样的相对位置，
+# SDK 才找得到（它按"自己的包文件夹 / _bundled / claude.exe"找）。(源, exe 里的位置)
+# 芸芸的浏览器的驱动（node.exe + 脚本，约 100 MB）不用写在这里：playwright 自带打包规则，会把它整个带上；浏览器用系统的 Edge。
+EXTRA_DATA = [
+    (package_dir("claude_agent_sdk") / "_bundled" / "claude.exe", "claude_agent_sdk/_bundled"),   # Claude Code，约 255 MB
+]
 
 # PySide6 里芸芸用不上的大文件（共约 40 MB）。PyInstaller 按"可能用到"把 Qt 插件都带上了，
 # 这些插件又连带了一串 DLL。打包后删掉；万一删错了，紧接着的自检会失败。（路径相对于 _internal\PySide6）
@@ -74,17 +95,24 @@ def main():
     app_dir = DIST / APP_NAME
     remove_unused_qt_files(app_dir / "_internal" / "PySide6")
 
-    print("== 3/4 在没有 Python 的环境里运行自检")
-    self_check(app_dir / f"{APP_NAME}.exe")
+    print("== 3/4 在没有 Python 的环境里运行自检，再试一下助手子进程")
+    exe = app_dir / f"{APP_NAME}.exe"
+    self_check(exe)
+    check_worker(exe)
 
     print("== 4/4 放进使用说明和更新日志，压缩成 zip")
     for doc in (GUIDE, CHANGELOG):
         write_doc(doc, app_dir / doc.name)
     if "还没打包" in CHANGELOG.read_text(encoding="utf-8"):
         print("提醒：更新日志里还有\"下一版（还没打包）\"，记得改成这一版的版本号和日期。")
-    for old in DIST.glob("Yunyun-*-windows.zip"):   # 上一版的压缩包挪到 releases\ 保存：dist\ 里只留最新的，免得发错
+    leaked = [str(f.relative_to(DIST)) for f in app_dir.rglob("*") if f.name in NOT_FOR_SHARING]
+    if leaked:
+        sys.exit(f"程序文件夹里有不该发出去的文件，先不压缩：{leaked}")
+    SHARE.mkdir(exist_ok=True)
+    # 上一版的压缩包挪到 releases\ 保存：发给别人的地方只留最新的，免得发错（dist\ 是以前放压缩包的地方）
+    for old in [*DIST.glob("Yunyun-*-windows.zip"), *SHARE.glob("Yunyun-*-windows.zip")]:
         archive_old_zip(old)
-    archive = Path(shutil.make_archive(str(DIST / f"Yunyun-{__version__}-windows"), "zip",
+    archive = Path(shutil.make_archive(str(SHARE / f"Yunyun-{__version__}-windows"), "zip",
                                        root_dir=DIST, base_dir=APP_NAME))
 
     folder_mb = sum(f.stat().st_size for f in app_dir.rglob("*") if f.is_file()) / 1e6
@@ -188,6 +216,8 @@ def run_pyinstaller(icon, version_file):
         "--add-data", f"{ASSETS / '*.png'}{os.pathsep}assets/pet",   # 芸芸的图片 → exe 里的 assets/pet
         "--distpath", str(DIST), "--workpath", str(BUILD / "pyinstaller"), "--specpath", str(BUILD),
     ]
+    for source, target in EXTRA_DATA:
+        args += ["--add-data", f"{source}{os.pathsep}{target}"]
     for name in HIDDEN_IMPORTS:
         args += ["--hidden-import", name]
     for name in COPY_METADATA:
@@ -222,6 +252,22 @@ def self_check(exe):
     print(report.read_text(encoding="utf-8") if report.exists() else "（没有生成自检报告，exe 可能根本没启动）")
     if result.returncode != 0:
         sys.exit(f"自检没通过（退出码 {result.returncode}），先不要发给别人。")
+
+
+def check_worker(exe):
+    """以"助手子进程"的身份运行 exe，看它能不能用标准输入 / 输出和芸芸说话（没有控制台的 exe 这里最容易出问题）。
+
+    不碰你的数据：数据文件夹换成临时的（APPDATA），凭据管理器换成"什么都读不到"的（null），
+    所以它读不到 Key，会照规矩回一句 Error("no_key") 然后自己退出——收到这句就说明这条路是通的。
+    """
+    with tempfile.TemporaryDirectory() as appdata:
+        env = dict(os.environ, APPDATA=appdata, PYTHON_KEYRING_BACKEND="keyring.backends.null.Keyring")
+        result = subprocess.run([str(exe), "--assistant-worker", "--language", "zh"], env=env, input=b"",
+                                capture_output=True, timeout=60)
+    lines = [json.loads(line) for line in result.stdout.splitlines() if line.strip()]
+    if not any(line.get("kind") == "no_key" for line in lines):
+        sys.exit(f"助手子进程没有按预期回答（退出码 {result.returncode}）：{result.stdout[-500:]!r} {result.stderr[-500:]!r}")
+    print(f"助手子进程：能收发消息 {lines}")
 
 
 if __name__ == "__main__":
