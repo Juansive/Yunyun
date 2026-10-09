@@ -57,15 +57,9 @@ class StateMachine(QObject):
         self._assistant = ""    # 助手在做什么（"" / "thinking" / "busy" / "waiting"，见 set_assistant）
 
         # 这个定时器在"运行中"就代表：用户最近 IDLE_AFTER_MS 内敲过键盘
-        self._idle_timer = QTimer(self)
-        self._idle_timer.setSingleShot(True)
-        self._idle_timer.setInterval(self.IDLE_AFTER_MS)
-        self._idle_timer.timeout.connect(self._on_idle_timeout)
+        self._idle_timer = QTimer(self, singleShot=True, interval=self.IDLE_AFTER_MS, timeout=self._on_idle_timeout)
 
-        self._excited_timer = QTimer(self)
-        self._excited_timer.setSingleShot(True)
-        self._excited_timer.setInterval(self.EXCITED_MS)
-        self._excited_timer.timeout.connect(self._on_excited_done)
+        self._excited_timer = QTimer(self, singleShot=True, interval=self.EXCITED_MS, timeout=self._on_excited_done)
 
     @property
     def state(self):

@@ -65,9 +65,7 @@ class MailService(QObject):
         self._fetched.connect(self.message_ready)   # 信号连信号：直接转发
         self._fetch_done.connect(self._on_fetch_done)
 
-        self._timer = QTimer(self)
-        self._timer.setInterval(self.POLL_INTERVAL_MS)
-        self._timer.timeout.connect(self.poll_now)
+        self._timer = QTimer(self, interval=self.POLL_INTERVAL_MS, timeout=self.poll_now)
 
     @property
     def pending_count(self):

@@ -97,8 +97,7 @@ class PetWindow(QWidget):
 
         self._scale = self.saved_scale()
         self.resize(self.pet_size, self.pet_size)
-        self._reload_timer = QTimer(self, singleShot=True, interval=self.SPRITE_RELOAD_MS)
-        self._reload_timer.timeout.connect(self._reload_sprites)
+        self._reload_timer = QTimer(self, singleShot=True, interval=self.SPRITE_RELOAD_MS, timeout=self._reload_sprites)
 
         # 记住位置：拖动停下半秒后才保存（不用每移动一个像素就写一次）
         self._save_pos_timer = QTimer(self)
@@ -150,15 +149,10 @@ class PetWindow(QWidget):
         self._frozen = False        # 画面此刻是否定格（= 上面两个任意一个为 True）
         self._occluded = False      # 最近一次检测：是不是被挡住了
 
-        self._cover_timer = QTimer(self)
-        self._cover_timer.setInterval(self.COVER_CHECK_MS)
-        self._cover_timer.timeout.connect(self._check_covered)
+        self._cover_timer = QTimer(self, interval=self.COVER_CHECK_MS, timeout=self._check_covered)
         self._cover_timer.start()
 
-        self._resume_timer = QTimer(self)
-        self._resume_timer.setSingleShot(True)
-        self._resume_timer.setInterval(self.RESUME_DELAY_MS)
-        self._resume_timer.timeout.connect(self._auto_resume)
+        self._resume_timer = QTimer(self, singleShot=True, interval=self.RESUME_DELAY_MS, timeout=self._auto_resume)
 
         # ---- 动画相关 ----
         self._sprites = sprites
@@ -173,21 +167,14 @@ class PetWindow(QWidget):
         self._lifted = False      # 正在显示"被拎起来"的画面（拖动中，并且有这组图）
         self._frame_before_lift = None  # 暂停时被拎起来：放下后要回到原来定格的那一帧
 
-        self._loop_timer = QTimer(self)
-        self._loop_timer.setInterval(self.LOOP_MS)
-        self._loop_timer.timeout.connect(self._next_loop_frame)
+        self._loop_timer = QTimer(self, interval=self.LOOP_MS, timeout=self._next_loop_frame)
 
-        self._tap_timer = QTimer(self)
-        self._tap_timer.setSingleShot(True)
-        self._tap_timer.setInterval(self.TAP_MS)
-        self._tap_timer.timeout.connect(self._hands_up)
+        self._tap_timer = QTimer(self, singleShot=True, interval=self.TAP_MS, timeout=self._hands_up)
 
         # 被拎着时左右摆动（像拎着小猫走）：角度由 Sway 的小物理模型算，这里只负责定时和重绘
         self._sway = Sway()
         self._sway_clock = QElapsedTimer()   # 量两帧之间实际隔了多久（定时器不是绝对准时的）
-        self._sway_timer = QTimer(self)
-        self._sway_timer.setInterval(self.SWAY_TICK_MS)
-        self._sway_timer.timeout.connect(self._sway_tick)
+        self._sway_timer = QTimer(self, interval=self.SWAY_TICK_MS, timeout=self._sway_tick)
 
         self._task_done.connect(self._on_task_done)
         self.set_state(PetState.IDLE)

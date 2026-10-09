@@ -32,6 +32,7 @@ from shiboken6 import isValid
 from yunyun import i18n
 from yunyun.assistant import memory, protocol
 from yunyun.pet.assistant_deck import context_status
+from yunyun.pet.bubble import animate
 from yunyun.pet.side_panel import SidePanel
 
 CODE_BACKGROUND = QColor("#F3F5F9")
@@ -232,8 +233,7 @@ class AssistantReader(SidePanel):
         self.undo_state_for = lambda card: "hidden"   # 总管换成自己的
         self._undo_state = "hidden"
         self._undo_armed = False
-        self._undo_timer = QTimer(self, singleShot=True, interval=self.UNDO_ARM_MS)
-        self._undo_timer.timeout.connect(self._disarm_undo)
+        self._undo_timer = QTimer(self, singleShot=True, interval=self.UNDO_ARM_MS, timeout=self._disarm_undo)
         bottom.addWidget(self._undo)
         bottom.addStretch(1)
         self._copy_all = QPushButton()
@@ -441,7 +441,7 @@ class AssistantReader(SidePanel):
         if not isinstance(effect, QGraphicsOpacityEffect):
             effect = QGraphicsOpacityEffect(self._content)
             self._content.setGraphicsEffect(effect)
-        self._animate(self._swap, effect.opacity(), 0.0 if out else 1.0)
+        animate(self._swap, effect.opacity(), 0.0 if out else 1.0)
 
     def _on_swap(self, value):
         effect = self._content.graphicsEffect()

@@ -26,6 +26,14 @@ def bubble_font():
     return QFont("Microsoft YaHei", 10)
 
 
+def animate(animation, start, end):
+    """（QVariantAnimation）从 start 到 end 重新播一遍（正在播的先停下）。卡片堆、侧面板共用。"""
+    animation.stop()
+    animation.setStartValue(float(start))
+    animation.setEndValue(float(end))
+    animation.start()
+
+
 def elide_lines(text, font, width, max_lines):
     """text 在 width 宽度里自动换行，超过 max_lines 行就截断，末尾加"……"（助手的长回答只在气泡里说开头）。"""
     layout = QTextLayout(text.replace("\n", "\u2028"), font)   # QTextLayout 只认 U+2028 是换行
@@ -83,14 +91,10 @@ class Bubble(QWidget):
         self._target = QPointF()   # 窗口想去的位置
 
         # 单次定时器：时间到了就隐藏气泡
-        self._hide_timer = QTimer(self)
-        self._hide_timer.setSingleShot(True)
-        self._hide_timer.timeout.connect(self._on_timeout)
+        self._hide_timer = QTimer(self, singleShot=True, timeout=self._on_timeout)
 
         # 动画定时器：每帧让气泡向目标位置挪一点
-        self._anim_timer = QTimer(self)
-        self._anim_timer.setInterval(self.FRAME_MS)
-        self._anim_timer.timeout.connect(self._step)
+        self._anim_timer = QTimer(self, interval=self.FRAME_MS, timeout=self._step)
 
     @property
     def text(self):

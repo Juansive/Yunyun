@@ -167,10 +167,8 @@ class AssistantMode(QObject):
         self.notice.clicked.connect(self._on_notice_clicked)
         pet.cover_checked.connect(self._update_notice)   # 芸芸被挡住 / 露出来（约每 0.5 秒检查一次）
 
-        self._bubble_timer = QTimer(self, singleShot=True, interval=self.BUBBLE_MS)
-        self._bubble_timer.timeout.connect(self._update_bubble)
-        self._idle_timer = QTimer(self, singleShot=True, interval=self.IDLE_EXIT_MS)
-        self._idle_timer.timeout.connect(self._on_idle)
+        self._bubble_timer = QTimer(self, singleShot=True, interval=self.BUBBLE_MS, timeout=self._update_bubble)
+        self._idle_timer = QTimer(self, singleShot=True, interval=self.IDLE_EXIT_MS, timeout=self._on_idle)
 
     # ---------- 对外 ----------
 

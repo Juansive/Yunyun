@@ -41,9 +41,7 @@ class QuietHours(QObject):
         self._end = _parse(settings.value(_END_KEY), DEFAULT_END)
         self._active = self._compute()
 
-        self._timer = QTimer(self)
-        self._timer.setInterval(self.CHECK_MS)
-        self._timer.timeout.connect(self.check)
+        self._timer = QTimer(self, interval=self.CHECK_MS, timeout=self.check)
         self._timer.start()
 
     @property

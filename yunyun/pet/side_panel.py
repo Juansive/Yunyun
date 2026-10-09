@@ -12,7 +12,7 @@ from PySide6.QtCore import QEasingCurve, QEvent, QPoint, QRect, QRectF, Qt, QTim
 from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath
 from PySide6.QtWidgets import QApplication, QWidget
 
-from yunyun.pet.bubble import place_block
+from yunyun.pet.bubble import animate, place_block
 
 
 class SidePanel(QWidget):
@@ -53,7 +53,7 @@ class SidePanel(QWidget):
     def hide_animated(self):
         if self.isVisible() and not self._hiding:
             self._hiding = True
-            self._animate(self._open, self._shown, 0.0)
+            animate(self._open, self._shown, 0.0)
 
     def close_now(self):
         self._open.stop()
@@ -84,7 +84,7 @@ class SidePanel(QWidget):
             self._apply_open()
             self.show()
         self.raise_()
-        self._animate(self._open, self._shown, 1.0)
+        animate(self._open, self._shown, 1.0)
 
     def _place(self):
         m = self.MARGIN
@@ -92,13 +92,6 @@ class SidePanel(QWidget):
             self._anchor, self.width() - 2 * m, self.height() - 2 * m, gap=self.GAP, current=self._placement,
             prefer="side")
         self._target_pos = QPoint(int(x) - m, int(y) - m)
-
-    @staticmethod
-    def _animate(animation, start, end):
-        animation.stop()
-        animation.setStartValue(float(start))
-        animation.setEndValue(float(end))
-        animation.start()
 
     def _on_open(self, value):
         self._shown = float(value)

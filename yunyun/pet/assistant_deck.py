@@ -19,6 +19,7 @@
 """
 import re
 import uuid
+from contextlib import nullcontext
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -30,7 +31,7 @@ from PySide6.QtWidgets import QApplication, QWidget
 
 from yunyun import i18n
 from yunyun.pet import winapi
-from yunyun.pet.bubble import elide_lines, place_block
+from yunyun.pet.bubble import animate, elide_lines, place_block
 
 
 @dataclass(eq=False)
@@ -161,10 +162,8 @@ class AssistantDeck(QWidget):
         self._fade = QVariantAnimation(self, duration=self.FADE_MS, easingCurve=QEasingCurve.Type.OutCubic)
         self._fade.valueChanged.connect(self._on_fade)
         self._fade.finished.connect(self._on_fade_finished)
-        self._header_anim = QVariantAnimation(self, duration=160)
-        self._header_anim.valueChanged.connect(self._on_header)
-        self._press = QVariantAnimation(self, duration=90)
-        self._press.valueChanged.connect(self._on_press)
+        self._header_anim = QVariantAnimation(self, duration=160, valueChanged=self._on_header)
+        self._press = QVariantAnimation(self, duration=90, valueChanged=self._on_press)
         self._wheel = 0
 
         m = self.MARGIN
@@ -202,14 +201,14 @@ class AssistantDeck(QWidget):
         self._hiding = False
         if not self.isVisible():
             self._shown = 0.0
-            with winapi.keep_z_order(int(self.parentWidget().winId())) if self.parentWidget() else _nothing():
+            with winapi.keep_z_order(int(self.parentWidget().winId())) if self.parentWidget() else nullcontext():
                 self.show()
-        self._animate(self._fade, self._shown, 1.0)
+        animate(self._fade, self._shown, 1.0)
 
     def hide_animated(self):
         if self.isVisible() and not self._hiding:
             self._hiding = True
-            self._animate(self._fade, self._shown, 0.0)
+            animate(self._fade, self._shown, 0.0)
 
     def close_now(self):
         self._fade.stop()
@@ -242,7 +241,7 @@ class AssistantDeck(QWidget):
         index = max(0, min(index, len(self._cards) - 1))
         changed = index != self._target
         self._target = index
-        self._animate(self._scroll, self._pos, float(index))
+        animate(self._scroll, self._pos, float(index))
         if changed:
             self.current_changed.emit(index)
 
@@ -253,13 +252,6 @@ class AssistantDeck(QWidget):
         self.update()
 
     # ---------- 动画 ----------
-
-    @staticmethod
-    def _animate(animation, start, end):
-        animation.stop()
-        animation.setStartValue(float(start))
-        animation.setEndValue(float(end))
-        animation.start()
 
     def _on_scroll(self, value):
         self._pos = float(value)
@@ -488,7 +480,7 @@ class AssistantDeck(QWidget):
             if not self._dragging and moved.manhattanLength() >= QApplication.startDragDistance():
                 self._dragging = True                       # 是拖动，不是单击：取消"按下"的效果
                 self._pressed = None
-                self._animate(self._press, self._press_t, 0.0)
+                animate(self._press, self._press_t, 0.0)
                 self.setCursor(Qt.CursorShape.ClosedHandCursor)
                 self.drag_started.emit()
             if self._dragging:
@@ -507,7 +499,7 @@ class AssistantDeck(QWidget):
     def _set_hover(self, hovering):
         if hovering != self._hovering:
             self._hovering = hovering
-            self._animate(self._header_anim, self._hover_header, 1.0 if hovering else 0.0)
+            animate(self._header_anim, self._hover_header, 1.0 if hovering else 0.0)
 
     def mousePressEvent(self, event):
         if event.button() != Qt.MouseButton.LeftButton:
@@ -522,7 +514,7 @@ class AssistantDeck(QWidget):
         self._dragging = False
         self._pressed = self._card_at(event.position())
         if self._pressed == self._target:
-            self._animate(self._press, self._press_t, 1.0)
+            animate(self._press, self._press_t, 1.0)
 
     def mouseReleaseEvent(self, event):
         self._press_at = None
@@ -532,7 +524,7 @@ class AssistantDeck(QWidget):
             self.drag_finished.emit()
             return
         pressed, self._pressed = self._pressed, None
-        self._animate(self._press, self._press_t, 0.0)
+        animate(self._press, self._press_t, 0.0)
         if pressed is None or self._card_at(event.position()) != pressed:
             return   # 按下后拖到外面松开 = 取消
         if pressed == self._target:
@@ -551,14 +543,6 @@ class AssistantDeck(QWidget):
         self._hovering = False
         self._hover_header = 0.0
         super().hideEvent(event)
-
-
-class _nothing:
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc):
-        return False
 
 
 def _blend(a, b, t):

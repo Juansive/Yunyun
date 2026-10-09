@@ -64,10 +64,8 @@ class AssistantProcess(QObject):
         self._proc.errorOccurred.connect(self._on_error)
         self._proc.finished.connect(self._on_finished)
 
-        self._ready_timer = QTimer(self, singleShot=True, interval=READY_TIMEOUT_MS)
-        self._ready_timer.timeout.connect(self._on_ready_timeout)
-        self._kill_timer = QTimer(self, singleShot=True, interval=QUIT_TIMEOUT_MS)
-        self._kill_timer.timeout.connect(self._proc.kill)
+        self._ready_timer = QTimer(self, singleShot=True, interval=READY_TIMEOUT_MS, timeout=self._on_ready_timeout)
+        self._kill_timer = QTimer(self, singleShot=True, interval=QUIT_TIMEOUT_MS, timeout=self._proc.kill)
 
         self._buffer = b""
         self._stderr = deque(maxlen=20)   # 子进程的错误输出：意外退出时记进日志
@@ -193,8 +191,7 @@ class KeyCheck(QObject):
         self._proc.started.connect(self._send_request)
         self._proc.finished.connect(self._on_finished)
         self._proc.errorOccurred.connect(self._on_error)
-        self._timer = QTimer(self, singleShot=True, interval=CHECK_TIMEOUT_MS)
-        self._timer.timeout.connect(self._on_timeout)
+        self._timer = QTimer(self, singleShot=True, interval=CHECK_TIMEOUT_MS, timeout=self._on_timeout)
         self._reported = False
 
     def start(self):
