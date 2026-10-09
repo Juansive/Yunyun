@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
 from yunyun import i18n
 from yunyun.assistant import memory
 from yunyun.assistant import settings as assistant_settings
+from yunyun.pet.widgets import note
 
 log = logging.getLogger(__name__)
 ID_ROLE = Qt.ItemDataRole.UserRole
@@ -45,10 +46,7 @@ class NotebookPage(QWidget):
         self._enabled.setChecked(assistant_settings.load_settings().notebook)
         self._enabled.toggled.connect(assistant_settings.set_notebook_enabled)
         layout.addWidget(self._enabled)
-        hint = QLabel(tr("notebook_hint"))
-        hint.setWordWrap(True)
-        hint.setStyleSheet("color: #666;")
-        layout.addWidget(hint)
+        layout.addWidget(note(tr("notebook_hint")))
 
         self._tree = QTreeWidget()
         self._tree.setColumnCount(2)
@@ -61,9 +59,7 @@ class NotebookPage(QWidget):
         self._tree.itemSelectionChanged.connect(self._update_buttons)
         self._tree.itemDoubleClicked.connect(lambda item, column: self._edit())
         layout.addWidget(self._tree, 1)
-        self._empty = QLabel(tr("notebook_empty"))   # 还没有记过：代替列表显示
-        self._empty.setWordWrap(True)
-        self._empty.setStyleSheet("color: #888;")
+        self._empty = note(tr("notebook_empty"), "#888")   # 还没有记过：代替列表显示
         layout.addWidget(self._empty)
 
         row = QHBoxLayout()

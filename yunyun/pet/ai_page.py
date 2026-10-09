@@ -9,10 +9,8 @@
 """
 import threading
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import (
-    QComboBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget,
-)
+from PySide6.QtCore import Signal
+from PySide6.QtWidgets import QComboBox, QFormLayout, QLineEdit, QPushButton, QVBoxLayout, QWidget
 
 from yunyun import i18n
 from yunyun.ai import ollama_service
@@ -20,6 +18,7 @@ from yunyun.ai import settings as ai_settings
 from yunyun.ai.client import AIError, ask, pull_ollama
 from yunyun.ai.providers import PROVIDERS, is_local_url, normalize_base_url
 from yunyun.ai.settings import AISettings
+from yunyun.pet.widgets import StatusLabel, button_row, note
 
 
 def test_connection(settings):
@@ -73,20 +72,12 @@ class AISettingsPage(QWidget):
         form.addRow(tr("ai_key"), self._key)
         layout.addLayout(form)
 
-        self._hint = QLabel()
-        self._hint.setWordWrap(True)
+        self._hint = note()
         self._hint.setOpenExternalLinks(True)  # 点链接直接用浏览器打开
-        self._hint.setStyleSheet("color: #666;")
         layout.addWidget(self._hint)
-
-        self._privacy = QLabel()   # 文字跟着服务商变（在线 / 本地），见 _update_hint
-        self._privacy.setWordWrap(True)
-        self._privacy.setStyleSheet("color: #B26A00;")  # 橙色：重要提示
+        self._privacy = note(color="#B26A00")   # 橙色：重要提示；文字跟着服务商变（在线 / 本地），见 _update_hint
         layout.addWidget(self._privacy)
-
-        self._status = QLabel()
-        self._status.setWordWrap(True)
-        self._status.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self._status = StatusLabel()
         layout.addWidget(self._status)
 
         self._save_button = QPushButton(tr("mail_test_and_save"))
@@ -94,11 +85,7 @@ class AISettingsPage(QWidget):
         self._download_button = QPushButton(tr("ai_download_model"))   # 只在"本地还没有这个模型"时出现
         self._download_button.clicked.connect(self._download)
         self._download_button.hide()
-        row = QHBoxLayout()
-        row.addStretch()
-        row.addWidget(self._download_button)
-        row.addWidget(self._save_button)
-        layout.addLayout(row)
+        layout.addLayout(button_row(self._download_button, self._save_button))
         layout.addStretch()  # 内容靠上，多余的空间留在下面
 
         # 预先填好上次的选择
@@ -159,21 +146,21 @@ class AISettingsPage(QWidget):
         model = self._model.text().strip()
         base_url = normalize_base_url(self._base_url.text()) if info.custom else ""
         if info.custom and not base_url:
-            self._show_status(i18n.tr("ai_empty_base_url"), error=True)
+            self._status.show_text(i18n.tr("ai_empty_base_url"), error=True)
             return
         if info.custom and not base_url.lower().startswith(("http://", "https://")):
-            self._show_status(i18n.tr("ai_bad_base_url"), error=True)
+            self._status.show_text(i18n.tr("ai_bad_base_url"), error=True)
             return
         if not model:
-            self._show_status(i18n.tr("ai_empty_model"), error=True)
+            self._status.show_text(i18n.tr("ai_empty_model"), error=True)
             return
         if info.needs_key and not key:
-            self._show_status(i18n.tr("ai_empty_key"), error=True)
+            self._status.show_text(i18n.tr("ai_empty_key"), error=True)
             return
         settings = AISettings(info.code, model, key if (info.needs_key or info.custom) else "", base_url)
         self._download_button.hide()
         self._set_busy(True)
-        self._show_status(i18n.tr("ai_testing"))
+        self._status.show_text(i18n.tr("ai_testing"))
         threading.Thread(target=self._test_worker, args=(settings,), daemon=True).start()
 
     def _test_worker(self, settings):
@@ -203,10 +190,10 @@ class AISettingsPage(QWidget):
                 message = i18n.tr(f"ai_error_{error.kind}")
             if error.detail:
                 message += "\n" + i18n.tr("mail_error_detail", error.detail)
-            self._show_status(message, error=True)
+            self._status.show_text(message, error=True)
             return
         ai_settings.save_settings(settings)
-        self._show_status(i18n.tr("ai_saved"))
+        self._status.show_text(i18n.tr("ai_saved"))
         self.settings_saved.emit()
 
     # ---------- 下载本地模型 ----------
@@ -215,7 +202,7 @@ class AISettingsPage(QWidget):
         settings = self._pending_download
         self._download_button.hide()
         self._set_busy(True)
-        self._show_status(i18n.tr("ai_download_starting", settings.model))
+        self._status.show_text(i18n.tr("ai_download_starting", settings.model))
         threading.Thread(target=self._download_worker, args=(settings,), daemon=True).start()
 
     def _download_worker(self, settings):
@@ -241,7 +228,7 @@ class AISettingsPage(QWidget):
             pass  # 窗口已经关掉了（Ollama 那边会自己接着下载完）
 
     def _on_download_progress(self, model, percent, sizes):
-        self._show_status(i18n.tr("ai_downloading", model, percent, sizes))
+        self._status.show_text(i18n.tr("ai_downloading", model, percent, sizes))
 
     def _on_download_finished(self, settings, error):
         self._set_busy(False)
@@ -249,16 +236,12 @@ class AISettingsPage(QWidget):
             message = i18n.tr("ai_error_not_running" if error.kind == "not_running" else "ai_download_failed")
             if error.detail and error.kind != "not_running":
                 message += "\n" + i18n.tr("mail_error_detail", error.detail)
-            self._show_status(message, error=True)
+            self._status.show_text(message, error=True)
             self._download_button.show()      # 可以再试一次
             return
-        self._show_status(i18n.tr("ai_downloaded"))
+        self._status.show_text(i18n.tr("ai_downloaded"))
         self._test_and_save()                 # 下载好了：接着测试并保存，用户不用再点一次
 
     def _set_busy(self, busy):
         for widget in (self._save_button, self._download_button, self._provider, self._base_url, self._model, self._key):
             widget.setEnabled(not busy)
-
-    def _show_status(self, text, error=False):
-        self._status.setStyleSheet("color: #C62828;" if error else "color: #2E7D32;")
-        self._status.setText(text)

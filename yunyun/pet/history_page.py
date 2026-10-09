@@ -1,12 +1,11 @@
 """设置窗口的"历史"页：按日期分组列出最近 7 天芸芸展示过的提醒，单击一条看详情。"""
-from datetime import date, datetime, timedelta
+from datetime import datetime
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import (
-    QHBoxLayout, QLabel, QMessageBox, QPushButton, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
-)
+from PySide6.QtWidgets import QLabel, QMessageBox, QPushButton, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget
 
 from yunyun import i18n
+from yunyun.pet.widgets import button_row, day_label, note
 
 
 class HistoryPage(QWidget):
@@ -16,10 +15,7 @@ class HistoryPage(QWidget):
         tr = i18n.tr
         layout = QVBoxLayout(self)
 
-        note = QLabel(tr("history_note"))
-        note.setWordWrap(True)
-        note.setStyleSheet("color: #666;")
-        layout.addWidget(note)
+        layout.addWidget(note(tr("history_note")))
 
         # 树形列表：第一层是日期（今天 / 昨天 / 10月1日），展开后是那天的每一条提醒
         self._tree = QTreeWidget()
@@ -38,10 +34,7 @@ class HistoryPage(QWidget):
 
         self._clear_button = QPushButton(tr("history_clear"))
         self._clear_button.clicked.connect(self._clear)
-        row = QHBoxLayout()
-        row.addStretch()
-        row.addWidget(self._clear_button)
-        layout.addLayout(row)
+        layout.addLayout(button_row(self._clear_button))
 
         self.refresh()
 
@@ -66,7 +59,7 @@ class HistoryPage(QWidget):
             shown = datetime.fromtimestamp(entry.shown_at)
             day = shown.date()
             if day not in groups:
-                header = QTreeWidgetItem([_day_label(day)])
+                header = QTreeWidgetItem([day_label(day)])
                 header.setFlags(Qt.ItemFlag.ItemIsEnabled)  # 日期行不能选中
                 font = header.font(0)
                 font.setBold(True)
@@ -101,12 +94,3 @@ class HistoryPage(QWidget):
         if answer == QMessageBox.StandardButton.Yes and self._history is not None:
             self._history.clear()
             self.refresh()
-
-
-def _day_label(day):
-    today = date.today()
-    if day == today:
-        return i18n.tr("date_today")
-    if day == today - timedelta(days=1):
-        return i18n.tr("date_yesterday")
-    return i18n.tr("date_month_day", day.month, day.day)

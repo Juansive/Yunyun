@@ -28,6 +28,7 @@ from yunyun.pet.history_page import HistoryPage
 from yunyun.pet.mail_page import MailAccountsPage
 from yunyun.pet.notebook_page import NotebookPage
 from yunyun.pet.watch_page import WatchPage
+from yunyun.pet.widgets import note
 
 # 页面顺序；open_settings(page) 用这些名字。"旁观"（阶段 8）和助手模式无关，打包版也有
 PAGES = ["general", "mail", "ai", "assistant", "notebook", "watch", "history", "about"]
@@ -54,34 +55,6 @@ class SettingsWindow(QDialog):
     @property
     def current_page(self):
         return PAGES[self._sidebar.currentRow()]
-
-    @property
-    def mail_page(self):
-        return self._mail_page
-
-    @property
-    def ai_page(self):
-        return self._ai_page
-
-    @property
-    def assistant_page(self):
-        return self._assistant_page
-
-    @property
-    def notebook_page(self):
-        return self._notebook_page
-
-    @property
-    def watch_page(self):
-        return self._watch_page
-
-    @property
-    def general_page(self):
-        return self._general_page
-
-    @property
-    def history_page(self):
-        return self._history_page
 
     def show_centered(self):
         self.adjustSize()
@@ -110,22 +83,23 @@ class SettingsWindow(QDialog):
             # 这个版本没有助手模式（打包版要到阶段 9）：藏起这一项，页面序号不变
             self._sidebar.item(self._sidebar.count() - 1).setHidden(page in ASSISTANT_PAGES and not assistant_available())
 
-        self._general_page = GeneralPage(self._pet)
-        self._mail_page = MailAccountsPage()
-        self._ai_page = AISettingsPage()
-        self._assistant_page = AssistantSettingsPage()
-        self._assistant_page.history_cleared.connect(self._pet.clear_assistant_history)
-        self._notebook_page = NotebookPage()
-        self._watch_page = WatchPage()
-        self._watch_page.test_requested.connect(self._test_watch)
-        self._history_page = HistoryPage(self._pet.history)
-        self._about_page = AboutPage(self._pet)
-        self._mail_page.accounts_changed.connect(self.accounts_changed)
-        self._mail_page.account_added.connect(self.account_added)
+        # 各页（重建时整个换掉，所以是普通属性）
+        self.general_page = GeneralPage(self._pet)
+        self.mail_page = MailAccountsPage()
+        self.ai_page = AISettingsPage()
+        self.assistant_page = AssistantSettingsPage()
+        self.assistant_page.history_cleared.connect(self._pet.clear_assistant_history)
+        self.notebook_page = NotebookPage()
+        self.watch_page = WatchPage()
+        self.watch_page.test_requested.connect(self._test_watch)
+        self.history_page = HistoryPage(self._pet.history)
+        self.about_page = AboutPage(self._pet)
+        self.mail_page.accounts_changed.connect(self.accounts_changed)
+        self.mail_page.account_added.connect(self.account_added)
 
         self._stack = QStackedWidget()  # 一叠页面，同时只显示一页（顺序和 PAGES 一样）
-        for widget in (self._general_page, self._mail_page, self._ai_page, self._assistant_page, self._notebook_page,
-                       self._watch_page, self._history_page, self._about_page):
+        for widget in (self.general_page, self.mail_page, self.ai_page, self.assistant_page, self.notebook_page,
+                       self.watch_page, self.history_page, self.about_page):
             self._stack.addWidget(widget)
         self._sidebar.currentRowChanged.connect(self._stack.setCurrentIndex)
         self._sidebar.setCurrentRow(0)
@@ -152,7 +126,7 @@ class SettingsWindow(QDialog):
     def changeEvent(self, event):
         # 窗口重新被激活时刷新通用页：比如在托盘菜单里改了"始终在上"
         if event.type() == QEvent.Type.ActivationChange and self.isActiveWindow():
-            self._general_page.refresh()
+            self.general_page.refresh()
         super().changeEvent(event)
 
 
@@ -210,9 +184,7 @@ class GeneralPage(QWidget):
         quiet_row.addWidget(QLabel(tr("quiet_to")))
         quiet_row.addWidget(self._quiet_end)
         quiet_row.addStretch()
-        quiet_hint = QLabel(tr("quiet_hint"))
-        quiet_hint.setWordWrap(True)
-        quiet_hint.setStyleSheet("color: #666;")
+        quiet_hint = note(tr("quiet_hint"))
         if self._quiet is not None:
             form.addRow(quiet_row)
             form.addRow(quiet_hint)
@@ -238,25 +210,24 @@ class GeneralPage(QWidget):
 
     def refresh(self):
         """把控件状态和实际情况对齐（不触发修改）。"""
-        for widget, update in (
+        updates = [
             (self._language, lambda: self._language.setCurrentIndex(self._language.findData(i18n.current_language()))),
             (self._on_top, lambda: self._on_top.setChecked(self._pet.always_on_top)),
             (self._autostart, lambda: self._autostart.setChecked(shortcut.is_autostart_enabled())),
             (self._size, lambda: self._size.setValue(round(self._pet.scale * 100))),
-        ):
+        ]
+        if self._quiet is not None:
+            updates += [
+                (self._quiet_check, lambda: self._quiet_check.setChecked(self._quiet.enabled)),
+                (self._quiet_start, lambda: self._quiet_start.setTime(QTime(self._quiet.start.hour, self._quiet.start.minute))),
+                (self._quiet_end, lambda: self._quiet_end.setTime(QTime(self._quiet.end.hour, self._quiet.end.minute))),
+            ]
+        for widget, update in updates:
             widget.blockSignals(True)   # 程序自己改状态时，不要当作用户在操作
             update()
             widget.blockSignals(False)
         self._size_label.setText(f"{self._size.value()}%")
         if self._quiet is not None:
-            for widget, update in (
-                (self._quiet_check, lambda: self._quiet_check.setChecked(self._quiet.enabled)),
-                (self._quiet_start, lambda: self._quiet_start.setTime(QTime(self._quiet.start.hour, self._quiet.start.minute))),
-                (self._quiet_end, lambda: self._quiet_end.setTime(QTime(self._quiet.end.hour, self._quiet.end.minute))),
-            ):
-                widget.blockSignals(True)
-                update()
-                widget.blockSignals(False)
             self._update_quiet_enabled()
 
     def _on_quiet_toggled(self, on):

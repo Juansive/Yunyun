@@ -12,7 +12,7 @@ import logging
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QDoubleSpinBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton, QVBoxLayout,
+    QCheckBox, QComboBox, QDoubleSpinBox, QFormLayout, QHBoxLayout, QLineEdit, QMessageBox, QPushButton, QVBoxLayout,
     QWidget,
 )
 
@@ -27,6 +27,7 @@ from yunyun.assistant.settings import (
 )
 from yunyun.pet import assistant_history
 from yunyun.pet.assistant_deck import token_amount
+from yunyun.pet.widgets import StatusLabel, button_row, note
 
 log = logging.getLogger(__name__)
 _CURRENCY_SIGNS = {"CNY": "¥", "USD": "$"}
@@ -80,56 +81,33 @@ class AssistantSettingsPage(QWidget):
         form.addRow("", self._screenshot_ask)
         layout.addLayout(form)
 
-        budget_hint = QLabel(tr("assistant_budget_hint"))
-        budget_hint.setWordWrap(True)
-        budget_hint.setStyleSheet("color: #666;")
-        layout.addWidget(budget_hint)
-        compact_hint = QLabel(tr("assistant_compact_hint"))
-        compact_hint.setWordWrap(True)
-        compact_hint.setStyleSheet("color: #666;")
-        layout.addWidget(compact_hint)
-        self._budget_warning = QLabel()   # 上限设得太低时的提醒（橙色），改数字时马上更新
-        self._budget_warning.setWordWrap(True)
-        self._budget_warning.setStyleSheet("color: #B26A00;")
+        layout.addWidget(note(tr("assistant_budget_hint")))
+        layout.addWidget(note(tr("assistant_compact_hint")))
+        self._budget_warning = note(color="#B26A00")   # 上限设得太低时的提醒（橙色），改数字时马上更新
         layout.addWidget(self._budget_warning)
-        self._spent = QLabel()   # 芸芸花了多少（自己记的账，见 assistant/ledger.py）+ 去官网看余额的链接
-        self._spent.setWordWrap(True)
+        self._spent = note()   # 芸芸花了多少（自己记的账，见 assistant/ledger.py）+ 去官网看余额的链接
         self._spent.setTextFormat(Qt.TextFormat.RichText)
         self._spent.setOpenExternalLinks(True)
-        self._spent.setStyleSheet("color: #666;")
         layout.addWidget(self._spent)
         history_row = QHBoxLayout()   # 历史对话：保留多久 + 清空
-        self._history_note = QLabel(tr("assistant_history_note", HISTORY_KEEP_DAYS))
-        self._history_note.setWordWrap(True)
-        self._history_note.setStyleSheet("color: #666;")
+        self._history_note = note(tr("assistant_history_note", HISTORY_KEEP_DAYS))
         self._clear_history = QPushButton(tr("assistant_history_clear"))
         self._clear_history.clicked.connect(self._on_clear_history)
         history_row.addWidget(self._history_note, 1)
         history_row.addWidget(self._clear_history)
         layout.addLayout(history_row)
 
-        self._hint = QLabel()
-        self._hint.setWordWrap(True)
+        self._hint = note()
         self._hint.setOpenExternalLinks(True)   # 点链接直接用浏览器打开
-        self._hint.setStyleSheet("color: #666;")
         layout.addWidget(self._hint)
-
-        self._privacy = QLabel()
-        self._privacy.setWordWrap(True)
-        self._privacy.setStyleSheet("color: #B26A00;")   # 橙色：重要提示
+        self._privacy = note(color="#B26A00")   # 橙色：重要提示
         layout.addWidget(self._privacy)
-
-        self._status = QLabel()
-        self._status.setWordWrap(True)
-        self._status.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self._status = StatusLabel()
         layout.addWidget(self._status)
 
         self._save_button = QPushButton(tr("mail_test_and_save"))
         self._save_button.clicked.connect(self._test_and_save)
-        row = QHBoxLayout()
-        row.addStretch()
-        row.addWidget(self._save_button)
-        layout.addLayout(row)
+        layout.addLayout(button_row(self._save_button))
         layout.addStretch()   # 内容靠上，多余的空间留在下面
 
         # 预先填好上次的设置，再连接信号（免得填的时候就触发"修改"）
@@ -265,17 +243,17 @@ class AssistantSettingsPage(QWidget):
         typed_key = self._key.text().strip()
         key = typed_key or assistant_settings.get_api_key(info.code)   # 留空 = 继续用保存过的
         if not model:
-            self._show_status(i18n.tr("assistant_empty_model"), error=True)
+            self._status.show_text(i18n.tr("assistant_empty_model"), error=True)
             return
         if not key:
-            self._show_status(i18n.tr("assistant_empty_key"), error=True)
+            self._status.show_text(i18n.tr("assistant_empty_key"), error=True)
             return
         self._pending = (AssistantSettings(info.code, model, round(self._budget.value(), 2),
                                            round(self._conversation_budget.value(), 2),
                                            compact_tokens=self._compact.currentData(),
                                            screenshot_ask=self._screenshot_ask.isChecked()), typed_key)
         self._set_busy(True)
-        self._show_status(i18n.tr("assistant_testing"))
+        self._status.show_text(i18n.tr("assistant_testing"))
         self._check = self._make_check(info.code, model, key)
         self._check.setParent(self)   # 同上：这一页没了，测试也跟着结束
         self._check.balance.connect(lambda balance, code=info.code: self._on_balance(code, balance))   # 测通了顺便查的
@@ -292,14 +270,14 @@ class AssistantSettingsPage(QWidget):
             message = i18n.tr(f"assistant_error_{error.kind}")
             if error.detail:
                 message += "\n" + i18n.tr("assistant_error_detail", error.detail)
-            self._show_status(message, error=True)
+            self._status.show_text(message, error=True)
             return
         if typed_key:
             assistant_settings.set_api_key(settings.provider, typed_key)
             self._key.clear()   # 存好了就从输入框里拿掉，只留"已保存"的提示
         assistant_settings.save_settings(settings)
         self._update_provider_texts()
-        self._show_status(i18n.tr("assistant_saved"))
+        self._status.show_text(i18n.tr("assistant_saved"))
         self.settings_saved.emit()
 
     def _set_busy(self, busy):
@@ -319,10 +297,6 @@ class AssistantSettingsPage(QWidget):
                     text += i18n.tr("assistant_compact_recommended")
             self._compact.addItem(text, value)
         self._compact.setCurrentIndex(self._compact.findData(current))
-
-    def _show_status(self, text, error=False):
-        self._status.setStyleSheet("color: #C62828;" if error else "color: #2E7D32;")
-        self._status.setText(text)
 
 
 def _money_box(low, high, step):

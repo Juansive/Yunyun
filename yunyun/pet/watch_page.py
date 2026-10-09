@@ -12,16 +12,10 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QMessageBox, QPushButton, QVBoxLayout, QWidget
 
 from yunyun import i18n
+from yunyun.pet.widgets import StatusLabel, note
 from yunyun.watch import hooks
 
 _STATUS_COLORS = {"connected": "#2E7D32", "disconnected": "#666", "partial": "#B26A00", "broken": "#C62828"}
-
-
-def _gray(text):
-    label = QLabel(text)
-    label.setWordWrap(True)
-    label.setStyleSheet("color: #666;")
-    return label
 
 
 class WatchPage(QWidget):
@@ -31,11 +25,11 @@ class WatchPage(QWidget):
         super().__init__(parent)
         tr = i18n.tr
         layout = QVBoxLayout(self)
-        layout.addWidget(_gray(tr("watch_intro")))
+        layout.addWidget(note(tr("watch_intro")))
         self._status = QLabel()
         self._status.setWordWrap(True)
         layout.addWidget(self._status)
-        self._file = _gray(tr("watch_settings_file", hooks.settings_path()))
+        self._file = note(tr("watch_settings_file", hooks.settings_path()))
         self._file.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         layout.addWidget(self._file)
 
@@ -51,11 +45,9 @@ class WatchPage(QWidget):
         row.addStretch()
         row.addWidget(self._test_button)
         layout.addLayout(row)
-        self._result = QLabel()   # 刚才连接 / 断开的结果（绿色成功、红色出错）
-        self._result.setWordWrap(True)
-        self._result.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self._result = StatusLabel()   # 刚才连接 / 断开的结果
         layout.addWidget(self._result)
-        layout.addWidget(_gray(tr("watch_note")))
+        layout.addWidget(note(tr("watch_note")))
         layout.addStretch()
         self.refresh()
 
@@ -83,20 +75,16 @@ class WatchPage(QWidget):
         try:
             backup = hooks.connect()
         except hooks.HooksError as e:
-            self._show_result(i18n.tr(f"watch_error_{e.kind}", e), error=True)
+            self._result.show_text(i18n.tr(f"watch_error_{e.kind}", e), error=True)
         else:
-            self._show_result(i18n.tr("watch_connected", backup) if backup else i18n.tr("watch_connected_new"))
+            self._result.show_text(i18n.tr("watch_connected", backup) if backup else i18n.tr("watch_connected_new"))
         self.refresh()
 
     def _disconnect(self):
         try:
             hooks.disconnect()
         except hooks.HooksError as e:
-            self._show_result(i18n.tr(f"watch_error_{e.kind}", e), error=True)
+            self._result.show_text(i18n.tr(f"watch_error_{e.kind}", e), error=True)
         else:
-            self._show_result(i18n.tr("watch_disconnected"))
+            self._result.show_text(i18n.tr("watch_disconnected"))
         self.refresh()
-
-    def _show_result(self, text, error=False):
-        self._result.setStyleSheet("color: #C62828;" if error else "color: #2E7D32;")
-        self._result.setText(text)

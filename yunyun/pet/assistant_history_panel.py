@@ -27,6 +27,7 @@ from yunyun.pet.assistant_reader import style_code_blocks
 from yunyun.pet.side_panel import (
     BUTTON_STYLE, SCROLLBAR_STYLE, TEXT_STYLE, SidePanel, divider, make_button, text_view,
 )
+from yunyun.pet.widgets import day_label, note
 
 TITLE_CHARS = 40
 
@@ -48,15 +49,6 @@ def folder_label(workspace):
     if not workspace:
         return i18n.tr("assistant_history_chat_only")
     return os.path.basename(os.path.normpath(workspace)) or workspace
-
-
-def day_label(day, today):
-    delta = (today - day).days
-    if delta == 0:
-        return i18n.tr("assistant_history_today")
-    if delta == 1:
-        return i18n.tr("assistant_history_yesterday")
-    return i18n.tr("assistant_history_date", day.month, day.day)
 
 
 def meta_text(conversation, with_date=False):
@@ -120,9 +112,7 @@ class AssistantHistoryPanel(SidePanel):
         self._list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._list.itemClicked.connect(self._on_item)
         layout.addWidget(self._list, 1)
-        self._empty = QLabel()
-        self._empty.setWordWrap(True)
-        self._empty.setStyleSheet("color: #9AA3B2;")
+        self._empty = note(color="#9AA3B2")
         layout.addWidget(self._empty)
 
         self._detail = text_view(TEXT_STYLE)
@@ -130,8 +120,7 @@ class AssistantHistoryPanel(SidePanel):
         self._detail.viewport().setAutoFillBackground(False)
         layout.addWidget(self._detail, 1)
         bottom = QHBoxLayout()
-        self._note = QLabel()   # 找回来的对话：说明少了些什么
-        self._note.setWordWrap(True)
+        self._note = note()   # 找回来的对话：说明少了些什么
         self._note.setStyleSheet("color: #8A94A6; font-size: 9pt;")
         self._continue = make_button(_CONTINUE_STYLE, self._on_continue)
         bottom.addWidget(self._note, 1)

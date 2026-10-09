@@ -7,13 +7,14 @@ import threading
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QComboBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
-    QListWidget, QListWidgetItem, QMessageBox, QPushButton, QVBoxLayout, QWidget,
+    QComboBox, QFormLayout, QGroupBox, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMessageBox, QPushButton,
+    QVBoxLayout, QWidget,
 )
 
 from yunyun import i18n
 from yunyun.mail import accounts
 from yunyun.mail.imap_client import PROVIDERS, MailAccount, MailError, check_login
+from yunyun.pet.widgets import StatusLabel, button_row, note
 
 
 class MailAccountsPage(QWidget):
@@ -39,10 +40,7 @@ class MailAccountsPage(QWidget):
         layout.addWidget(self._list)
         self._remove_button = QPushButton(tr("mail_remove"))
         self._remove_button.clicked.connect(self._remove_selected)
-        row = QHBoxLayout()
-        row.addStretch()  # 弹簧：把按钮推到右边
-        row.addWidget(self._remove_button)
-        layout.addLayout(row)
+        layout.addLayout(button_row(self._remove_button))
 
         # ---- 添加邮箱 ----
         box = QGroupBox(tr("mail_add_title"))
@@ -60,28 +58,17 @@ class MailAccountsPage(QWidget):
         form.addRow(tr("mail_address"), self._address)
         form.addRow(tr("mail_password"), self._password)
 
-        self._hint = QLabel()
-        self._hint.setWordWrap(True)
-        self._hint.setStyleSheet("color: #666;")
+        self._hint = note()
         form.addRow(self._hint)
-        privacy = QLabel("🔒 " + tr("mail_privacy_note"))
-        privacy.setWordWrap(True)
-        privacy.setStyleSheet("color: #2E7D32;")
-        form.addRow(privacy)
+        form.addRow(note("🔒 " + tr("mail_privacy_note"), "#2E7D32"))
         layout.addWidget(box)
 
         # ---- 状态 + 按钮 ----
-        self._status = QLabel()
-        self._status.setWordWrap(True)
-        self._status.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)  # 报错可以复制
+        self._status = StatusLabel()
         layout.addWidget(self._status)
-
         self._save_button = QPushButton(tr("mail_test_and_save"))
         self._save_button.clicked.connect(self._test_and_save)
-        row = QHBoxLayout()
-        row.addStretch()
-        row.addWidget(self._save_button)
-        layout.addLayout(row)
+        layout.addLayout(button_row(self._save_button))
         layout.addStretch()  # 内容靠上，多余的空间留在下面
 
         self._update_hint()
@@ -130,16 +117,16 @@ class MailAccountsPage(QWidget):
         address = self._address.text().strip()
         password = self._password.text().strip().replace(" ", "")  # 授权码有时被复制成带空格的分组
         if "@" not in address or address.startswith("@") or address.endswith("@"):
-            self._show_status(i18n.tr("mail_bad_address"), error=True)
+            self._status.show_text(i18n.tr("mail_bad_address"), error=True)
             return
         if not password:
-            self._show_status(i18n.tr("mail_empty_password"), error=True)
+            self._status.show_text(i18n.tr("mail_empty_password"), error=True)
             return
 
         provider = self._provider.currentData()
         account = MailAccount(name=i18n.tr(f"provider_{provider}"), provider=provider, address=address)
         self._set_busy(True)
-        self._show_status(i18n.tr("mail_testing"))
+        self._status.show_text(i18n.tr("mail_testing"))
         # 登录可能要好几秒，放到后台线程，界面才不会"未响应"
         threading.Thread(target=self._login_worker, args=(account, password), daemon=True).start()
 
@@ -164,21 +151,17 @@ class MailAccountsPage(QWidget):
             message = i18n.tr(f"mail_error_{error.kind}")
             if error.detail:
                 message += "\n" + i18n.tr("mail_error_detail", error.detail)
-            self._show_status(message, error=True)
+            self._status.show_text(message, error=True)
             return
 
         accounts.save_account(account, password)
         self._password.clear()
         self._address.clear()
         self._refresh_list()
-        self._show_status(i18n.tr("mail_saved"))
+        self._status.show_text(i18n.tr("mail_saved"))
         self.accounts_changed.emit()
         self.account_added.emit()
 
     def _set_busy(self, busy):
         for widget in (self._save_button, self._provider, self._address, self._password):
             widget.setEnabled(not busy)
-
-    def _show_status(self, text, error=False):
-        self._status.setStyleSheet("color: #C62828;" if error else "color: #2E7D32;")
-        self._status.setText(text)

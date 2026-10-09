@@ -69,7 +69,7 @@ def test_shortcut_button_calls_pet(qapp, pet, monkeypatch):
 
 def test_about_page_shows_version_and_data(qapp, pet):
     pet.open_settings("about")
-    texts = " ".join(label.text() for label in pet.settings_window._about_page.findChildren(QLabel))
+    texts = " ".join(label.text() for label in pet.settings_window.about_page.findChildren(QLabel))
     assert __version__ in texts and "Windows 凭据管理器" in texts and "config.yaml" in texts
 
 

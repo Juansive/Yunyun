@@ -1065,7 +1065,7 @@ def test_clearing_history_in_settings_empties_the_deck(qapp, world, monkeypatch)
     assert assistant_history.history_path().exists()
     pet.open_settings("assistant")
     monkeypatch.setattr(QMessageBox, "question", staticmethod(lambda *a: QMessageBox.StandardButton.Yes))
-    pet.settings_window._assistant_page._clear_history.click()
+    pet.settings_window.assistant_page._clear_history.click()
     assert not assistant_history.history_path().exists()
     assert pet.assistant.cards == []
     assert wait_until(qapp, lambda: not pet.assistant.deck.isVisible())
