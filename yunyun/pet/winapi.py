@@ -26,58 +26,46 @@ HWND_NOTOPMOST = -2
 SWP_NOSIZE = 0x0001
 SWP_NOMOVE = 0x0002
 SWP_NOACTIVATE = 0x0010
+SWP_Z_ORDER_ONLY = SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE   # SetWindowPos 只改叠放顺序：不移动、不改大小、不抢焦点
 # SHQueryUserNotificationState 的返回值：这三种表示用户正全屏忙着，不该打扰
 QUNS_BUSY = 2                       # 有程序在全屏（比如全屏看视频）
 QUNS_RUNNING_D3D_FULL_SCREEN = 3    # 全屏游戏
 QUNS_PRESENTATION_MODE = 4          # 演示模式（比如 PPT 放映）
+SW_RESTORE = 9
+WS_EX_TOOLWINDOW = 0x00000080
+VK_LBUTTON, VK_RBUTTON = 0x01, 0x02
+SM_SWAPBUTTON = 23   # 左右键对调了（左撇子设置）：物理的"左键"在系统里是 VK_RBUTTON
 
 if IS_WINDOWS:
     user32 = ctypes.WinDLL("user32", use_last_error=True)
     dwmapi = ctypes.WinDLL("dwmapi")
     shell32 = ctypes.WinDLL("shell32")
+    WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
 
-    # 声明每个函数的参数和返回值类型。
+    # 声明每个函数的返回值和参数类型。
     # 尤其是 HWND（窗口句柄）是"指针大小"，64 位系统上占 8 字节；
     # 不声明的话 ctypes 默认当作 32 位 int，句柄会被截断，导致莫名其妙的错误。
-    user32.GetWindow.argtypes = [wintypes.HWND, wintypes.UINT]
-    user32.GetWindow.restype = wintypes.HWND
-    user32.IsWindowVisible.argtypes = [wintypes.HWND]
-    user32.IsWindowVisible.restype = wintypes.BOOL
-    user32.IsIconic.argtypes = [wintypes.HWND]          # 是否最小化
-    user32.IsIconic.restype = wintypes.BOOL
-    user32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
-    user32.GetWindowRect.restype = wintypes.BOOL
-    user32.GetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int]
-    user32.GetWindowLongW.restype = wintypes.LONG
-    user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
-    user32.GetWindowThreadProcessId.restype = wintypes.DWORD
-    user32.SetWindowPos.argtypes = [
-        wintypes.HWND, wintypes.HWND,
-        ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, wintypes.UINT,
-    ]
-    user32.SetWindowPos.restype = wintypes.BOOL
-    dwmapi.DwmGetWindowAttribute.argtypes = [wintypes.HWND, wintypes.DWORD, ctypes.c_void_p, wintypes.DWORD]
-    dwmapi.DwmGetWindowAttribute.restype = ctypes.c_long  # HRESULT，0 表示成功
-    shell32.SHQueryUserNotificationState.argtypes = [ctypes.POINTER(ctypes.c_int)]
-    shell32.SHQueryUserNotificationState.restype = ctypes.c_long
-    user32.GetAsyncKeyState.argtypes = [ctypes.c_int]
-    user32.GetAsyncKeyState.restype = ctypes.c_short
-    user32.GetSystemMetrics.argtypes = [ctypes.c_int]
-    user32.GetSystemMetrics.restype = ctypes.c_int
-    WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
-    user32.EnumWindows.argtypes = [WNDENUMPROC, wintypes.LPARAM]
-    user32.EnumWindows.restype = wintypes.BOOL
-    user32.GetForegroundWindow.argtypes = []
-    user32.GetForegroundWindow.restype = wintypes.HWND
-    user32.SetForegroundWindow.argtypes = [wintypes.HWND]
-    user32.SetForegroundWindow.restype = wintypes.BOOL
-    user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
-    user32.ShowWindow.restype = wintypes.BOOL
-    user32.GetWindowTextLengthW.argtypes = [wintypes.HWND]
-    user32.GetWindowTextLengthW.restype = ctypes.c_int
-
-SW_RESTORE = 9
-WS_EX_TOOLWINDOW = 0x00000080
+    HWND, BOOL, INT = wintypes.HWND, wintypes.BOOL, ctypes.c_int
+    for func, restype, argtypes in (
+        (user32.GetWindow, HWND, [HWND, wintypes.UINT]),
+        (user32.IsWindowVisible, BOOL, [HWND]),
+        (user32.IsIconic, BOOL, [HWND]),   # 是否最小化
+        (user32.GetWindowRect, BOOL, [HWND, ctypes.POINTER(wintypes.RECT)]),
+        (user32.GetWindowLongW, wintypes.LONG, [HWND, INT]),
+        (user32.GetWindowThreadProcessId, wintypes.DWORD, [HWND, ctypes.POINTER(wintypes.DWORD)]),
+        (user32.SetWindowPos, BOOL, [HWND, HWND, INT, INT, INT, INT, wintypes.UINT]),
+        # 这两个返回 HRESULT：0 = 成功
+        (dwmapi.DwmGetWindowAttribute, ctypes.c_long, [HWND, wintypes.DWORD, ctypes.c_void_p, wintypes.DWORD]),
+        (shell32.SHQueryUserNotificationState, ctypes.c_long, [ctypes.POINTER(INT)]),
+        (user32.GetAsyncKeyState, ctypes.c_short, [INT]),
+        (user32.GetSystemMetrics, INT, [INT]),
+        (user32.EnumWindows, BOOL, [WNDENUMPROC, wintypes.LPARAM]),
+        (user32.GetForegroundWindow, HWND, []),
+        (user32.SetForegroundWindow, BOOL, [HWND]),
+        (user32.ShowWindow, BOOL, [HWND, INT]),
+        (user32.GetWindowTextLengthW, INT, [HWND]),
+    ):
+        func.restype, func.argtypes = restype, argtypes
 
 
 # ---------- 顶层窗口 ----------
@@ -122,9 +110,6 @@ def activate(hwnd):
         user32.ShowWindow(hwnd, SW_RESTORE)
     user32.SetForegroundWindow(hwnd)
 
-VK_LBUTTON, VK_RBUTTON = 0x01, 0x02
-SM_SWAPBUTTON = 23   # 左右键对调了（左撇子设置）：物理的"左键"在系统里是 VK_RBUTTON
-
 
 def left_button_down():
     """鼠标左键现在是不是按着（不管在哪个程序里）。只看鼠标按钮，不碰键盘。
@@ -141,8 +126,7 @@ def set_topmost(hwnd, on):
     """设置 / 取消窗口置顶（不移动、不改大小、不抢焦点）。"""
     if not IS_WINDOWS:
         return
-    after = HWND_TOPMOST if on else HWND_NOTOPMOST
-    user32.SetWindowPos(hwnd, after, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE)
+    user32.SetWindowPos(hwnd, HWND_TOPMOST if on else HWND_NOTOPMOST, 0, 0, 0, 0, SWP_Z_ORDER_ONLY)
 
 
 def is_topmost(hwnd):
@@ -180,7 +164,7 @@ def keep_z_order(owner_hwnd):
     finally:
         if above:
             # hWndInsertAfter = above：把芸芸放到 above 的正下方
-            user32.SetWindowPos(owner_hwnd, above, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE)
+            user32.SetWindowPos(owner_hwnd, above, 0, 0, 0, 0, SWP_Z_ORDER_ONLY)
 
 
 def _first_foreign_window_above(hwnd):

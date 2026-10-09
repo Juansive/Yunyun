@@ -29,7 +29,6 @@ MIN_WINDOW = (120, 80)   # 比这还小的窗口不算"你在用的窗口"（小
 SHELL_CLASSES = {"Progman", "WorkerW", "Shell_TrayWnd", "Shell_SecondaryTrayWnd"}   # 桌面、任务栏
 
 WDA_NONE, WDA_EXCLUDEFROMCAPTURE = 0x0, 0x11
-WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT = 0x80, 0x20
 SRCCOPY, CAPTUREBLT = 0x00CC0020, 0x40000000
 MONITOR_DEFAULTTONEAREST = 2
 BI_RGB, DIB_RGB_COLORS = 0, 0
@@ -49,34 +48,24 @@ class BITMAPINFOHEADER(ctypes.Structure):
 
 if winapi.IS_WINDOWS:
     user32, gdi32 = winapi.user32, ctypes.WinDLL("gdi32")
-    user32.GetClassNameW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
-    user32.GetClassNameW.restype = ctypes.c_int
-    user32.SetWindowDisplayAffinity.argtypes = [wintypes.HWND, wintypes.DWORD]
-    user32.SetWindowDisplayAffinity.restype = wintypes.BOOL
-    user32.MonitorFromPoint.argtypes = [wintypes.POINT, wintypes.DWORD]
-    user32.MonitorFromPoint.restype = wintypes.HMONITOR
-    user32.GetMonitorInfoW.argtypes = [wintypes.HMONITOR, ctypes.POINTER(MONITORINFO)]
-    user32.GetMonitorInfoW.restype = wintypes.BOOL
-    user32.GetDC.argtypes = [wintypes.HWND]
-    user32.GetDC.restype = wintypes.HDC
-    user32.ReleaseDC.argtypes = [wintypes.HWND, wintypes.HDC]
-    user32.ReleaseDC.restype = ctypes.c_int
-    gdi32.CreateCompatibleDC.argtypes = [wintypes.HDC]
-    gdi32.CreateCompatibleDC.restype = wintypes.HDC
-    gdi32.CreateCompatibleBitmap.argtypes = [wintypes.HDC, ctypes.c_int, ctypes.c_int]
-    gdi32.CreateCompatibleBitmap.restype = wintypes.HBITMAP
-    gdi32.SelectObject.argtypes = [wintypes.HDC, wintypes.HGDIOBJ]
-    gdi32.SelectObject.restype = wintypes.HGDIOBJ
-    gdi32.BitBlt.argtypes = [wintypes.HDC, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
-                             wintypes.HDC, ctypes.c_int, ctypes.c_int, wintypes.DWORD]
-    gdi32.BitBlt.restype = wintypes.BOOL
-    gdi32.GetDIBits.argtypes = [wintypes.HDC, wintypes.HBITMAP, wintypes.UINT, wintypes.UINT, ctypes.c_void_p,
-                                ctypes.c_void_p, wintypes.UINT]
-    gdi32.GetDIBits.restype = ctypes.c_int
-    gdi32.DeleteObject.argtypes = [wintypes.HGDIOBJ]
-    gdi32.DeleteObject.restype = wintypes.BOOL
-    gdi32.DeleteDC.argtypes = [wintypes.HDC]
-    gdi32.DeleteDC.restype = wintypes.BOOL
+    HWND, HDC, DWORD, UINT = wintypes.HWND, wintypes.HDC, wintypes.DWORD, wintypes.UINT
+    BOOL, INT = wintypes.BOOL, ctypes.c_int
+    for func, restype, argtypes in (   # 为什么要声明：见 winapi
+        (user32.GetClassNameW, INT, [HWND, wintypes.LPWSTR, INT]),
+        (user32.SetWindowDisplayAffinity, BOOL, [HWND, DWORD]),
+        (user32.MonitorFromPoint, wintypes.HMONITOR, [wintypes.POINT, DWORD]),
+        (user32.GetMonitorInfoW, BOOL, [wintypes.HMONITOR, ctypes.POINTER(MONITORINFO)]),
+        (user32.GetDC, HDC, [HWND]),
+        (user32.ReleaseDC, INT, [HWND, HDC]),
+        (gdi32.CreateCompatibleDC, HDC, [HDC]),
+        (gdi32.CreateCompatibleBitmap, wintypes.HBITMAP, [HDC, INT, INT]),
+        (gdi32.SelectObject, wintypes.HGDIOBJ, [HDC, wintypes.HGDIOBJ]),
+        (gdi32.BitBlt, BOOL, [HDC, INT, INT, INT, INT, HDC, INT, INT, DWORD]),
+        (gdi32.GetDIBits, INT, [HDC, wintypes.HBITMAP, UINT, UINT, ctypes.c_void_p, ctypes.c_void_p, UINT]),
+        (gdi32.DeleteObject, BOOL, [wintypes.HGDIOBJ]),
+        (gdi32.DeleteDC, BOOL, [HDC]),
+    ):
+        func.restype, func.argtypes = restype, argtypes
 
 
 # ---------- 窗口 ----------
@@ -102,7 +91,7 @@ def _is_normal_window(hwnd):
         return False
     if winapi._process_id(hwnd) == os.getpid() or user32.GetWindowTextLengthW(hwnd) == 0:
         return False
-    if user32.GetWindowLongW(hwnd, winapi.GWL_EXSTYLE) & (WS_EX_TOOLWINDOW | WS_EX_TRANSPARENT):
+    if user32.GetWindowLongW(hwnd, winapi.GWL_EXSTYLE) & (winapi.WS_EX_TOOLWINDOW | winapi.WS_EX_TRANSPARENT):
         return False
     if _class_name(hwnd) in SHELL_CLASSES:
         return False
