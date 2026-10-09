@@ -52,10 +52,7 @@ def test_stopping_a_reason_that_never_started_does_not_end_thinking(qapp):
     assert m.state is PetState.THINKING
 
 
-def test_thinking_frames_loop(qapp, tmp_path):
-    from PySide6.QtCore import QSettings
-    QSettings.setDefaultFormat(QSettings.Format.IniFormat)
-    QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, str(tmp_path))
+def test_thinking_frames_loop(qapp):
     sprites = load_sprites()
     assert len(sprites.thinking) == 3
     pet = PetWindow(sprites)
@@ -102,10 +99,7 @@ def test_badge_loading_spins_and_ignores_clicks(qapp):
     assert clicks == [1]
 
 
-def test_spinner_stays_until_processing_ends(qapp, tmp_path, monkeypatch):
-    from PySide6.QtCore import QSettings
-    QSettings.setDefaultFormat(QSettings.Format.IniFormat)
-    QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, str(tmp_path))
+def test_spinner_stays_until_processing_ends(qapp, monkeypatch):
     pet = PetWindow(load_sprites())
     monkeypatch.setattr(pet, "_check_covered", lambda: None)
     pet.move(300, 300)

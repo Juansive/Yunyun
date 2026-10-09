@@ -111,14 +111,10 @@ def test_missing_new_sprites_fall_back_to_thinking(qapp, tmp_path):
     assert sprites.busy == sprites.thinking and sprites.waiting == sprites.thinking
 
 
-def test_window_plays_the_new_states(qapp, tmp_path):
+def test_window_plays_the_new_states(qapp):
     import time
 
-    from PySide6.QtCore import QSettings
-
     from yunyun.pet.window import PetWindow
-    QSettings.setDefaultFormat(QSettings.Format.IniFormat)
-    QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, str(tmp_path))
     sprites = load_sprites()
     pet = PetWindow(sprites)
     for state, frames in ((PetState.BUSY, sprites.busy), (PetState.WAITING, sprites.waiting)):

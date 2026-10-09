@@ -1,6 +1,4 @@
 """小红点的测试：单击、拖走、弹回、右键隐藏、和芸芸的配合。"""
-import time
-
 import pytest
 from PySide6.QtCore import QEvent, QPoint, QPointF, QRect, Qt
 from PySide6.QtGui import QContextMenuEvent, QGuiApplication, QMouseEvent
@@ -9,6 +7,7 @@ from yunyun.pet import winapi
 from yunyun.pet.badge import Badge, tray_corner
 from yunyun.pet.sprites import load_sprites
 from yunyun.pet.window import PetWindow
+from helpers import wait
 
 L, NO = Qt.MouseButton.LeftButton, Qt.MouseButton.NoButton
 
@@ -23,17 +22,7 @@ def drag(badge, start, end):
     badge.mouseReleaseEvent(mouse(QEvent.Type.MouseButtonRelease, end, L, NO))
 
 
-def wait(qapp, seconds):
-    end = time.time() + seconds
-    while time.time() < end:
-        qapp.processEvents()
-        time.sleep(0.01)
-
-
-def make_pet(qapp, tmp_path, monkeypatch):
-    from PySide6.QtCore import QSettings
-    QSettings.setDefaultFormat(QSettings.Format.IniFormat)
-    QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, str(tmp_path))
+def make_pet(qapp, monkeypatch):
     pet = PetWindow(load_sprites())
     monkeypatch.setattr(pet, "_check_covered", lambda: None)  # 不做真实的遮挡检测
     pet.move(300, 300)
@@ -70,8 +59,8 @@ def test_click_vs_drag(qapp):
     assert events == ["click", "dismiss"] and not b.isVisible()
 
 
-def test_badge_follows_pet_and_stays_on_screen(qapp, tmp_path, monkeypatch):
-    pet = make_pet(qapp, tmp_path, monkeypatch)
+def test_badge_follows_pet_and_stays_on_screen(qapp, monkeypatch):
+    pet = make_pet(qapp, monkeypatch)
     pet.set_mail_count(3)
     b = pet._badge
     assert b.isVisible()
@@ -89,8 +78,8 @@ def test_badge_follows_pet_and_stays_on_screen(qapp, tmp_path, monkeypatch):
     assert not b.isVisible()
 
 
-def test_right_click_hides_and_right_click_pet_restores(qapp, tmp_path, monkeypatch):
-    pet = make_pet(qapp, tmp_path, monkeypatch)
+def test_right_click_hides_and_right_click_pet_restores(qapp, monkeypatch):
+    pet = make_pet(qapp, monkeypatch)
     pet.set_mail_count(2)
     said = []
     monkeypatch.setattr(pet, "say", said.append)
@@ -104,8 +93,8 @@ def test_right_click_hides_and_right_click_pet_restores(qapp, tmp_path, monkeypa
     assert pet._badge.isVisible() and pet._badge._text == "5"
 
 
-def test_dismiss_from_menu(qapp, tmp_path, monkeypatch):
-    pet = make_pet(qapp, tmp_path, monkeypatch)
+def test_dismiss_from_menu(qapp, monkeypatch):
+    pet = make_pet(qapp, monkeypatch)
     requested = []
     pet.dismiss_mail_requested.connect(lambda: requested.append(1))
 
@@ -146,11 +135,8 @@ def fake_desktop(monkeypatch):
     return state
 
 
-def make_real_pet(qapp, tmp_path):
+def make_real_pet(qapp):
     """和 make_pet 一样，但保留真正的 _check_covered（用 fake_desktop 控制结果）。"""
-    from PySide6.QtCore import QSettings
-    QSettings.setDefaultFormat(QSettings.Format.IniFormat)
-    QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, str(tmp_path))
     pet = PetWindow(load_sprites())
     pet.move(300, 300)
     pet.show()
@@ -171,8 +157,8 @@ def test_corner_badge_is_independent_topmost_window(qapp):
     assert corner.windowFlags() & Qt.WindowType.WindowStaysOnTopHint      # 始终置顶
 
 
-def test_corner_mode_full_flow(qapp, tmp_path, fake_desktop):
-    pet = make_real_pet(qapp, tmp_path)
+def test_corner_mode_full_flow(qapp, fake_desktop):
+    pet = make_real_pet(qapp)
     follow, corner = pet._badge, pet._corner_badge
     area = QGuiApplication.primaryScreen().availableGeometry()
 
@@ -204,24 +190,24 @@ def test_corner_mode_full_flow(qapp, tmp_path, fake_desktop):
     assert follow.pos() == follow.pet_position(pet.body_rect())
 
 
-def test_new_mail_while_visible_stays_with_pet(qapp, tmp_path, fake_desktop):
-    pet = make_real_pet(qapp, tmp_path)
+def test_new_mail_while_visible_stays_with_pet(qapp, fake_desktop):
+    pet = make_real_pet(qapp)
     pet._check_covered()
     pet.set_mail_count(1)
     pet.on_new_mail()
     assert pet._badge.isVisible() and not pet._corner_badge.isVisible()
 
 
-def test_covered_without_new_mail_does_not_go_to_corner(qapp, tmp_path, fake_desktop):
-    pet = make_real_pet(qapp, tmp_path)
+def test_covered_without_new_mail_does_not_go_to_corner(qapp, fake_desktop):
+    pet = make_real_pet(qapp)
     pet.set_mail_count(1)          # 已有邮件，芸芸后来才被挡住：不去角落（只有"来新邮件"才去）
     fake_desktop["covered"] = 1.0
     pet._check_covered()
     assert not pet._corner_badge.isVisible()
 
 
-def test_hidden_badge_never_goes_to_corner(qapp, tmp_path, fake_desktop, monkeypatch):
-    pet = make_real_pet(qapp, tmp_path)
+def test_hidden_badge_never_goes_to_corner(qapp, fake_desktop, monkeypatch):
+    pet = make_real_pet(qapp)
     monkeypatch.setattr(pet, "say", lambda text: None)
     pet.set_mail_count(1)
     pet._hide_badge()
@@ -229,8 +215,8 @@ def test_hidden_badge_never_goes_to_corner(qapp, tmp_path, fake_desktop, monkeyp
     assert not pet._badge.isVisible() and not pet._corner_badge.isVisible()
 
 
-def test_click_in_corner_brings_pet_out(qapp, tmp_path, fake_desktop, monkeypatch):
-    pet = make_real_pet(qapp, tmp_path)
+def test_click_in_corner_brings_pet_out(qapp, fake_desktop, monkeypatch):
+    pet = make_real_pet(qapp)
     covered_new_mail(pet, fake_desktop)
     clicked, raised = [], []
     pet.mail_badge_clicked.connect(lambda: clicked.append(1))
@@ -241,8 +227,8 @@ def test_click_in_corner_brings_pet_out(qapp, tmp_path, fake_desktop, monkeypatc
     assert pet._corner_badge.busy              # 芸芸出来了，小红点正飞回去
 
 
-def test_dismiss_from_corner(qapp, tmp_path, fake_desktop):
-    pet = make_real_pet(qapp, tmp_path)
+def test_dismiss_from_corner(qapp, fake_desktop):
+    pet = make_real_pet(qapp)
     covered_new_mail(pet, fake_desktop, count=5)
     pet.dismiss_mail_requested.connect(lambda: pet.set_mail_count(0))   # 模拟邮件服务清零
     corner = pet._corner_badge
@@ -254,16 +240,16 @@ def test_dismiss_from_corner(qapp, tmp_path, fake_desktop):
 
 # ---------- "现在没有新邮件"提示 ----------
 
-def test_no_new_mail_hint_is_short(qapp, tmp_path, monkeypatch):
-    pet = make_pet(qapp, tmp_path, monkeypatch)
+def test_no_new_mail_hint_is_short(qapp, monkeypatch):
+    pet = make_pet(qapp, monkeypatch)
     said = []
     monkeypatch.setattr(pet._bubbles, "add", lambda text, anchor, duration_ms: said.append((text, duration_ms)))
     pet.tell_no_new_mail()
     assert said == [("现在没有新邮件哦～", pet.SHORT_SAY_MS)]
 
 
-def test_restore_hint_only_when_mail_gone(qapp, tmp_path, monkeypatch):
-    pet = make_pet(qapp, tmp_path, monkeypatch)
+def test_restore_hint_only_when_mail_gone(qapp, monkeypatch):
+    pet = make_pet(qapp, monkeypatch)
     hints = []
     monkeypatch.setattr(pet, "say", lambda text, duration_ms=4000: None)
     monkeypatch.setattr(pet, "tell_no_new_mail", lambda: hints.append(1))

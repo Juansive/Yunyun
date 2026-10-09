@@ -81,12 +81,9 @@ def test_real_startup_folder_location():
 
 def test_settings_window_toggles_autostart(qapp, tmp_path, monkeypatch):
     import time
-    from PySide6.QtCore import QSettings
     from yunyun import i18n
     from yunyun.pet.sprites import load_sprites
     from yunyun.pet.window import PetWindow
-    QSettings.setDefaultFormat(QSettings.Format.IniFormat)
-    QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, str(tmp_path))
     monkeypatch.setattr(shortcut, "STARTUP_FOLDER", tmp_path / "Startup")
     i18n._current = "zh"
     pet = PetWindow(load_sprites())

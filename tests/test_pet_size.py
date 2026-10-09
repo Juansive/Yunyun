@@ -1,8 +1,5 @@
 """调芸芸的大小（设置 → 通用的滑块，2026-10-08 用户要求）：只变芸芸，脚下中间不动，停下来按新大小重新载入图片。"""
-import time
-
 import pytest
-from PySide6.QtCore import QSettings
 from PySide6.QtGui import QGuiApplication
 
 from yunyun import i18n
@@ -10,12 +7,11 @@ from yunyun.pet.settings_window import GeneralPage
 from yunyun.pet.sprites import load_sprites
 from yunyun.pet.state import PetState
 from yunyun.pet.window import PetWindow
+from helpers import wait
 
 
 @pytest.fixture
-def pet(qapp, tmp_path, monkeypatch):
-    QSettings.setDefaultFormat(QSettings.Format.IniFormat)
-    QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, str(tmp_path))
+def pet(qapp, monkeypatch):
     i18n._current = "zh"
     monkeypatch.setattr(PetWindow, "SPRITE_RELOAD_MS", 20)
     p = PetWindow(load_sprites(max_size=PetWindow.sprite_pixels()))
@@ -25,13 +21,6 @@ def pet(qapp, tmp_path, monkeypatch):
     p.show()
     yield p
     p.close()
-
-
-def wait(qapp, seconds):
-    end = time.time() + seconds
-    while time.time() < end:
-        qapp.processEvents()
-        time.sleep(0.01)
 
 
 def test_default_size(pet):

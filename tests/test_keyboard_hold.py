@@ -1,13 +1,11 @@
 """按住不放时，芸芸的手保持落下（不再因为键盘的自动重复而快速切换）。"""
-import time
-
 import pytest
-from PySide6.QtCore import QSettings
 
 from yunyun.activity.keyboard import KeyboardMonitor
 from yunyun.pet.sprites import load_sprites
 from yunyun.pet.state import PetState, StateMachine
 from yunyun.pet.window import PetWindow
+from helpers import wait
 
 
 from pynput.keyboard import Key, KeyCode
@@ -96,22 +94,13 @@ def test_repeat_keeps_user_active_but_does_not_type(qapp):
 # ---------- 芸芸的手 ----------
 
 @pytest.fixture
-def pet(qapp, tmp_path, monkeypatch):
-    QSettings.setDefaultFormat(QSettings.Format.IniFormat)
-    QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, str(tmp_path))
+def pet(qapp, monkeypatch):
     sprites = load_sprites()
     p = PetWindow(sprites)
     monkeypatch.setattr(p, "_check_covered", lambda: None)
     p.set_state(PetState.WORKING)
     p.hand_down = lambda: p._current in sprites.working_down
     return p
-
-
-def wait(qapp, seconds):
-    end = time.time() + seconds
-    while time.time() < end:
-        qapp.processEvents()
-        time.sleep(0.01)
 
 
 def test_quick_tap_lifts_after_tap_ms(qapp, pet):

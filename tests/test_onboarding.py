@@ -1,27 +1,16 @@
 """首次引导：在设置窗口里添加邮箱后，自动翻到 AI 页（只引导一次）。"""
-import time
-
 import pytest
-from PySide6.QtCore import QSettings
 
 from yunyun import i18n
 from yunyun.ai import settings as ai_settings
 from yunyun.ai.settings import AISettings
 from yunyun.pet.sprites import load_sprites
 from yunyun.pet.window import PetWindow
-
-
-def wait(qapp, seconds):
-    end = time.time() + seconds
-    while time.time() < end:
-        qapp.processEvents()
-        time.sleep(0.01)
+from helpers import wait
 
 
 @pytest.fixture
-def pet(qapp, tmp_path, monkeypatch, fake_store):
-    QSettings.setDefaultFormat(QSettings.Format.IniFormat)
-    QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, str(tmp_path))
+def pet(qapp, monkeypatch, fake_store):
     i18n._current = "zh"
     p = PetWindow(load_sprites())
     p.said = []

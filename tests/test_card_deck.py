@@ -1,6 +1,4 @@
 """卡片堆的测试。"""
-import time
-
 import pytest
 from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
 from PySide6.QtGui import QGuiApplication, QKeyEvent, QMouseEvent, QWheelEvent
@@ -9,13 +7,7 @@ from yunyun import i18n
 from yunyun.pet.card_deck import CardDeck, MailCard
 from yunyun.pet.sprites import load_sprites
 from yunyun.pet.window import PetWindow
-
-
-def wait(qapp, seconds):
-    end = time.time() + seconds
-    while time.time() < end:
-        qapp.processEvents()
-        time.sleep(0.01)
+from helpers import wait
 
 
 def card(n):
@@ -23,10 +15,7 @@ def card(n):
 
 
 @pytest.fixture
-def pet(qapp, tmp_path, monkeypatch):
-    from PySide6.QtCore import QSettings
-    QSettings.setDefaultFormat(QSettings.Format.IniFormat)
-    QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, str(tmp_path))
+def pet(qapp, monkeypatch):
     i18n._current = "zh"
     p = PetWindow(load_sprites())
     monkeypatch.setattr(p, "_check_covered", lambda: None)

@@ -23,9 +23,6 @@ A = MailAccount("QQ邮箱", "qq", "me@qq.com")
 
 @pytest.fixture
 def world(qapp, tmp_path, monkeypatch):
-    from PySide6.QtCore import QSettings
-    QSettings.setDefaultFormat(QSettings.Format.IniFormat)
-    QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, str(tmp_path))
     i18n._current = "zh"
     box = {"uidnext": 10, "unseen": []}
 
@@ -122,11 +119,8 @@ def test_history_records_batch_and_recent_mail_reopens_it(qapp, world):
 def test_quiet_hours_only_count_new_mail(qapp, tmp_path, monkeypatch):
     """免打扰时来了新邮件：芸芸不激动、小红点不去角落，只在身上安静地计数。"""
     from datetime import time as dtime
-    from PySide6.QtCore import QSettings
     from yunyun.notify.quiet import QuietHours
     from yunyun.pet import winapi
-    QSettings.setDefaultFormat(QSettings.Format.IniFormat)
-    QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, str(tmp_path))
     box = {"uidnext": 10, "unseen": []}
     monkeypatch.setattr(service_module, "check_unseen", lambda account: MailboxStatus(1, box["uidnext"], list(box["unseen"])))
     monkeypatch.setattr(service_module.accounts, "load_accounts", lambda: [A])

@@ -175,7 +175,7 @@ def test_failure_saves_nothing(qapp, keys, kind):
     assert page._key.text() == "sk-ant-wrong"                        # 留着让用户改
 
 
-def test_settings_window_has_the_assistant_page(qapp, keys, monkeypatch):
+def test_settings_window_has_the_assistant_page(qapp, keys):
     """设置窗口里有"助手"页，排在"AI"后面。"""
     from yunyun.pet import settings_window
     assert settings_window.PAGES.index("assistant") == settings_window.PAGES.index("ai") + 1

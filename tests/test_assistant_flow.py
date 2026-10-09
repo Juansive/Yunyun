@@ -31,10 +31,7 @@ FAKE_WORKER = Path(__file__).with_name("fake_assistant_worker.py")
 
 
 @pytest.fixture
-def world(qapp, tmp_path, monkeypatch):
-    from PySide6.QtCore import QSettings
-    QSettings.setDefaultFormat(QSettings.Format.IniFormat)
-    QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, str(tmp_path))
+def world(qapp, monkeypatch):
     monkeypatch.setattr(i18n, "_current", "zh")
     monkeypatch.setattr(AssistantInput, "OPEN_MS", 20)
     monkeypatch.setattr(AssistantInput, "CLOSE_MS", 20)

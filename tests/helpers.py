@@ -9,3 +9,8 @@ def wait_until(qapp, condition, timeout=10.0):
         qapp.processEvents()
         time.sleep(0.01)
     return condition()
+
+
+def wait(qapp, seconds):
+    """处理 Qt 事件 seconds 秒（等定时器、动画走完）。"""
+    wait_until(qapp, lambda: False, seconds)

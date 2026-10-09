@@ -340,7 +340,7 @@ def test_reopens_after_the_user_closes_the_window(fake_playwright, tmp_path):
     assert fake_playwright[1][2].closed                                      # 关助手时好好关
 
 
-def test_errors_become_messages_for_the_model(fake_playwright, tmp_path, monkeypatch):
+def test_errors_become_messages_for_the_model(fake_playwright, tmp_path):
     browser = Browser(profile_dir=tmp_path)
 
     async def main():
@@ -840,7 +840,7 @@ def test_edges_own_download_list_is_not_a_new_tab(fake_playwright, tmp_path, mon
     assert "new tab" not in view.note and after.url == "https://a.com"
 
 
-def test_downloads_the_user_clicks_are_saved(fake_playwright, tmp_path, monkeypatch):
+def test_downloads_the_user_clicks_are_saved(fake_playwright, tmp_path):
     downloads = []
     browser = Browser(profile_dir=tmp_path, on_download=lambda *a: downloads.append(a))
 

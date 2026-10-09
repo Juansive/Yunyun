@@ -1,6 +1,5 @@
 """统一设置窗口的测试。"""
 import pytest
-from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QLabel
 
 from yunyun import __version__, i18n
@@ -10,9 +9,7 @@ from yunyun.pet.window import PetWindow
 
 
 @pytest.fixture
-def pet(qapp, tmp_path, monkeypatch):
-    QSettings.setDefaultFormat(QSettings.Format.IniFormat)
-    QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, str(tmp_path))
+def pet(qapp, monkeypatch):
     i18n._current = "zh"
     monkeypatch.setattr(i18n, "set_language", lambda code: setattr(i18n, "_current", code))  # 不写真实设置
     p = PetWindow(load_sprites())

@@ -2,7 +2,7 @@
 import time
 
 import pytest
-from PySide6.QtCore import QEvent, QPoint, QPointF, QSettings, Qt
+from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
 from PySide6.QtGui import QMouseEvent
 
 from yunyun.pet.sprites import load_sprites
@@ -15,9 +15,7 @@ NONE = Qt.MouseButton.NoButton
 
 
 @pytest.fixture
-def pet(qapp, tmp_path, monkeypatch):
-    QSettings.setDefaultFormat(QSettings.Format.IniFormat)
-    QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, str(tmp_path))
+def pet(qapp, monkeypatch):
     p = PetWindow(load_sprites())
     monkeypatch.setattr(p, "_check_covered", lambda: None)
     p.clicks = []

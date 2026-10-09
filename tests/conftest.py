@@ -16,14 +16,17 @@ def qapp():
 
 @pytest.fixture(autouse=True)
 def isolate_user_data(tmp_path, monkeypatch):
-    """所有测试都用临时的 config.yaml，也不许真的去启动 Ollama（autouse：自动生效）。
+    """所有测试都用临时的 config.yaml 和 QSettings（窗口位置、语言、免打扰……），也不许真的去启动 Ollama（autouse：自动生效）。
 
     不然测试会读到你真实的配置：比如你设了本地模型，测试里开始处理邮件时就会去你的 Ollama 上加载模型。
     """
+    from PySide6.QtCore import QSettings
     from yunyun import config as cfg
     from yunyun.ai import ollama_service
     from yunyun.mail import service
     monkeypatch.setattr(cfg, "CONFIG_PATH", tmp_path / "config.yaml")
+    QSettings.setDefaultFormat(QSettings.Format.IniFormat)
+    QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, str(tmp_path))
     monkeypatch.setattr(ollama_service, "ENABLED", False)
     monkeypatch.setattr(service, "IDLE_ENABLED", False)   # 也不许真的去连邮箱做实时接收
 

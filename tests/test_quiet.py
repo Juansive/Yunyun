@@ -2,7 +2,6 @@
 from datetime import time
 
 import pytest
-from PySide6.QtCore import QSettings
 
 from yunyun.notify.quiet import QuietHours, in_range
 from yunyun.pet.state import PetState, StateMachine
@@ -21,13 +20,7 @@ def test_in_range(now, start, end, expected):
     assert in_range(now, start, end) is expected
 
 
-@pytest.fixture
-def settings(tmp_path):
-    QSettings.setDefaultFormat(QSettings.Format.IniFormat)
-    QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, str(tmp_path))
-
-
-def test_quiet_hours_follow_clock_and_settings(qapp, settings):
+def test_quiet_hours_follow_clock_and_settings(qapp):
     clock = {"now": time(22, 0)}
     q = QuietHours(clock=lambda: clock["now"])
     assert not q.enabled and (q.start, q.end) == (time(23, 0), time(8, 0))   # 默认关闭、23:00–08:00
@@ -73,7 +66,7 @@ def test_machine_rest_state_after_thinking(qapp):
     assert m.state is PetState.SLEEPING           # 思考完直接睡
 
 
-def test_general_page_quiet_controls(qapp, settings, monkeypatch):
+def test_general_page_quiet_controls(qapp, monkeypatch):
     from yunyun import i18n
     from yunyun.pet.sprites import load_sprites
     from yunyun.pet.window import PetWindow

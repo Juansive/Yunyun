@@ -405,7 +405,7 @@ def test_turn_counts_successful_notebook_entries():
     assert translate(result(total=0.01), state)[-1].remembered == 1           # 只算记成功的
 
 
-def test_notebook_goes_into_the_options(monkeypatch):
+def test_notebook_goes_into_the_options():
     from yunyun.assistant import memory
     memory.remember("用户喜欢简短的回复")
     options = claude_brain.build_options(AssistantSettings(), "sk-ant-test", "zh")
