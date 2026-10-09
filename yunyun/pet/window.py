@@ -10,9 +10,10 @@
 import logging
 import math
 import threading
+from dataclasses import fields
 
 from PySide6.QtCore import QElapsedTimer, QPoint, QPointF, QRect, QSettings, QSize, Qt, QTimer, QUrl, Signal
-from PySide6.QtGui import QDesktopServices, QGuiApplication, QPainter
+from PySide6.QtGui import QDesktopServices, QGuiApplication, QPainter, QPixmap
 from PySide6.QtWidgets import QApplication, QWidget
 
 from yunyun import i18n, logs, shortcut
@@ -23,6 +24,7 @@ from yunyun.pet.badge import Badge
 from yunyun.pet.bubble import BubbleStack
 from yunyun.pet.card_deck import CardDeck, MailCard
 from yunyun.pet.menu import FancyAction, KeepOpenMenu
+from yunyun.pet.sprites import Sprites
 from yunyun.pet.state import PetState
 from yunyun.pet.sway import Sway
 
@@ -38,7 +40,8 @@ def _clamp_scale(value):
     return min(max(value, PetWindow.MIN_SCALE), PetWindow.MAX_SCALE)
 
 
-_FRAME_LISTS = ("idle", "working_down", "excited", "thinking", "sleeping", "lifted", "busy", "waiting")
+# 每一组图的名字（从 Sprites 里自动列出：以后加了新状态的图不用改这里）
+_FRAME_LISTS = tuple(f.name for f in fields(Sprites) if f.type == list[QPixmap])
 
 
 def _same_frames(old, new, frames):
@@ -263,7 +266,6 @@ class PetWindow(QWidget):
             self._show(self._sprites.working_up)
             return
 
-        self._loop_timer.setInterval(self.TALK_MS if state is PetState.TALKING else self.LOOP_MS)
         self._play_loop({
             PetState.IDLE: self._sprites.idle,
             PetState.EXCITED: self._sprites.excited,
@@ -272,7 +274,7 @@ class PetWindow(QWidget):
             PetState.BUSY: self._sprites.busy,
             PetState.WAITING: self._sprites.waiting,
             PetState.TALKING: self._sprites.talking,
-        }[state])
+        }[state], self.TALK_MS if state is PetState.TALKING else None)
 
     def tap(self):
         """按下一个键：显示"敲下"的画面。手至少落下 TAP_MS 毫秒；键还按着就一直落着，松开才抬手。"""
@@ -298,13 +300,13 @@ class PetWindow(QWidget):
         if self._state is PetState.WORKING and not self._frozen and not self._lifted:
             self._show(self._sprites.working_up)
 
-    def _play_loop(self, frames):
-        """从第一张开始显示一组图；多于一张就循环播放。"""
+    def _play_loop(self, frames, interval=None):
+        """从第一张开始显示一组图；多于一张就循环播放，每张停 interval 毫秒（默认 LOOP_MS）。"""
         self._loop_frames = frames
         self._loop_index = 0
         self._show(frames[0])
         if len(frames) > 1:       # 只有一张图就不用循环
-            self._loop_timer.start()
+            self._loop_timer.start(interval or self.LOOP_MS)
 
     def _next_loop_frame(self):
         self._loop_index = (self._loop_index + 1) % len(self._loop_frames)

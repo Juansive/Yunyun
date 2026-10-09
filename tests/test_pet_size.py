@@ -55,16 +55,17 @@ def test_badge_and_bubble_follow(qapp, pet):
     assert pet._badge.geometry().center().y() < body.center().y()
 
 
-def test_sprites_are_reloaded_at_the_new_size(qapp, pet):
-    pet.set_state(PetState.THINKING)
+@pytest.mark.parametrize("state", [s for s in PetState if s is not PetState.WORKING])
+def test_sprites_are_reloaded_at_the_new_size(qapp, pet, state):
+    pet.set_state(state)
     before = pet._sprites
     pet.set_scale(0.5)
     assert pet._sprites is before                    # 拖滑块时先用现有的图
     wait(qapp, 0.2)
     assert pet._sprites is not before
     assert pet._sprites.idle[0].width() == PetWindow.sprite_pixels(0.5)   # 变小：图也小，省内存
-    assert pet._current in pet._sprites.thinking                         # 正在播的那一组换成新图接着播
-    assert pet._loop_frames is pet._sprites.thinking
+    frames = getattr(pet._sprites, state.value)
+    assert pet._current in frames and pet._loop_frames is frames         # 正在播的那一组换成新图接着播（每种状态都是）
 
 
 def test_slider_in_general_page(qapp, pet):

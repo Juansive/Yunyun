@@ -100,3 +100,6 @@ def test_window_talks_faster_than_other_loops(qapp):
     assert wait_until(qapp, lambda: pet._current is sprites.talking[1], 2)   # 嘴一张一合
     pet.set_state(PetState.EXCITED)
     assert pet._loop_timer.interval() == pet.LOOP_MS
+    pet.set_state(PetState.TALKING)
+    pet._play_loop(sprites.lifted)               # 说话时被拎起来：拎起来的图照常按 LOOP_MS 播
+    assert pet._loop_timer.interval() == pet.LOOP_MS
