@@ -28,7 +28,6 @@ SHELLS = {"bash.exe", "sh.exe", "zsh.exe", "powershell.exe", "pwsh.exe", "cmd.ex
 _TH32CS_SNAPPROCESS = 0x00000002
 _PROCESS_TERMINATE = 0x0001
 _PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-_PROCESS_SET_QUOTA = 0x0100
 _JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000
 _JobObjectBasicProcessIdList = 3
 _JobObjectExtendedLimitInformation = 9

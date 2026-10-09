@@ -12,6 +12,7 @@ from claude_agent_sdk import tool
 
 from yunyun.assistant.browser import BrowserError
 from yunyun.assistant.permissions import browser_url
+from yunyun.assistant.tools.bridge import text_result as _text
 
 log = logging.getLogger(__name__)
 
@@ -59,13 +60,6 @@ SELECT_SCHEMA = {
     "properties": {"ref": _REF_PROPERTY, "values": {"type": "array", "items": {"type": "string"}}},
     "required": ["ref", "values"],
 }
-
-
-def _text(text, error=False):
-    result = {"content": [{"type": "text", "text": text}]}
-    if error:
-        result["is_error"] = True
-    return result
 
 
 def split_parts(text, size=None):

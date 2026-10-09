@@ -6,6 +6,7 @@ import logging
 from claude_agent_sdk import tool
 
 from yunyun.assistant import protocol
+from yunyun.assistant.tools.bridge import text_result
 
 log = logging.getLogger(__name__)
 
@@ -29,11 +30,10 @@ def screen_tools(bridge):
     async def screenshot(args):
         target = args.get("target") if args.get("target") in protocol.SCREENSHOT_TARGETS else "window"
         reply = await bridge.request(lambda request_id: protocol.ScreenshotRequest(request_id, target),
-                                     lambda request_id, detail: protocol.ScreenshotReply(request_id, False,
-                                                                                         detail=detail))
+                                     protocol.ScreenshotReply)
         if not reply.ok:
             log.info("截图没截成：%s", reply.detail)
-            return {"content": [{"type": "text", "text": f"No screenshot: {reply.detail}"}], "is_error": True}
+            return text_result(f"No screenshot: {reply.detail}", error=True)
         note = "" if reply.target == target else " (no other window was open, so this is the whole screen)"
         log.info("截图：%s，%dx%d，%d KB", reply.target, reply.width, reply.height, len(reply.data) * 3 // 4 // 1024)
         return {"content": [

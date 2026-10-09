@@ -25,31 +25,12 @@ def never_open(target):
     raise AssertionError("剧本里不应该真的打开软件（打开只在芸芸进程里做）")
 
 
-class ResultApi(FakeApi):
-    """按工具调用的编号记下交给模型的每个工具结果：{tool_use_id: (出错没有, 文字开头)}。"""
-
-    def __init__(self, steps):
-        super().__init__(steps)
-        self.by_id = {}
-
-    def handle(self, path, body):
-        for message in body.get("messages") or []:
-            for block in message.get("content") if isinstance(message.get("content"), list) else []:
-                if isinstance(block, dict) and block.get("type") == "tool_result":
-                    content = block.get("content")
-                    if isinstance(content, list):
-                        content = " ".join(c.get("text", "") for c in content if isinstance(c, dict))
-                    text = str(content).split("<system-reminder>")[0].strip()   # Claude 官方那样会在后面附一段提醒
-                    self.by_id.setdefault(block["tool_use_id"], (bool(block.get("is_error")), text[:200]))
-        return super().handle(path, body)
-
-
 async def run(label, provider=None):
     apps._query_start_apps = lambda: [dict(item) for item in FAKE_APPS]   # 不读你真的开始菜单
     apps._startfile = never_open
     apps.clear_cache()
     tmp = Path(tempfile.mkdtemp(prefix="yunyun-apps-"))
-    api = ResultApi([("tool", protocol.FIND_APP_TOOL, {"query": "计算"}),
+    api = FakeApi([("tool", protocol.FIND_APP_TOOL, {"query": "计算"}),
                    ("tool", protocol.OPEN_APP_TOOL, {"name": "计算器"}),
                    ("tool", protocol.OPEN_APP_TOOL, {"name": "计算器"}),
                    ("tool", protocol.OPEN_APP_TOOL, {"name": "cmd.exe"}),
@@ -82,7 +63,7 @@ async def run(label, provider=None):
     requests = [e for e in events if isinstance(e, protocol.OpenAppRequest)]
     decisions = [(e.tool.rsplit("__", 1)[-1], e.decision, e.detail) for e in events
                  if isinstance(e, protocol.ToolDecision)]
-    results = [api.by_id.get(tool_id, (None, "（没交给模型）")) for tool_id, _, _ in api.calls]
+    results = [api.result_of(i) for i in range(len(api.calls))]
     print(f"{label}：工具 {offered}\n   问了 {asked}\n   请芸芸打开 {[(r.request_id, r.name) for r in requests]}\n"
           f"   操作记录 {decisions}\n   交给模型的结果 {results}")
     return (sorted(offered) == sorted([protocol.FIND_APP_TOOL, protocol.OPEN_APP_TOOL])

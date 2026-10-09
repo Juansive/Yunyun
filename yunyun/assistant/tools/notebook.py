@@ -8,6 +8,7 @@ import logging
 from claude_agent_sdk import tool
 
 from yunyun.assistant import memory
+from yunyun.assistant.tools.bridge import text_result as _text
 
 log = logging.getLogger(__name__)
 
@@ -46,13 +47,6 @@ FORGET_SCHEMA = {
     "required": ["id"],
 }
 MAX_RECALL = 20   # 一次最多交给模型几条全文
-
-
-def _text(text, error=False):
-    result = {"content": [{"type": "text", "text": text}]}
-    if error:
-        result["is_error"] = True
-    return result
 
 
 def notebook_tools(workspace, path=None):

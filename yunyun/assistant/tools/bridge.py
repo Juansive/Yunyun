@@ -1,4 +1,4 @@
-"""请芸芸进程帮忙做的事（截图、打开软件）：发请求 → 等芸芸回答。
+"""几个工具共用的：text_result（工具结果是一段文字）、Bridge（请芸芸进程帮忙做的事：截图、打开软件）。
 
     工具调用 ──▶ Bridge.request() 发 XxxRequest ──▶ 芸芸进程去做
     工具结果  ◀── 等到 XxxReply（worker 收到后交给 Bridge.reply）◀──┘
@@ -15,23 +15,29 @@ TIMEOUT_S = 30   # 芸芸这么久还没回答（问你要不要截图的时候�
 STOPPED = "The user stopped the task."
 
 
+def text_result(text, error=False):
+    """工具结果：一段文字（error：告诉模型没做成）。"""
+    return {"content": [{"type": "text", "text": text}], **({"is_error": True} if error else {})}
+
+
 class Bridge:
     def __init__(self, emit):
         self._emit = emit
         self._pending = {}   # request_id → (Future, failed)
         self._next_id = 1
 
-    async def request(self, make_request, failed):
-        """make_request(request_id) → 发给芸芸的请求；failed(request_id, 原因) → 没做成时当作回答的那个。返回回答。"""
+    async def request(self, make_request, reply_type):
+        """make_request(request_id) → 发给芸芸的请求；reply_type：回答的类型（protocol.ScreenshotReply / OpenAppReply），
+        没做成时用它造一个 ok=False 的回答。返回回答。"""
         request_id, self._next_id = self._next_id, self._next_id + 1
         future = asyncio.get_running_loop().create_future()
-        self._pending[request_id] = (future, failed)
+        self._pending[request_id] = (future, reply_type)
         self._emit(make_request(request_id))
         try:
             return await asyncio.wait_for(future, TIMEOUT_S)
         except asyncio.TimeoutError:
             log.info("请求 %d：芸芸 %d 秒没回答", request_id, TIMEOUT_S)
-            return failed(request_id, "Yunyun did not answer in time.")
+            return reply_type(request_id, False, detail="Yunyun did not answer in time.")
         finally:
             self._pending.pop(request_id, None)
 
@@ -44,6 +50,6 @@ class Bridge:
 
     def cancel_all(self):
         """停下 / 关掉：还在等的都当没做成。"""
-        for request_id, (future, failed) in list(self._pending.items()):
+        for request_id, (future, reply_type) in list(self._pending.items()):
             if not future.done():
-                future.set_result(failed(request_id, STOPPED))
+                future.set_result(reply_type(request_id, False, detail=STOPPED))

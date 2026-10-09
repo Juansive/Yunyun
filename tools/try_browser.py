@@ -49,32 +49,14 @@ PAGES = {
 
 
 class ScriptApi(FakeApi):
-    """记下交给模型的每个工具结果（{tool_use_id: (出错没有, 文字)}）；剧本里的 "?名字" 编号从最近一份快照里现找。"""
+    """剧本里的 "?名字" 编号从最近一份快照里现找（导航以后编号会变）。"""
 
-    def __init__(self, steps):
-        super().__init__(steps)
-        self.by_id = {}
-        self.last_snapshot = ""
-
-    def handle(self, path, body):
-        for message in body.get("messages") or []:
-            for block in message.get("content") if isinstance(message.get("content"), list) else []:
-                if isinstance(block, dict) and block.get("type") == "tool_result":
-                    content = block.get("content")
-                    if isinstance(content, list):
-                        content = " ".join(c.get("text", "") for c in content if isinstance(c, dict))
-                    text = str(content).split("<system-reminder>")[0].strip()
-                    if block["tool_use_id"] not in self.by_id:
-                        self.by_id[block["tool_use_id"]] = (bool(block.get("is_error")), text)
-                        if "[ref=" in text:
-                            self.last_snapshot = text
-        with self.lock:
-            if self.steps and self.steps[0][0] == "tool" and str(self.steps[0][2].get("ref", "")).startswith("?"):
-                kind, tool, tool_input = self.steps[0]
-                name = tool_input["ref"][1:]
-                found = re.search(rf'"{re.escape(name)}"[^\n]*?\[ref=(\w+)\]', self.last_snapshot)
-                self.steps[0] = (kind, tool, {**tool_input, "ref": found.group(1) if found else "e999"})
-        return super().handle(path, body)
+    def prepare_step(self):
+        if self.steps and self.steps[0][0] == "tool" and str(self.steps[0][2].get("ref", "")).startswith("?"):
+            kind, tool, tool_input = self.steps[0]
+            snapshot = next((text for _, text in reversed(self.by_id.values()) if "[ref=" in text), "")
+            found = re.search(rf'"{re.escape(tool_input["ref"][1:])}"[^\n]*?\[ref=(\w+)\]', snapshot)
+            self.steps[0] = (kind, tool, {**tool_input, "ref": found.group(1) if found else "e999"})
 
 
 class QuietHandler(SimpleHTTPRequestHandler):
@@ -170,7 +152,7 @@ async def main():
     links = [e.link for e in events if isinstance(e, protocol.PermissionRequest)]
     changes = [e.open for e in events if isinstance(e, protocol.BrowserChanged)]
     downloaded = [(e.name, e.by_user) for e in events if isinstance(e, protocol.Downloaded)]
-    results = [api.by_id.get(tool_id, (None, "（没交给模型）")) for tool_id, _, _ in api.calls]
+    results = [api.result_of(i) for i in range(len(api.calls))]
     print("工具", [t.rsplit("__", 1)[-1] for t in offered])
     print("操作记录", decisions)
     print("问了", asked, "；浏览器开关", changes)

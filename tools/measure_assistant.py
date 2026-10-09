@@ -23,10 +23,7 @@ import procutil  # noqa: E402
 
 
 def pump(app, seconds):
-    end = time.time() + seconds
-    while time.time() < end:
-        app.processEvents()
-        time.sleep(0.02)
+    wait_until(app, lambda: False, seconds)
 
 
 def wait_until(app, condition, timeout):

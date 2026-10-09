@@ -4,7 +4,7 @@
 - 服务商、模型、花费上限、工作文件夹（当前的 + 最近用过的几个）存在 config.yaml 的 assistant 部分；
   设置页只写前几项，输入框左边的文件夹按钮只写工作文件夹，互不覆盖；
 - API Key 存在 Windows 凭据管理器，服务名 "yunyun-assistant"，**每家服务商一把**（用户名是服务商代号），
-  换服务商时不会覆盖别家的 Key。tools/assistant_key.py 存的就是这里的 anthropic 那一把。
+  换服务商时不会覆盖别家的 Key。
 
 芸芸和助手子进程都 import 这个文件，所以这里不能 import Qt 或 Agent SDK。
 """

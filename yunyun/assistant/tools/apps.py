@@ -10,6 +10,7 @@ import logging
 from claude_agent_sdk import tool
 
 from yunyun.assistant import apps, protocol
+from yunyun.assistant.tools.bridge import text_result as _text
 
 log = logging.getLogger(__name__)
 
@@ -34,13 +35,6 @@ OPEN_APP_SCHEMA = {
 }
 
 
-def _text(text, error=False):
-    result = {"content": [{"type": "text", "text": text}]}
-    if error:
-        result["is_error"] = True
-    return result
-
-
 def app_tools(bridge):
     """bridge：tools.bridge.Bridge。"""
     @tool("find_app", FIND_APP, FIND_APP_SCHEMA)
@@ -63,7 +57,7 @@ def app_tools(bridge):
         if app is None:   # 权限规则已经挡过一次（permissions.decide），这里兜底
             return _text("There is no app with exactly this name in the Start menu. Use find_app first.", error=True)
         reply = await bridge.request(lambda request_id: protocol.OpenAppRequest(request_id, app.name, app.app_id),
-                                     lambda request_id, detail: protocol.OpenAppReply(request_id, False, detail))
+                                     protocol.OpenAppReply)
         if not reply.ok:
             log.info("软件没打开：%s", reply.detail)
             return _text(f"Not opened: {reply.detail}", error=True)

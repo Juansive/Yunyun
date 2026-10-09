@@ -449,8 +449,7 @@ def test_stopping_cancels_a_waiting_screenshot():
 
     async def main():
         waiting = asyncio.create_task(brain.bridge.request(
-            lambda request_id: protocol.ScreenshotRequest(request_id, "window"),
-            lambda request_id, detail: protocol.ScreenshotReply(request_id, False, detail=detail)))
+            lambda request_id: protocol.ScreenshotRequest(request_id, "window"), protocol.ScreenshotReply))
         await asyncio.sleep(0)
         await brain.interrupt()                                           # 还没连上 Claude Code 也能停
         return await waiting

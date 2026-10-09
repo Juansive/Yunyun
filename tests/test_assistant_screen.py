@@ -65,8 +65,7 @@ def test_no_answer_times_out(monkeypatch):
     async def main():
         bridge = Bridge(lambda event: None)
         reply = await bridge.request(lambda request_id: protocol.ScreenshotRequest(request_id, "screen"),
-                                     lambda request_id, detail: protocol.ScreenshotReply(request_id, False,
-                                                                                         detail=detail))
+                                     protocol.ScreenshotReply)
         bridge.reply(protocol.ScreenshotReply(reply.request_id, True))   # 迟到的回答：不理
         return reply
     reply = asyncio.run(main())

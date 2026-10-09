@@ -159,7 +159,7 @@ def test_broken_config_file_falls_back_to_defaults(fake_keyring):
 
 
 def test_keys_are_stored_per_provider(fake_keyring, monkeypatch):
-    """每家服务商一把 Key，换服务商不会覆盖别家的；用户名就是服务商代号（和 tools/assistant_key.py 一致）。"""
+    """每家服务商一把 Key，换服务商不会覆盖别家的；用户名就是服务商代号。"""
     monkeypatch.setitem(PROVIDERS, "other", replace(PROVIDERS["anthropic"], code="other"))
     assistant_settings.set_api_key("anthropic", "sk-ant-1")
     assistant_settings.set_api_key("other", "k-2")
