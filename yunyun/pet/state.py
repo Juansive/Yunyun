@@ -12,8 +12,11 @@
 
     助手模式（set_assistant，2026-10-08 用户定的优先级）：
         等你确认 WAITING > 在干活 BUSY > 思考 THINKING（助手在想 / 写回答，或者在处理邮件）
-        > 激动 EXCITED > 工作 WORKING > 待机 IDLE / 睡觉 SLEEPING
+        > 说话 TALKING > 激动 EXCITED > 工作 WORKING > 待机 IDLE / 睡觉 SLEEPING
     助手在忙（前三种）时来了新邮件不激动，只是小红点 +1；你打字也不打断；免打扰时段照常显示（是你自己在用）。
+
+    说话（set_talking，2026-10-09 用户定的）：头顶有气泡时，待机 / 睡觉 / 打字 / 激动都换成说话的样子
+    （睡着时说话会醒来，说完再睡）；助手在想 / 干活 / 等确认时不变。说话时来了新邮件不激动、打字也不打断。
 
     免打扰时段里，"休息"的样子从 待机 IDLE 换成 睡觉 SLEEPING：
     睡觉 SLEEPING ── 敲键盘 ──▶ 工作（醒来陪你打字）── 一段时间没敲 ──▶ 又睡着
@@ -35,10 +38,12 @@ class PetState(Enum):
     SLEEPING = "sleeping"  # 睡觉：免打扰时段里的"休息"
     BUSY = "busy"          # 在干活：助手在用工具（读文件、跑命令、读网页）
     WAITING = "waiting"    # 等你确认：助手有确认卡片在等你
+    TALKING = "talking"    # 说话：头顶有气泡
 
 
 _ASSISTANT_STATES = {"thinking": PetState.THINKING, "busy": PetState.BUSY, "waiting": PetState.WAITING}
 _FOREGROUND = (PetState.THINKING, PetState.BUSY, PetState.WAITING)   # 占着芸芸的样子、结束了才回到平时
+_TEMPORARY = (*_FOREGROUND, PetState.TALKING)   # 结束时要回到平时的样子（工作 / 待机 / 睡觉）
 
 
 class StateMachine(QObject):
@@ -55,6 +60,7 @@ class StateMachine(QObject):
         self._quiet = False  # 是否在免打扰时段
         self._thinking = set()  # 芸芸在想哪些事（"mail" / "assistant"）
         self._assistant = ""    # 助手在做什么（"" / "thinking" / "busy" / "waiting"，见 set_assistant）
+        self._talking = False   # 头顶有没有气泡（见 set_talking）
 
         # 这个定时器在"运行中"就代表：用户最近 IDLE_AFTER_MS 内敲过键盘
         self._idle_timer = QTimer(self, singleShot=True, interval=self.IDLE_AFTER_MS, timeout=self._on_idle_timeout)
@@ -94,8 +100,8 @@ class StateMachine(QObject):
 
     def on_mail(self):
         """收到新邮件。"""
-        if self._foreground() is not None or self._quiet:
-            return  # 正在想 / 助手在忙不打断（小红点 +1 就够了）；免打扰时不激动
+        if self._foreground() is not None or self._talking or self._quiet:
+            return  # 正在想 / 助手在忙 / 在说话不打断（小红点 +1 就够了）；免打扰时不激动
         self._set_state(PetState.EXCITED)
         self._excited_timer.start()  # 连续来邮件会重新计时
 
@@ -119,6 +125,11 @@ class StateMachine(QObject):
         self._assistant = activity if activity in _ASSISTANT_STATES else ""
         self._refresh()
 
+    def set_talking(self, talking):
+        """头顶有没有气泡（BubbleStack.speaking_changed）。"""
+        self._talking = bool(talking)
+        self._refresh()
+
     def _foreground(self):
         """助手和邮件处理占着的样子（等你确认 > 在干活 > 思考）；都没有就是 None。"""
         if self._assistant in ("waiting", "busy"):
@@ -128,11 +139,11 @@ class StateMachine(QObject):
         return None
 
     def _refresh(self):
-        foreground = self._foreground()
+        foreground = self._foreground() or (PetState.TALKING if self._talking else None)
         if foreground is not None:
             self._excited_timer.stop()   # 如果正在激动，直接换过去
             self._set_state(foreground)
-        elif self._state in _FOREGROUND:
+        elif self._state in _TEMPORARY:
             self._back_to_normal()
 
     # ---------- 内部 ----------
@@ -147,7 +158,7 @@ class StateMachine(QObject):
             self._back_to_normal()
 
     def _back_to_normal(self):
-        """激动 / 思考结束：最近在打字就回到工作，否则休息（待机或睡觉）。"""
+        """激动 / 思考 / 说话结束：最近在打字就回到工作，否则休息（待机或睡觉）。"""
         typing_recently = self._idle_timer.isActive()
         self._set_state(PetState.WORKING if typing_recently else self.rest_state)
 

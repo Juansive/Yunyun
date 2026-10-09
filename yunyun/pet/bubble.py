@@ -241,6 +241,8 @@ class BubbleStack(QObject):
     MAX_BUBBLES = 3        # 最多同时显示几个，再多就把最旧的挤掉
     HYSTERESIS = 24        # 换方向的"迟滞"距离：要多出这么多空间才换回去，防止在临界处来回抖
 
+    speaking_changed = Signal(bool)   # 有气泡了 / 最后一个气泡消失了（芸芸据此换成说话的样子）
+
     def __init__(self, owner):
         """owner：芸芸的窗口，气泡都作为它的从属窗口创建。"""
         super().__init__(owner)
@@ -285,6 +287,8 @@ class BubbleStack(QObject):
         # 显示从属窗口会把芸芸（主人）也拉到最前面，用 keep_z_order 保持芸芸原来的层级。也不要 raise_()。
         with winapi.keep_z_order(int(self._owner.winId())):
             bubble.show()
+        if len(self._bubbles) == 1:
+            self.speaking_changed.emit(True)
         return bubble
 
     def end_live(self, duration_ms=4000):
@@ -301,6 +305,8 @@ class BubbleStack(QObject):
     def _remove(self, bubble):
         self._discard(bubble)
         self._layout()  # 剩下的气泡滑过来补位
+        if not self._bubbles:
+            self.speaking_changed.emit(False)
 
     def _discard(self, bubble):
         if bubble in self._bubbles:

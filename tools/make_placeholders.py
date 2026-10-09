@@ -306,6 +306,24 @@ def waiting(frame):
     return img
 
 
+def talking(frame):
+    """说话（头顶有气泡时）：睁着眼看你，一只手比划着，嘴一张一合（frame = 1 张嘴 / 2 合上、手低一点）。"""
+    img, p = new_canvas()
+    draw_body(p)
+    draw_hand(p, 120, 360)
+    draw_hand(p, 414, 246 if frame == 1 else 268)   # 边说边比划
+    draw_open_eyes(p)
+    draw_blush(p)
+    if frame == 1:
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(INK)
+        p.drawChord(QRectF(234, 256, 44, 40), 0, -180 * 16)   # 张开的嘴
+    else:
+        draw_small_mouth(p)
+    p.end()
+    return img
+
+
 def lifted(frame):
     """被拎起来：后颈的皮被捏住，身体垂下来变长，手垂着、脚悬空乱蹬，一脸懵（frame = 1/2 脚的位置不同）。
 
@@ -359,6 +377,8 @@ def main():
         "busy_3.png": busy(3),
         "waiting_1.png": waiting(1),
         "waiting_2.png": waiting(2),
+        "talking_1.png": talking(1),
+        "talking_2.png": talking(2),
     }
     args = [a for a in sys.argv[1:] if a != "--force"]
     force = "--force" in sys.argv[1:]

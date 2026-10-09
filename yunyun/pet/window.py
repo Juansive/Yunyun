@@ -68,6 +68,7 @@ class PetWindow(QWidget):
     SPRITE_RELOAD_MS = 300  # 调大小停下多久后，按新大小重新载入图片（拖滑块时先用现有的图缩放）
     TAP_MS = 90             # 工作状态：敲下的画面停留多久后抬手（毫秒）
     LOOP_MS = 400           # 待机/激动有多张图时，每张停留多久（毫秒）
+    TALK_MS = 180           # 说话时每张停留多久：嘴张合得快一些才像在说话
     COVER_CHECK_MS = 500    # 多久检查一次有没有被挡住（毫秒）
     COVERED_RATIO = 0.9     # 被挡住多少比例才算"被挡住"（0~1）
     RESUME_DELAY_MS = 500   # 露出来后，先定格多久再恢复（毫秒）
@@ -83,6 +84,7 @@ class PetWindow(QWidget):
     dismiss_mail_requested = Signal() # 用户拖走了小红点 / 点了"全部标为已看"：这批邮件不处理
     assistant_activity_changed = Signal(str)  # 助手在做什么（"" / thinking / busy / waiting；main 里接到状态机）
     cover_checked = Signal()   # 刚检查完有没有被挡住（约每 0.5 秒）：助手据此决定角落小条显不显示
+    speaking_changed = Signal(bool)   # 头顶有气泡了 / 气泡都消失了（main 里接到状态机：换成说话的样子）
     _task_done = Signal(object, object, object)  # 后台线程 → 主线程：(成功时说的话, 失败时的文字 key, 错误信息或 None)
 
     def __init__(self, sprites):
@@ -108,6 +110,7 @@ class PetWindow(QWidget):
         self.setCursor(Qt.CursorShape.OpenHandCursor)  # 鼠标悬停时显示"张开的手"，提示可以拖
 
         self._bubbles = BubbleStack(self)
+        self._bubbles.speaking_changed.connect(self.speaking_changed)
         self._settings_window = None  # 设置窗口（用到时才创建，关掉就销毁）
         self._assistant = None        # 助手模式（用到时才创建，退出就销毁）
         self._assistant_cards = []    # 助手的问答卡片（从旧到新）：退出助手模式也留着，芸芸退出才清掉，不写硬盘
@@ -260,6 +263,7 @@ class PetWindow(QWidget):
             self._show(self._sprites.working_up)
             return
 
+        self._loop_timer.setInterval(self.TALK_MS if state is PetState.TALKING else self.LOOP_MS)
         self._play_loop({
             PetState.IDLE: self._sprites.idle,
             PetState.EXCITED: self._sprites.excited,
@@ -267,6 +271,7 @@ class PetWindow(QWidget):
             PetState.SLEEPING: self._sprites.sleeping,
             PetState.BUSY: self._sprites.busy,
             PetState.WAITING: self._sprites.waiting,
+            PetState.TALKING: self._sprites.talking,
         }[state])
 
     def tap(self):
