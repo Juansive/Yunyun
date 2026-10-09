@@ -75,7 +75,7 @@ def test_badge_follows_pet_and_stays_on_screen(qapp, tmp_path, monkeypatch):
     pet.set_mail_count(3)
     b = pet._badge
     assert b.isVisible()
-    body = pet._body_rect()
+    body = pet.body_rect()
     assert body.contains(b.geometry().center())           # 在芸芸身体右上角附近
     assert b.geometry().center().x() > body.center().x()
     assert b.geometry().center().y() < body.center().y()
@@ -201,7 +201,7 @@ def test_corner_mode_full_flow(qapp, tmp_path, fake_desktop):
     assert corner.busy                         # 正在飞
     wait(qapp, 0.7)
     assert not corner.isVisible() and follow.isVisible()
-    assert follow.pos() == follow.pet_position(pet._body_rect())
+    assert follow.pos() == follow.pet_position(pet.body_rect())
 
 
 def test_new_mail_while_visible_stays_with_pet(qapp, tmp_path, fake_desktop):

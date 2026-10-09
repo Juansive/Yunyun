@@ -115,8 +115,8 @@ class PetWindow(QWidget):
         self._assistant = None        # 助手模式（用到时才创建，退出就销毁）
         self._assistant_cards = []    # 助手的问答卡片（从旧到新）：退出助手模式也留着，芸芸退出才清掉，不写硬盘
         self._assistant_state = {}    # 助手要记着的（卡片组拖到了哪、历史读过没有）：退出助手模式也记着
-        self._history = None          # 邮件提醒的历史记录（main 里设置）
-        self._quiet_hours = None      # 免打扰时段（main 里设置）
+        self.history = None           # 邮件提醒的历史记录（main 里设置）
+        self.quiet_hours = None       # 免打扰时段（main 里设置）
         self.watch_reminder = None    # 旁观模式的提醒（main 里设置；设置 → 旁观的"发一条测试提醒"用）
 
         # ---- 小红点 ----
@@ -128,7 +128,7 @@ class PetWindow(QWidget):
         self._corner_badge = Badge(None, topmost=True)       # 角落用：独立的置顶窗口
         for badge in (self._badge, self._corner_badge):
             badge.clicked.connect(self._on_badge_clicked)
-            badge.dismissed.connect(self._on_badge_dismissed)
+            badge.dismissed.connect(self._dismiss_mail)
             badge.hide_requested.connect(self._hide_badge)
 
         # ---- 卡片堆：点小红点后，处理好的邮件一张张出现在这里 ----
@@ -359,7 +359,7 @@ class PetWindow(QWidget):
 
     def bring_to_front(self):
         """把芸芸提到最前面（托盘双击时用）。如果芸芸跑到屏幕外了，先拉回来。"""
-        if QGuiApplication.screenAt(self._body_rect().center()) is None:
+        if QGuiApplication.screenAt(self.body_rect().center()) is None:
             self._move_to_bottom_right()
         self.show()
         winapi.bring_to_front(int(self.winId()))
@@ -393,7 +393,7 @@ class PetWindow(QWidget):
                 self._badge_wants_corner = False
                 if self._corner_badge.isVisible() and not self._corner_badge.busy:
                     # 角落的小红点飞到芸芸右上角，落地后换成跟随用的那个（位置完全重合）
-                    target = self._badge.pet_position(self._body_rect())
+                    target = self._badge.pet_position(self.body_rect())
                     self._corner_badge.fly_to(target, on_finished=self._update_badge)
                     return
             self._update_badge()
@@ -406,7 +406,7 @@ class PetWindow(QWidget):
 
     def say(self, text, duration_ms=4000):
         """让芸芸弹出气泡说一句话，duration_ms 毫秒后消失（已有气泡时会再加一个，互不重叠）。"""
-        self._bubbles.add(text, self._body_rect(), duration_ms)
+        self._bubbles.add(text, self.body_rect(), duration_ms)
 
     def tell_no_new_mail(self):
         """告诉用户现在没有新邮件（显示一小会儿）。"""
@@ -414,15 +414,12 @@ class PetWindow(QWidget):
 
     def say_live(self, text, max_width=None):
         """一直显示、可以随时改字的气泡（助手回答时逐字说）；end_live() 后才倒计时消失。"""
-        self._bubbles.show_live(text, self._body_rect(), max_width)
+        self._bubbles.show_live(text, self.body_rect(), max_width)
 
     def end_live(self, duration_ms=4000):
         self._bubbles.end_live(duration_ms)
 
     def body_rect(self):
-        return self._body_rect()
-
-    def _body_rect(self):
         """芸芸身体在屏幕上的大致区域，不含透明留白。"""
         m = self._margin()
         return self.geometry().adjusted(m, m, -m, -m)
@@ -439,11 +436,11 @@ class PetWindow(QWidget):
         self._follow_body()
 
     def _follow_body(self):
-        self._bubbles.follow(self._body_rect())
-        self._badge.follow(self._body_rect())
-        self._deck.follow(self._body_rect())
+        self._bubbles.follow(self.body_rect())
+        self._badge.follow(self.body_rect())
+        self._deck.follow(self.body_rect())
         if self._assistant is not None:
-            self._assistant.follow(self._body_rect())
+            self._assistant.follow(self.body_rect())
 
     # ---------- 记住位置 ----------
 
@@ -474,34 +471,20 @@ class PetWindow(QWidget):
         """这一轮的结果还要不要放进卡片堆。用户中途收起了卡片堆，就是 False（剩下的邮件下次再看）。"""
         return self._deck_accepting
 
-    def set_history(self, history):
-        self._history = history
-
-    def set_quiet_hours(self, quiet):
-        self._quiet_hours = quiet
-
-    @property
-    def quiet_hours(self):
-        return self._quiet_hours
-
-    @property
-    def history(self):
-        return self._history
-
     def show_recent_mail(self):
         """右键菜单"刚才的邮件"：把最近一批卡片重新展开成卡片堆，和当时看到的一样。"""
-        if self._history is None or self._mail_processing:
+        if self.history is None or self._mail_processing:
             return
-        entries = self._history.latest_batch()
+        entries = self.history.latest_batch()
         if not entries:
             return
         self._deck.reset()
         self._deck_accepting = False  # 这是回看历史，不是正在处理的一轮
         for e in entries:
-            self._deck.add_card(MailCard(e.bubble, e.subject, e.sender, e.date, e.attachments), self._body_rect())
+            self._deck.add_card(MailCard(e.bubble, e.subject, e.sender, e.date, e.attachments), self.body_rect())
 
     def add_mail_card(self, card):
-        self._deck.add_card(card, self._body_rect())
+        self._deck.add_card(card, self.body_rect())
 
     def set_mail_note(self, text):
         """卡片堆底部的小字提示（比如"还没设置 AI"）。"""
@@ -557,7 +540,7 @@ class PetWindow(QWidget):
                     self._corner_badge.fade_in()
         else:
             self._corner_badge.hide()
-            self._badge.follow(self._body_rect())
+            self._badge.follow(self.body_rect())
             # 显示从属窗口会把芸芸也拉到最前面（芸芸被挡住时就会自己"跳"出来），
             # 所以用 keep_z_order 包起来，显示完把芸芸放回原位。也不要调用 raise_()。
             with winapi.keep_z_order(int(self.winId())):
@@ -585,9 +568,6 @@ class PetWindow(QWidget):
             if self._mail_count == 0:
                 # 隐藏期间邮件已经被处理掉了（比如在手机上读了）：说一声，免得以为小红点"没回来"
                 self.tell_no_new_mail()
-
-    def _on_badge_dismissed(self):
-        self._dismiss_mail()
 
     def _dismiss_mail(self):
         count = self._mail_count
@@ -755,7 +735,7 @@ class PetWindow(QWidget):
         menu.addAction(tr("menu_settings"), self.open_settings)
         # 刚才的邮件：把最近一批卡片重新展开（没有历史、或正在处理邮件时变灰）
         recent = menu.addAction(tr("menu_recent_mail"), self.show_recent_mail)
-        recent.setEnabled(self._history is not None and not self._history.is_empty() and not self._mail_processing)
+        recent.setEnabled(self.history is not None and not self.history.is_empty() and not self._mail_processing)
 
         dismiss = menu.addAction(tr("menu_dismiss_mail"), self._dismiss_mail)
         dismiss.setEnabled(self._mail_count > 0)  # 没有待处理邮件时变灰

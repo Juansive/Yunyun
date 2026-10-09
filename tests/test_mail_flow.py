@@ -47,7 +47,7 @@ def world(qapp, tmp_path, monkeypatch):
     machine = StateMachine()
     machine.state_changed.connect(pet.set_state)
     history = MailHistory(tmp_path / "history.db")
-    pet.set_history(history)
+    pet.history = history
     connect_mail(mail, pet, machine, history)
 
     def poll():

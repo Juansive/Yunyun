@@ -139,18 +139,11 @@ class _SendButton(QAbstractButton):
         super().__init__(parent)
         self.setFixedSize(self.SIZE, self.SIZE)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setAttribute(Qt.WidgetAttribute.WA_Hover)   # 鼠标移入 / 移出时自动重画（变亮）
         self.stop_mode = False
 
     def sizeHint(self):
         return QSize(self.SIZE, self.SIZE)
-
-    def enterEvent(self, event):
-        self.update()
-        super().enterEvent(event)
-
-    def leaveEvent(self, event):
-        self.update()
-        super().leaveEvent(event)
 
     def paintEvent(self, event):
         p = QPainter(self)
@@ -191,6 +184,7 @@ class _FolderButton(QAbstractButton):
     def __init__(self, parent):
         super().__init__(parent)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setAttribute(Qt.WidgetAttribute.WA_Hover)   # 鼠标移入 / 移出时自动重画（底色）
         self.setFont(QFont("Microsoft YaHei", 9))
         self.path = ""
         self._label = ""
@@ -206,14 +200,6 @@ class _FolderButton(QAbstractButton):
 
     def sizeHint(self):
         return self.size()
-
-    def enterEvent(self, event):
-        self.update()
-        super().enterEvent(event)
-
-    def leaveEvent(self, event):
-        self.update()
-        super().leaveEvent(event)
 
     def paintEvent(self, event):
         p = QPainter(self)

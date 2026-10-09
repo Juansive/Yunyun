@@ -81,7 +81,7 @@ def test_general_page_quiet_controls(qapp, settings, monkeypatch):
     q = QuietHours(clock=lambda: time(12, 0))
     pet = PetWindow(load_sprites())
     monkeypatch.setattr(pet, "_check_covered", lambda: None)
-    pet.set_quiet_hours(q)
+    pet.quiet_hours = q
     pet.open_settings("general")
     page = pet.settings_window.general_page
 

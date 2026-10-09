@@ -96,7 +96,7 @@ def test_history_page_groups_and_details(qapp, pet, tmp_path, monkeypatch):
     history.add(HistoryEntry("昨天的提醒", "旧标题", "旧发件人", None, [], now - 24 * 3600, "b0"))
     history.add(HistoryEntry("嘿！你的加油发票来啦！", "电子发票", "中国石化 <e@s.com>",
                              datetime(2026, 10, 1, 9, 30, tzinfo=timezone.utc), ["发票.pdf"], now, "b1"))
-    pet.set_history(history)
+    pet.history = history
     pet.open_settings("history")
     page = pet.settings_window.history_page
     tree = page._tree

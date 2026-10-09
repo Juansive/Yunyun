@@ -65,11 +65,11 @@ def main():
     # describe 在后台线程里运行（要联网）；语言在调用时读取，切换语言后立刻生效
     mail = MailService(process_message=lambda message: ai.describe(message, i18n.current_language()))
     history = MailHistory(history_path())   # 展示过的卡片存 7 天，可以找回
-    pet.set_history(history)
+    pet.history = history
 
     # ---- 免打扰：时段内芸芸睡觉，新邮件只安静地计数 ----
     quiet = QuietHours()
-    pet.set_quiet_hours(quiet)
+    pet.quiet_hours = quiet
     machine.set_quiet(quiet.active)             # 启动时就在免打扰时段里：直接睡（不说"晚安"）
 
     def on_quiet_changed(active):
