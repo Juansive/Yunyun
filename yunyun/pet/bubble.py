@@ -26,12 +26,20 @@ def bubble_font():
     return QFont("Microsoft YaHei", 10)
 
 
-def animate(animation, start, end):
-    """（QVariantAnimation）从 start 到 end 重新播一遍（正在播的先停下）。卡片堆、侧面板共用。"""
+def animate(animation, start, end, duration=None):
+    """（QVariantAnimation）从 start 到 end 重新播一遍（正在播的先停下；给了 duration 就换成这个时长）。"""
     animation.stop()
+    if duration is not None:
+        animation.setDuration(max(1, int(duration)))
     animation.setStartValue(float(start))
     animation.setEndValue(float(end))
     animation.start()
+
+
+def blend(a, b, t):
+    """两个颜色按比例混合（含透明度）：t=0 是 a，t=1 是 b。卡片堆、助手卡片堆共用。"""
+    a, b = QColor(a), QColor(b)
+    return QColor(*(round(x + (y - x) * t) for x, y in zip(a.getRgb(), b.getRgb())))
 
 
 def elide_lines(text, font, width, max_lines):
@@ -75,10 +83,7 @@ class Bubble(QWidget):
     def __init__(self, text, owner, max_width=None):
         # owner：芸芸的窗口。有 parent 又带 Tool 标志的窗口，在 Windows 上就是 parent 的从属窗口
         super().__init__(owner)
-        self.setWindowFlags(
-            Qt.WindowType.FramelessWindowHint
-            | Qt.WindowType.Tool
-        )
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Tool)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)  # 弹出时不抢走键盘焦点
         self.setFont(bubble_font())
@@ -109,17 +114,11 @@ class Bubble(QWidget):
     def _measure(self, text):
         self._text = text
         # 先量一下：在最大宽度内自动换行时，这段文字需要多大的区域
-        self._text_rect = self.fontMetrics().boundingRect(
-            QRect(0, 0, self._max_width, 10000),
-            Qt.TextFlag.TextWordWrap,
-            text,
-        )
+        self._text_rect = self.fontMetrics().boundingRect(QRect(0, 0, self._max_width, 10000),
+                                                          Qt.TextFlag.TextWordWrap, text)
         # 窗口四周都留出尾巴的空间，这样尾巴朝哪个方向都画得下，窗口大小也不用变
-        t = self.TAIL
-        self.resize(
-            self._text_rect.width() + 2 * self.PADDING + 2 * t,
-            self._text_rect.height() + 2 * self.PADDING + 2 * t,
-        )
+        margin = 2 * (self.PADDING + self.TAIL)
+        self.resize(self._text_rect.width() + margin, self._text_rect.height() + margin)
 
     def body_size(self):
         """气泡主体（不含四周尾巴留白）的大小。"""
@@ -193,10 +192,8 @@ class Bubble(QWidget):
         painter.drawPath(path)
 
         painter.setPen(QColor("#333333"))
-        text_area = QRectF(
-            body.left() + self.PADDING, body.top() + self.PADDING,
-            self._text_rect.width(), self._text_rect.height(),
-        )
+        text_area = QRectF(body.left() + self.PADDING, body.top() + self.PADDING,
+                           self._text_rect.width(), self._text_rect.height())
         painter.drawText(text_area, Qt.TextFlag.TextWordWrap, self._text)
 
     def _tail_path(self, body):
@@ -263,20 +260,7 @@ class BubbleStack(QObject):
                 bubble.start_countdown(duration_ms)
                 return
 
-        if not self._bubbles:
-            self._placement = None  # 全新的一组：重新挑方向
-
-        bubble = Bubble(text, self._owner)
-        bubble.expired.connect(self._remove)
-        self._bubbles.append(bubble)
-        if len(self._bubbles) > self.MAX_BUBBLES:
-            self._discard(self._bubbles[0])
-
-        self._layout(new=bubble)
-        # 显示从属窗口会把芸芸（主人）也拉到最前面，用 keep_z_order 保持芸芸原来的层级。也不要 raise_()。
-        with winapi.keep_z_order(int(self._owner.winId())):
-            bubble.show()
-        bubble.start_countdown(duration_ms)
+        self._show_new(text).start_countdown(duration_ms)
 
     def show_live(self, text, anchor, max_width=None):
         """一直显示、可以随时改字的气泡（助手的回答逐字出现）。end_live() 之后才开始倒计时消失。"""
@@ -286,16 +270,22 @@ class BubbleStack(QObject):
             live.set_text(text)
             self._layout(new=live)   # 它自己直接对齐（变高时不要"滑"），别的气泡滑过去让位
             return
+        self._live = self._show_new(text, max_width)
+
+    def _show_new(self, text, max_width=None):
+        """新气泡加在最后（离芸芸最近），太多就挤掉最旧的，排好、显示出来。"""
         if not self._bubbles:
-            self._placement = None
-        live = self._live = Bubble(text, self._owner, max_width)
-        live.expired.connect(self._remove)
-        self._bubbles.append(live)
+            self._placement = None  # 全新的一组：重新挑方向
+        bubble = Bubble(text, self._owner, max_width)
+        bubble.expired.connect(self._remove)
+        self._bubbles.append(bubble)
         if len(self._bubbles) > self.MAX_BUBBLES:
             self._discard(self._bubbles[0])
-        self._layout(new=live)
+        self._layout(new=bubble)
+        # 显示从属窗口会把芸芸（主人）也拉到最前面，用 keep_z_order 保持芸芸原来的层级。也不要 raise_()。
         with winapi.keep_z_order(int(self._owner.winId())):
-            live.show()
+            bubble.show()
+        return bubble
 
     def end_live(self, duration_ms=4000):
         """这句话说完了：duration_ms 毫秒后消失。"""
@@ -328,7 +318,8 @@ class BubbleStack(QObject):
         sizes = [b.body_size() for b in self._bubbles]
         group_w = max(s.width() for s in sizes)
         group_h = sum(s.height() for s in sizes) + self.SPACING * (len(sizes) - 1)
-        group_x, group_y = self._place_group(group_w, group_h)
+        group_x, group_y, self._placement = place_block(self._anchor, group_w, group_h, gap=self.GAP + Bubble.TAIL,
+                                                        current=self._placement, hysteresis=self.HYSTERESIS)
 
         # 从上到下的顺序：在芸芸下方时，最新的放最上面（离芸芸最近）；其余情况最新的放最下面
         newest = self._bubbles[-1]
@@ -349,14 +340,6 @@ class BubbleStack(QObject):
                 animate=bubble is not new,      # 新气泡直接出现，旧气泡滑过去让位
             )
             y += size.height() + self.SPACING
-
-    def _place_group(self, bw, bh):
-        """给一块 bw × bh 的区域找位置，返回它左上角的屏幕坐标 (x, y)。"""
-        x, y, self._placement = place_block(
-            self._anchor, bw, bh, gap=self.GAP + Bubble.TAIL,
-            current=self._placement, hysteresis=self.HYSTERESIS,
-        )
-        return x, y
 
 
 def place_block(anchor, bw, bh, gap, current=None, hysteresis=24, prefer="above"):

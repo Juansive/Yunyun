@@ -100,10 +100,7 @@ class PetWindow(QWidget):
         self._reload_timer = QTimer(self, singleShot=True, interval=self.SPRITE_RELOAD_MS, timeout=self._reload_sprites)
 
         # 记住位置：拖动停下半秒后才保存（不用每移动一个像素就写一次）
-        self._save_pos_timer = QTimer(self)
-        self._save_pos_timer.setSingleShot(True)
-        self._save_pos_timer.setInterval(self.SAVE_POS_DELAY_MS)
-        self._save_pos_timer.timeout.connect(self.save_position)
+        self._save_pos_timer = QTimer(self, singleShot=True, interval=self.SAVE_POS_DELAY_MS, timeout=self.save_position)
         self._restore_position()
 
         self._drag_offset = None  # 拖动时：鼠标相对窗口左上角的偏移；不拖动时为 None
@@ -138,10 +135,8 @@ class PetWindow(QWidget):
 
         # 退出要"快速双击"：第一下启动这个定时器，定时器还在跑时点第二下才真正退出。
         # 间隔用系统的双击间隔（Windows 默认 500 毫秒），和用户平时双击的习惯一致。
-        self._exit_timer = QTimer(self)
-        self._exit_timer.setSingleShot(True)
-        self._exit_timer.setInterval(QApplication.doubleClickInterval())
-        self._exit_timer.timeout.connect(self._on_single_exit_click)
+        self._exit_timer = QTimer(self, singleShot=True, interval=QApplication.doubleClickInterval(),
+                                  timeout=self._on_single_exit_click)
 
         # ---- 暂停：两个"原因"分开记，任意一个成立就定格 ----
         self._user_paused = False   # 用户在菜单里点了"暂停"

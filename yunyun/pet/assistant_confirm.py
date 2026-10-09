@@ -20,13 +20,13 @@ import re
 from urllib.parse import unquote
 
 from PySide6.QtCore import QRect, Qt, Signal
-from PySide6.QtGui import QColor, QGuiApplication
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton, QTextBrowser, QVBoxLayout, QWidget
+from PySide6.QtGui import QColor
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QLineEdit
 
 from yunyun import i18n, paths
 from yunyun.assistant.transcripts import relative_path
 from yunyun.pet.change_diff import change_html, proposed_change
-from yunyun.pet.side_panel import SidePanel
+from yunyun.pet.side_panel import SCROLLBAR_STYLE, SidePanel, make_button, text_view
 
 REMEMBER_SCOPE_CHARS = 24  # "这次对话 xxx 都允许"里 xxx 最多显示多长
 
@@ -49,13 +49,8 @@ QPushButton { background: transparent; color: #6B7280; border: 1px solid #DDE3EE
               padding: 4px 14px; }
 QPushButton:hover { background: #F4F6FA; color: #374151; }
 """
-_DETAIL_STYLE = """
-QTextBrowser { background: #F3F5F9; color: #1F2937; border: none; border-radius: 8px; padding: 4px; }
-QScrollBar:vertical { width: 6px; background: transparent; margin: 2px; }
-QScrollBar::handle:vertical { background: #CBD3E1; border-radius: 3px; min-height: 24px; }
-QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
-QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }
-"""
+_DETAIL_STYLE = ("QTextBrowser { background: #F3F5F9; color: #1F2937; border: none; border-radius: 8px; padding: 4px; }"
+                 + SCROLLBAR_STYLE)
 _REASON_STYLE = """
 QLineEdit { background: white; border: 1px solid #DDE3EE; border-radius: 9px; padding: 4px 8px; color: #1F2937; }
 QLineEdit:focus { border: 1px solid #8FB4F5; }
@@ -188,10 +183,7 @@ class AssistantConfirm(SidePanel):
         self.request = None
         self._workspace = ""
 
-        self._content = QWidget(self)
-        layout = QVBoxLayout(self._content)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(8)
+        layout = self._make_content(8)
         top = QHBoxLayout()
         self._title = QLabel()
         self._title.setWordWrap(True)
@@ -209,11 +201,7 @@ class AssistantConfirm(SidePanel):
         self._said.setTextFormat(Qt.TextFormat.PlainText)
         self._said.setStyleSheet("color: #4B5563; font-size: 9pt;")
         layout.addWidget(self._said)
-        self._detail = QTextBrowser()
-        self._detail.setFrameShape(QFrame.Shape.NoFrame)
-        self._detail.setStyleSheet(_DETAIL_STYLE)
-        self._detail.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self._detail.document().setDocumentMargin(6)
+        self._detail = text_view(_DETAIL_STYLE, margin=6)
         layout.addWidget(self._detail, 1)
         self._reason = QLineEdit()
         self._reason.setStyleSheet(_REASON_STYLE)
@@ -221,9 +209,9 @@ class AssistantConfirm(SidePanel):
         layout.addWidget(self._reason)
         buttons = QHBoxLayout()
         buttons.setSpacing(8)
-        self._deny_button = self._button(_DENY_STYLE, self._deny)
-        self._remember_button = self._button(_SECONDARY_STYLE, lambda: self._answer(True, remember=True))
-        self._allow_button = self._button(_ALLOW_STYLE, lambda: self._answer(True))
+        self._deny_button = make_button(_DENY_STYLE, self._deny)
+        self._remember_button = make_button(_SECONDARY_STYLE, lambda: self._answer(True, remember=True))
+        self._allow_button = make_button(_ALLOW_STYLE, lambda: self._answer(True))
         buttons.addWidget(self._deny_button)
         buttons.addStretch(1)
         buttons.addWidget(self._remember_button)
@@ -231,13 +219,6 @@ class AssistantConfirm(SidePanel):
         layout.addLayout(buttons)
         self.retranslate()
         self.resize(self.PANEL_W, 300)
-
-    def _button(self, style, slot):
-        button = QPushButton()
-        button.setStyleSheet(style)
-        button.setCursor(Qt.CursorShape.PointingHandCursor)
-        button.clicked.connect(slot)
-        return button
 
     # ---------- 对外 ----------
 
@@ -293,11 +274,7 @@ class AssistantConfirm(SidePanel):
         layout = self._content.layout()
         layout.invalidate()
         content_h = layout.totalHeightForWidth(width) if layout.hasHeightForWidth() else layout.sizeHint().height()
-        screen = QGuiApplication.screenAt(self._anchor.center()) or QGuiApplication.primaryScreen()
-        limit = min(self.MAX_H, screen.availableGeometry().height() - 40)
-        height = max(self.MIN_H, min(2 * (m + pad) + content_h, limit))
-        self.resize(self.PANEL_W, height)
-        self._content.setGeometry(m + pad, m + pad, width, height - 2 * (m + pad))
+        self._set_size(self.PANEL_W, max(self.MIN_H, min(2 * (m + pad) + content_h, self._height_limit(self.MAX_H))))
 
     # ---------- 回答 ----------
 

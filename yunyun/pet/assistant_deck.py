@@ -31,7 +31,7 @@ from PySide6.QtWidgets import QApplication, QWidget
 
 from yunyun import i18n
 from yunyun.pet import winapi
-from yunyun.pet.bubble import animate, elide_lines, place_block
+from yunyun.pet.bubble import animate, blend, elide_lines, place_block
 
 
 @dataclass(eq=False)
@@ -378,7 +378,7 @@ class AssistantDeck(QWidget):
         body.addRoundedRect(rect, radius, radius)
         far = min(1.0, abs(d))   # 越远越灰
         base = QColor("#F4F6FA") if card.kind == "divider" else QColor("#FFFFFF")
-        p.fillPath(body, _with_alpha(_blend(base, QColor("#E9ECF2"), far * 0.7), 0.97 * alpha))
+        p.fillPath(body, _with_alpha(blend(base, "#E9ECF2", far * 0.7), 0.97 * alpha))
         p.setPen(QPen(_with_alpha(QColor("#DDE3EE"), alpha), 1))
         p.drawPath(body)
 
@@ -543,12 +543,3 @@ class AssistantDeck(QWidget):
         self._hovering = False
         self._hover_header = 0.0
         super().hideEvent(event)
-
-
-def _blend(a, b, t):
-    return QColor(
-        int(a.red() + (b.red() - a.red()) * t),
-        int(a.green() + (b.green() - a.green()) * t),
-        int(a.blue() + (b.blue() - a.blue()) * t),
-        int(a.alpha() + (b.alpha() - a.alpha()) * t),
-    )

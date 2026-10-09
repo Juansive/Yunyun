@@ -6,11 +6,11 @@
 - 点一下 → clicked（芸芸出来、卡片展开）。确认要看了详情再答，小条上不放"允许"按钮；
 - 什么时候显示由助手总管决定（assistant_mode._update_notice）：芸芸被挡住、不在全屏时。
 """
-from PySide6.QtCore import QPoint, QPropertyAnimation, QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QFontMetrics, QGuiApplication, QPainter, QPen
+from PySide6.QtCore import QPropertyAnimation, QRectF, Qt, Signal
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPen
 from PySide6.QtWidgets import QWidget
 
-from yunyun.pet.badge import Badge, tray_corner
+from yunyun.pet.badge import Badge, corner_point
 
 COLORS = {"confirm": "#E07A2E", "done": "#2E9E8F"}
 ICONS = {"confirm": "?", "done": "✓"}
@@ -39,10 +39,7 @@ class AssistantNotice(QWidget):
         self.kind = ""
         self.text = ""
         self._shown_text = ""
-        self._fade = QPropertyAnimation(self, b"windowOpacity", self)
-        self._fade.setDuration(220)
-        self._fade.setStartValue(0.0)
-        self._fade.setEndValue(1.0)
+        self._fade = QPropertyAnimation(self, b"windowOpacity", self, duration=220, startValue=0.0, endValue=1.0)
 
     def show_message(self, kind, text):
         """显示 / 换成这句话（kind："confirm" / "done"）。第一次出现时淡入。"""
@@ -60,18 +57,8 @@ class AssistantNotice(QWidget):
 
     def corner_position(self):
         """任务栏时钟那个角（主屏幕），在角落小红点的里面一点（下面的任务栏时：小红点上方）。"""
-        screen = QGuiApplication.primaryScreen()
-        geometry, area = screen.geometry(), screen.availableGeometry()
-        right, bottom, autohide = tray_corner(geometry, area)
-        margin = Badge.CORNER_MARGIN
         badge_room = Badge.HEIGHT + self.GAP + self.stack * (self.HEIGHT + self.GAP)   # 给小红点（和下面几层）留的位置
-        x = area.x() + area.width() - margin - self.width() if right else area.x() + margin
-        if bottom:
-            extra = Badge.AUTOHIDE_MARGIN if autohide else 0
-            y = area.y() + area.height() - margin - extra - badge_room - self.height()
-        else:
-            y = area.y() + margin + badge_room
-        return QPoint(x, y)
+        return corner_point(self.width(), self.height(), badge_room)
 
     def paintEvent(self, event):
         painter = QPainter(self)

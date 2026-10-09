@@ -14,9 +14,7 @@
 - 按住拖走、松手 → "啵"地消失 → dismissed（这批邮件不处理，计数清零）；没拖够远就弹回原位
 - 右键 → hide_requested（暂时隐藏）
 """
-from PySide6.QtCore import (
-    QEasingCurve, QPoint, QPropertyAnimation, QRectF, Qt, QVariantAnimation, Signal,
-)
+from PySide6.QtCore import QEasingCurve, QPoint, QPropertyAnimation, QRectF, Qt, QVariantAnimation, Signal
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QGuiApplication, QPainter, QPen
 from PySide6.QtWidgets import QApplication, QWidget
 
@@ -40,6 +38,22 @@ def tray_corner(geometry, available):
     if a_right < g_right:
         return True, True, False      # 任务栏在右
     return True, True, True           # 自动隐藏
+
+
+def corner_point(width, height, offset=0):
+    """一块 width × height 的东西放在任务栏时钟那个角（主屏幕）时的左上角；offset：再往屏幕里面让出多少
+    （角落小条让出小红点的位置）。角落小红点、角落小条共用。"""
+    screen = QGuiApplication.primaryScreen()  # 任务栏的时钟在主屏幕上
+    area = screen.availableGeometry()
+    right, bottom, autohide = tray_corner(screen.geometry(), area)
+    margin = Badge.CORNER_MARGIN
+    x = area.x() + area.width() - margin - width if right else area.x() + margin
+    if bottom:
+        extra = Badge.AUTOHIDE_MARGIN if autohide else 0
+        y = area.y() + area.height() - margin - extra - offset - height
+    else:
+        y = area.y() + margin + offset
+    return QPoint(x, y)
 
 
 class Badge(QWidget):
@@ -76,34 +90,18 @@ class Badge(QWidget):
         self._loading = False      # 正在处理邮件：数字换成转圈
         self._spin = 0.0           # 转圈的角度（度）
 
-        self._spin_anim = QVariantAnimation(self)
-        self._spin_anim.setStartValue(0.0)
-        self._spin_anim.setEndValue(360.0)
-        self._spin_anim.setDuration(900)    # 转一圈 0.9 秒
-        self._spin_anim.setLoopCount(-1)    # -1 = 无限循环
-        self._spin_anim.valueChanged.connect(self._on_spin)
-
-        self._pop_anim = QVariantAnimation(self)
-        self._pop_anim.setStartValue(0.0)
-        self._pop_anim.setEndValue(1.0)
-        self._pop_anim.setDuration(200)
-        self._pop_anim.valueChanged.connect(self._on_pop_progress)
-        self._pop_anim.finished.connect(self._on_pop_finished)
-
-        self._snap_anim = QPropertyAnimation(self, b"pos", self)  # 动画直接改窗口的 pos 属性
-        self._snap_anim.setDuration(180)
-        self._snap_anim.setEasingCurve(QEasingCurve.Type.OutBack)  # 弹回时稍微过冲一点，像橡皮筋
-
-        self._fly_anim = QPropertyAnimation(self, b"pos", self)   # 从角落飞回芸芸身边
-        self._fly_anim.setDuration(450)
-        self._fly_anim.setEasingCurve(QEasingCurve.Type.InOutCubic)
-        self._fly_done = None
-        self._fly_anim.finished.connect(self._on_fly_finished)
-
-        self._fade_anim = QPropertyAnimation(self, b"windowOpacity", self)  # 在角落出现时淡入
-        self._fade_anim.setDuration(220)
-        self._fade_anim.setStartValue(0.0)
-        self._fade_anim.setEndValue(1.0)
+        # 转一圈 0.9 秒，loopCount=-1：无限循环
+        self._spin_anim = QVariantAnimation(self, startValue=0.0, endValue=360.0, duration=900, loopCount=-1,
+                                            valueChanged=self._on_spin)
+        self._pop_anim = QVariantAnimation(self, startValue=0.0, endValue=1.0, duration=200,
+                                           valueChanged=self._on_pop_progress, finished=self._on_pop_finished)
+        # 动画直接改窗口的 pos 属性；弹回时稍微过冲一点（OutBack），像橡皮筋
+        self._snap_anim = QPropertyAnimation(self, b"pos", self, duration=180, easingCurve=QEasingCurve.Type.OutBack)
+        self._fly_done = None   # 从角落飞回芸芸身边
+        self._fly_anim = QPropertyAnimation(self, b"pos", self, duration=450, easingCurve=QEasingCurve.Type.InOutCubic,
+                                            finished=self._on_fly_finished)
+        # 在角落出现时淡入
+        self._fade_anim = QPropertyAnimation(self, b"windowOpacity", self, duration=220, startValue=0.0, endValue=1.0)
 
         self.set_count(0)
 
@@ -134,10 +132,8 @@ class Badge(QWidget):
         self._resize_for_content()
 
     def _resize_for_content(self):
-        if self._loading:
-            width = self.HEIGHT  # 转圈时是个小圆
-        else:
-            width = max(self.HEIGHT, self._text_width() + 10)  # 一位数是圆形，多位数变成胶囊形
+        # 转圈时是个小圆；数字：一位数是圆形，多位数变成胶囊形
+        width = self.HEIGHT if self._loading else max(self.HEIGHT, self._text_width() + 10)
         self.resize(width + 2 * self.PAD, self.HEIGHT + 2 * self.PAD)
         if self._anchor is not None:
             self.follow(self._anchor)
@@ -165,22 +161,9 @@ class Badge(QWidget):
         return QPoint(x, y)
 
     def corner_position(self):
-        """在角落时，小红点窗口应该在的位置：任务栏时钟所在的那个角（主屏幕）。"""
-        screen = QGuiApplication.primaryScreen()  # 任务栏的时钟在主屏幕上
-        geometry, area = screen.geometry(), screen.availableGeometry()
-        right, bottom, autohide = tray_corner(geometry, area)
-        margin = self.CORNER_MARGIN
-        inner_w, inner_h = self.width() - 2 * self.PAD, self.height() - 2 * self.PAD
-        if right:
-            x = area.x() + area.width() - margin - inner_w - self.PAD
-        else:
-            x = area.x() + margin - self.PAD
-        if bottom:
-            extra = self.AUTOHIDE_MARGIN if autohide else 0
-            y = area.y() + area.height() - margin - extra - inner_h - self.PAD
-        else:
-            y = area.y() + margin - self.PAD
-        return QPoint(x, y)
+        """在角落时，小红点窗口应该在的位置：任务栏时钟所在的那个角（主屏幕）。放的是红点本身，不含透明留白。"""
+        pad = self.PAD
+        return corner_point(self.width() - 2 * pad, self.height() - 2 * pad) - QPoint(pad, pad)
 
     # ---------- 动画 ----------
 
@@ -190,9 +173,13 @@ class Badge(QWidget):
     def fly_to(self, target, on_finished=None):
         """平滑飞到 target（窗口左上角的屏幕坐标），到了以后调用 on_finished。"""
         self._fly_done = on_finished
-        self._fly_anim.setStartValue(self.pos())
-        self._fly_anim.setEndValue(target)
-        self._fly_anim.start()
+        self._start(self._fly_anim, target)
+
+    def _start(self, animation, target):
+        """（改 pos 的动画）从现在的位置移到 target。"""
+        animation.setStartValue(self.pos())
+        animation.setEndValue(target)
+        animation.start()
 
     def _on_fly_finished(self):
         callback, self._fly_done = self._fly_done, None
@@ -261,9 +248,7 @@ class Badge(QWidget):
         if (self.pos() - self._home).manhattanLength() >= self.DISMISS_DISTANCE:
             self._pop_anim.start()         # 拖得够远：啵！
         else:
-            self._snap_anim.setStartValue(self.pos())
-            self._snap_anim.setEndValue(self._home)
-            self._snap_anim.start()        # 不够远：弹回去
+            self._start(self._snap_anim, self._home)   # 不够远：弹回去
 
     def contextMenuEvent(self, event):
         self.hide_requested.emit()

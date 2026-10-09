@@ -30,7 +30,7 @@ from PySide6.QtWidgets import (
 
 from yunyun import i18n
 from yunyun.pet import screen_capture, winapi
-from yunyun.pet.bubble import place_block
+from yunyun.pet.bubble import animate, place_block
 
 # 光晕的颜色：天蓝 → 淡紫 → 青（思考时三种颜色绕着边框转）
 GLOW_COLORS = (QColor("#5AB8FF"), QColor("#8E9BFF"), QColor("#63E1F5"))
@@ -632,11 +632,7 @@ class AssistantInput(QWidget):
     # ---------- 动画 ----------
 
     def _animate_to(self, target, duration):
-        self._anim.stop()
-        self._anim.setStartValue(self._t)
-        self._anim.setEndValue(target)
-        self._anim.setDuration(max(1, int(duration)))
-        self._anim.start()
+        animate(self._anim, self._t, target, duration)
 
     def _set_t(self, value):
         self._t = float(value)

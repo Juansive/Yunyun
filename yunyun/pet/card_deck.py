@@ -27,7 +27,7 @@ from PySide6.QtWidgets import QApplication, QWidget
 
 from yunyun import i18n
 from yunyun.pet import winapi
-from yunyun.pet.bubble import place_block
+from yunyun.pet.bubble import animate, blend, place_block
 
 
 @dataclass
@@ -79,17 +79,14 @@ class CardDeck(QWidget):
         self._was_active = False
         self._closed_at = 0.0
 
-        self._scroll_anim = QVariantAnimation(self)
-        self._scroll_anim.setDuration(220)
-        self._scroll_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
-        self._scroll_anim.valueChanged.connect(self._on_scroll)
+        self._scroll_anim = QVariantAnimation(self, duration=220, easingCurve=QEasingCurve.Type.OutCubic,
+                                              valueChanged=self._on_scroll)
 
         # ---- 按下"下沉" ----
         self._press_t = 0.0        # 0 = 正常，1 = 完全按下去
         self._pressed_index = None # 按下时点中的是第几张
-        self._press_anim = QVariantAnimation(self)
-        self._press_anim.setEasingCurve(QEasingCurve.Type.OutQuad)
-        self._press_anim.valueChanged.connect(self._on_press_progress)
+        self._press_anim = QVariantAnimation(self, easingCurve=QEasingCurve.Type.OutQuad,
+                                             valueChanged=self._on_press_progress)
 
         # ---- 展开 / 缩回 ----
         # 动画开始时，窗口先一次性变成"展开前"和"展开后"都装得下的大小；动画过程中只在窗口里
@@ -100,13 +97,9 @@ class CardDeck(QWidget):
         self._morph_to = QRectF()    # 终点矩形
         self._morph_end_geometry = QRect()
         self._relayout_pending = False
-        self._expand_anim = QVariantAnimation(self)
-        self._expand_anim.setStartValue(0.0)
-        self._expand_anim.setEndValue(1.0)
-        self._expand_anim.setDuration(self.EXPAND_MS)
-        self._expand_anim.setEasingCurve(QEasingCurve.Type.OutCubic)  # 先快后慢，停得柔和
-        self._expand_anim.valueChanged.connect(self._on_morph)
-        self._expand_anim.finished.connect(self._on_morph_finished)
+        self._expand_anim = QVariantAnimation(   # 先快后慢，停得柔和
+            self, startValue=0.0, endValue=1.0, duration=self.EXPAND_MS, easingCurve=QEasingCurve.Type.OutCubic,
+            valueChanged=self._on_morph, finished=self._on_morph_finished)
 
     # ---------- 对外接口 ----------
 
@@ -168,10 +161,7 @@ class CardDeck(QWidget):
             self._relayout()
             return
         self._current = index
-        self._scroll_anim.stop()
-        self._scroll_anim.setStartValue(self._pos)
-        self._scroll_anim.setEndValue(float(index))
-        self._scroll_anim.start()
+        animate(self._scroll_anim, self._pos, index)
         self._relayout()
 
     def toggle_expanded(self):
@@ -385,8 +375,8 @@ class CardDeck(QWidget):
         p.setBrush(QColor(0, 0, 0, round(40 * (1 - 0.5 * pressed))))
         p.drawRoundedRect(QRectF(1, 3 - pressed, w, h), 12, 12)  # 阴影：按下去时变淡变短，像贴近了桌面
         # 离得越远底色越灰、边框越深：在浅色桌面上也看得出一层层的
-        p.setPen(QPen(_blend("#C8C8C8", "#A8ADB3", k), 1))
-        p.setBrush(_blend("#FFFFFF", "#E4E7EB", k))
+        p.setPen(QPen(blend("#C8C8C8", "#A8ADB3", k), 1))
+        p.setBrush(blend("#FFFFFF", "#E4E7EB", k))
         body = QRectF(0.5, 0.5, w - 1, h - 1)
         p.drawRoundedRect(body, 12, 12)
 
@@ -477,12 +467,10 @@ class CardDeck(QWidget):
 
     def wheelEvent(self, event):
         self._wheel_accum += event.angleDelta().y()
-        while self._wheel_accum <= -120:    # 往下滚：看下一封（更旧的）
-            self._wheel_accum += 120
-            self.go_to(self._current + 1)
-        while self._wheel_accum >= 120:     # 往上滚：看上一封
-            self._wheel_accum -= 120
-            self.go_to(self._current - 1)
+        while abs(self._wheel_accum) >= 120:
+            step = 1 if self._wheel_accum < 0 else -1   # 往下滚：看下一封（更旧的）；往上滚：看上一封
+            self._wheel_accum += 120 * step
+            self.go_to(self._current + step)
         event.accept()
 
     def keyPressEvent(self, event):
@@ -515,11 +503,7 @@ class CardDeck(QWidget):
     # ---------- 动画回调 ----------
 
     def _animate_press(self, target):
-        self._press_anim.stop()
-        self._press_anim.setDuration(self.PRESS_MS if target > 0 else self.PRESS_MS + 40)
-        self._press_anim.setStartValue(self._press_t)
-        self._press_anim.setEndValue(target)
-        self._press_anim.start()
+        animate(self._press_anim, self._press_t, target, self.PRESS_MS if target > 0 else self.PRESS_MS + 40)
 
     def _on_press_progress(self, value):
         self._press_t = value
@@ -548,16 +532,6 @@ def _lerp_rect(a, b, t):
         a.y() + (b.y() - a.y()) * t,
         a.width() + (b.width() - a.width()) * t,
         a.height() + (b.height() - a.height()) * t,
-    )
-
-
-def _blend(color_a, color_b, t):
-    """两个颜色按比例混合：t=0 是 a，t=1 是 b。"""
-    a, b = QColor(color_a), QColor(color_b)
-    return QColor(
-        round(a.red() + (b.red() - a.red()) * t),
-        round(a.green() + (b.green() - a.green()) * t),
-        round(a.blue() + (b.blue() - a.blue()) * t),
     )
 
 

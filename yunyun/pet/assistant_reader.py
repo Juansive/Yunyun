@@ -20,12 +20,11 @@
   能不能撤销问总管（undo_state_for(卡片) → "hidden" / "ready" / "busy" / "working" / "expired" / "done"），
   状态可能变了（开始 / 结束回答、撤销完）时总管调 refresh_undo()。
 """
+import html
+
 from PySide6.QtCore import QRect, QRectF, QSize, Qt, QTimer, QVariantAnimation, Signal
-from PySide6.QtGui import QColor, QGuiApplication, QTextCursor
-from PySide6.QtWidgets import (
-    QApplication, QFrame, QGraphicsOpacityEffect, QHBoxLayout, QLabel, QPushButton, QTextBrowser, QVBoxLayout,
-    QWidget,
-)
+from PySide6.QtGui import QColor, QTextCursor
+from PySide6.QtWidgets import QApplication, QGraphicsOpacityEffect, QHBoxLayout, QLabel
 
 from shiboken6 import isValid
 
@@ -33,26 +32,11 @@ from yunyun import i18n
 from yunyun.assistant import memory, protocol
 from yunyun.pet.assistant_deck import context_status
 from yunyun.pet.bubble import animate
-from yunyun.pet.side_panel import SidePanel
+from yunyun.pet.side_panel import (
+    BUTTON_STYLE, SCROLLBAR_STYLE, TEXT_STYLE, SidePanel, divider, make_button, text_view,
+)
 
 CODE_BACKGROUND = QColor("#F3F5F9")
-
-_BUTTON_STYLE = """
-QPushButton { background: #EEF3FC; color: #4C6FD8; border: 1px solid #D5E0F5; border-radius: 9px;
-              padding: 1px 9px; font-size: 9pt; }
-QPushButton:hover { background: #E1EBFD; }
-"""
-_CLOSE_STYLE = """
-QPushButton { background: transparent; color: #8A94A6; border: none; border-radius: 12px; font-size: 13pt; }
-QPushButton:hover { background: #EEF1F6; color: #374151; }
-"""
-_BODY_STYLE = """
-QTextBrowser { background: transparent; color: #1F2937; }
-QScrollBar:vertical { width: 6px; background: transparent; margin: 2px; }
-QScrollBar::handle:vertical { background: #CBD3E1; border-radius: 3px; min-height: 24px; }
-QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
-QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }
-"""
 
 
 def code_groups(document):
@@ -145,13 +129,8 @@ _ACTIONS_TOGGLE_STYLE = """
 QPushButton { background: transparent; color: #4C6FD8; border: none; padding: 0; font-size: 9pt; text-align: left; }
 QPushButton:hover { color: #2F55C9; text-decoration: underline; }
 """
-_ACTIONS_STYLE = """
-QTextBrowser { background: #F7F8FB; color: #374151; border: none; border-radius: 6px; font-size: 9pt; }
-QScrollBar:vertical { width: 6px; background: transparent; margin: 2px; }
-QScrollBar::handle:vertical { background: #CBD3E1; border-radius: 3px; min-height: 24px; }
-QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
-QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }
-"""
+_ACTIONS_STYLE = ("QTextBrowser { background: #F7F8FB; color: #374151; border: none; border-radius: 6px; "
+                  "font-size: 9pt; }" + SCROLLBAR_STYLE)
 _UNDO_STYLE = """
 QPushButton { background: #FFF6E8; color: #B7791F; border: 1px solid #F3DDB8; border-radius: 9px;
               padding: 1px 9px; font-size: 9pt; }
@@ -161,7 +140,6 @@ QPushButton:disabled { background: #F4F6FA; color: #9AA3B2; border: 1px solid #E
 
 
 class AssistantReader(SidePanel):
-    closed_by_user = Signal()    # Esc / ×：只关阅读框（焦点回到输入框）
     undo_requested = Signal(object)   # 卡片：要撤销这一问的改动（已经点了两次确认）
 
     READER_W = 470
@@ -177,10 +155,7 @@ class AssistantReader(SidePanel):
         self._pending = None          # 换卡片：淡出后要换上的那张
         self._copy_buttons = []
 
-        self._content = QWidget(self)
-        layout = QVBoxLayout(self._content)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(6)
+        layout = self._make_content(6)
         top = QHBoxLayout()
         top.setSpacing(8)
         self._question = QLabel()
@@ -188,65 +163,41 @@ class AssistantReader(SidePanel):
         self._question.setTextFormat(Qt.TextFormat.PlainText)
         self._question.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self._question.setStyleSheet("color: #111827; font-weight: bold;")
-        self._close = QPushButton("×")
-        self._close.setFixedSize(24, 24)
-        self._close.setStyleSheet(_CLOSE_STYLE)
-        self._close.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._close.clicked.connect(self._close_by_user)
+        self._close = self._close_button()
         top.addWidget(self._question, 1)
         top.addWidget(self._close, 0, Qt.AlignmentFlag.AlignTop)
         layout.addLayout(top)
         self._meta = QLabel()
         self._meta.setStyleSheet("color: #8A94A6; font-size: 9pt;")
         layout.addWidget(self._meta)
-        self._actions_toggle = QPushButton()   # "▸ 芸芸做了 3 件事"：点一下展开操作记录
-        self._actions_toggle.setStyleSheet(_ACTIONS_TOGGLE_STYLE)
-        self._actions_toggle.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._actions_toggle.clicked.connect(self._toggle_actions)
+        # "▸ 芸芸做了 3 件事"：点一下展开操作记录
+        self._actions_toggle = make_button(_ACTIONS_TOGGLE_STYLE, self._toggle_actions)
         layout.addWidget(self._actions_toggle, 0, Qt.AlignmentFlag.AlignLeft)
-        self._actions = QTextBrowser()   # 高度按排版出来的算（_fit_actions），太多就在框里滚动
-        self._actions.setFrameShape(QFrame.Shape.NoFrame)
-        self._actions.setStyleSheet(_ACTIONS_STYLE)
-        self._actions.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self._actions.document().setDocumentMargin(6)
+        self._actions = text_view(_ACTIONS_STYLE, margin=6)   # 高度按排版出来的算（_fit_height），太多就在框里滚动
         layout.addWidget(self._actions)
         self._actions_open = False   # 展开着：换卡片也保持展开
-        line = QFrame()
-        line.setFixedHeight(1)
-        line.setStyleSheet("background: #E6EAF1;")
-        layout.addWidget(line)
-        self._body = QTextBrowser()
+        layout.addWidget(divider())
+        self._body = text_view(TEXT_STYLE, margin=2)
         self._body.setMinimumHeight(40)   # 放不下时回答在框里滚动，不和上面的挤在一起
         self._body.setOpenExternalLinks(True)
-        self._body.setFrameShape(QFrame.Shape.NoFrame)
-        self._body.setStyleSheet(_BODY_STYLE)
         self._body.viewport().setAutoFillBackground(False)
-        self._body.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self._body.document().setDocumentMargin(2)
         self._body.verticalScrollBar().valueChanged.connect(self._place_copy_buttons)
         layout.addWidget(self._body, 1)
         bottom = QHBoxLayout()
-        self._undo = QPushButton()
-        self._undo.setStyleSheet(_UNDO_STYLE)
-        self._undo.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._undo.clicked.connect(self._on_undo)
+        self._undo = make_button(_UNDO_STYLE, self._on_undo)
         self.undo_state_for = lambda card: "hidden"   # 总管换成自己的
         self._undo_state = "hidden"
         self._undo_armed = False
         self._undo_timer = QTimer(self, singleShot=True, interval=self.UNDO_ARM_MS, timeout=self._disarm_undo)
         bottom.addWidget(self._undo)
         bottom.addStretch(1)
-        self._copy_all = QPushButton()
-        self._copy_all.setStyleSheet(_BUTTON_STYLE)
-        self._copy_all.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._copy_all.clicked.connect(lambda: self._copy(self.card.answer if self.card else "", self._copy_all,
-                                                          "assistant_reader_copy_all"))
+        self._copy_all = make_button(BUTTON_STYLE, lambda: self._copy(self.card.answer if self.card else "",
+                                                                       self._copy_all, "assistant_reader_copy_all"))
         bottom.addWidget(self._copy_all)
         layout.addLayout(bottom)
 
-        self._swap = QVariantAnimation(self, duration=self.SWAP_MS)
-        self._swap.valueChanged.connect(self._on_swap)
-        self._swap.finished.connect(self._on_swap_finished)
+        self._swap = QVariantAnimation(self, duration=self.SWAP_MS, valueChanged=self._on_swap,
+                                       finished=self._on_swap_finished)
         self._fading_out = False
         self.retranslate()
         self.resize(self.READER_W, 360)
@@ -341,21 +292,14 @@ class AssistantReader(SidePanel):
 
     @staticmethod
     def _meta_text(card):
-        parts =[f"{card.time:%H:%M}"] + ([card.cost] if card.cost else [])
-        context, _ = context_status(card)
-        if context:
-            parts.append(context)
-        if card.files:
-            parts.append(i18n.tr("assistant_card_files", len(card.files)))
-        if card.remembered:
-            parts.append(i18n.tr("assistant_card_remembered", card.remembered))
-        if card.images:
-            parts.append(i18n.tr("assistant_card_images", card.images))
-        if card.stopped:
-            parts.append(i18n.tr("assistant_card_stopped"))
-        if card.undone:
-            parts.append(i18n.tr("assistant_card_undone"))
-        return " · ".join(parts)
+        """"14:20 · $0.0123 · 上下文 … · 改了 2 个文件 · ……"：有的才写。"""
+        tr = i18n.tr
+        parts = [f"{card.time:%H:%M}", card.cost, context_status(card)[0],
+                 card.files and tr("assistant_card_files", len(card.files)),
+                 card.remembered and tr("assistant_card_remembered", card.remembered),
+                 card.images and tr("assistant_card_images", card.images),
+                 card.stopped and tr("assistant_card_stopped"), card.undone and tr("assistant_card_undone")]
+        return " · ".join(part for part in parts if part)
 
     def _fill(self, card):
         self.card = card
@@ -386,17 +330,14 @@ class AssistantReader(SidePanel):
                   + (self._copy_all.sizeHint().height() if bottom_row else 0) + 6 * 4)
         if self._actions_toggle.isVisibleTo(self):
             others += self._actions_toggle.sizeHint().height() + 6
-        screen = QGuiApplication.screenAt(self._anchor.center()) or QGuiApplication.primaryScreen()
-        limit = min(self.MAX_H, screen.availableGeometry().height() - 40)
+        limit = self._height_limit(self.MAX_H)
         if self._actions.isVisibleTo(self):
             self._actions.document().setTextWidth(width - 10)
             # 操作记录最多占三分之一（屏幕矮的时候也给回答留地方），再多就在框里滚动
             actions_h = min(int(self._actions.document().size().height()) + 8, self.ACTIONS_MAX_H, limit // 3)
             self._actions.setFixedHeight(actions_h)
             others += actions_h + 6
-        height = max(self.MIN_H, min(2 * (m + pad) + others + doc_h, limit))
-        self.resize(self.READER_W, height)
-        self._content.setGeometry(m + pad, m + pad, width, height - 2 * (m + pad))
+        self._set_size(self.READER_W, max(self.MIN_H, min(2 * (m + pad) + others + doc_h, limit)))
         self._place_copy_buttons()
 
     def _make_copy_buttons(self):
@@ -404,9 +345,7 @@ class AssistantReader(SidePanel):
             button.deleteLater()
         self._copy_buttons = []
         for group in code_groups(self._body.document()):
-            button = QPushButton(i18n.tr("assistant_reader_copy"), self._body.viewport())
-            button.setStyleSheet(_BUTTON_STYLE)
-            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button = make_button(BUTTON_STYLE, None, i18n.tr("assistant_reader_copy"), self._body.viewport())
             text = group_text(group)
             button.clicked.connect(lambda checked=False, b=button, t=text: self._copy(t, b, "assistant_reader_copy"))
             button.group = group
@@ -431,7 +370,8 @@ class AssistantReader(SidePanel):
     def _copy(self, text, button, key):
         set_clipboard(text)
         button.setText(i18n.tr("assistant_reader_copied"))
-        QTimer.singleShot(1500, lambda: button.setText(i18n.tr(key)) if _alive(button) else None)
+        # 1.5 秒后按钮可能已经没了（换了卡片）
+        QTimer.singleShot(1500, lambda: button.setText(i18n.tr(key)) if isValid(button) else None)
 
     # ---------- 换卡片的动画 ----------
 
@@ -461,10 +401,6 @@ class AssistantReader(SidePanel):
 
     # ---------- 事件 ----------
 
-    def _close_by_user(self):
-        self.hide_animated()
-        self.closed_by_user.emit()
-
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_Escape:
             self._close_by_user()
@@ -477,8 +413,4 @@ class AssistantReader(SidePanel):
 
 
 def _escape(text):
-    return (text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\n", "<br>"))
-
-
-def _alive(widget):
-    return isValid(widget)   # 1.5 秒后按钮可能已经没了（换了卡片）
+    return html.escape(text, quote=False).replace("\n", "<br>")

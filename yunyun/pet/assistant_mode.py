@@ -65,12 +65,8 @@ def turn_cost(turn):
 
 def done_header(turn):
     """输入框收起着时答完，气泡第一行："做完啦 · 改了 2 个文件 · $0.0040"。"""
-    parts = [i18n.tr("assistant_done_said")]
-    if turn.files:
-        parts.append(i18n.tr("assistant_card_files", len(turn.files)))
-    if turn_cost(turn):
-        parts.append(turn_cost(turn))
-    return " · ".join(parts)
+    files = i18n.tr("assistant_card_files", len(turn.files)) if turn.files else ""
+    return " · ".join(part for part in (i18n.tr("assistant_done_said"), files, turn_cost(turn)) if part)
 
 
 def card_from_turn(turn, workspace=""):
@@ -232,10 +228,8 @@ class AssistantMode(QObject):
         self._reader_card = self.reader.card if self.reader.is_open else None
         if self.input.is_open:
             self.input.collapse()
-        self.deck.hide_animated()
-        self.reader.hide_animated()
-        self.confirm.hide_animated()
-        self.history.hide_animated()
+        for panel in (self.deck, self.reader, self.confirm, self.history):
+            panel.hide_animated()
 
     def reset_place(self):
         """右键"卡片回到芸芸旁边"：忘掉拖过的位置。"""
@@ -286,18 +280,13 @@ class AssistantMode(QObject):
         self._closed = True
         self._idle_timer.stop()
         self._bubble_timer.stop()
-        self.input.close_now()
-        self.deck.close_now()
-        self.reader.close_now()
-        self.confirm.close_now()
-        self.history.close_now()
+        widgets = (self.input, self.deck, self.reader, self.confirm, self.history)
+        for widget in widgets:
+            widget.close_now()
         self.session.close(wait)
         self._pet.end_live(0)
-        self.input.deleteLater()
-        self.deck.deleteLater()
-        self.reader.deleteLater()
-        self.confirm.deleteLater()
-        self.history.deleteLater()
+        for widget in widgets:
+            widget.deleteLater()
         self.notice.hide()
         self.notice.deleteLater()   # 没有主人的独立窗口：要自己删
         self.closed.emit()
@@ -352,11 +341,15 @@ class AssistantMode(QObject):
         self._cards_shown = True
         self._place_deck()
         self.deck.show_animated()
-        if self._reader_card is not None and not self.session.pending_permissions:   # 有确认在等：先让确认卡片出来
-            card, self._reader_card = self._reader_card, None
-            if card in self.cards:
-                self.reader.show_card(card, self._reader_anchor())
+        if not self.session.pending_permissions:   # 有确认在等：先让确认卡片出来
+            self._bring_reader_back()
         self._show_confirm()   # 收起着的时候来的确认
+
+    def _bring_reader_back(self):
+        """隐藏卡片 / 让位给确认卡片之前阅读框里开着的那张：重新打开（那张还在卡片堆里的话）。"""
+        card, self._reader_card = self._reader_card, None
+        if card is not None and card in self.cards:
+            self.reader.show_card(card, self._reader_anchor())
 
     def _place_deck(self):
         """卡片堆放哪：拖过就按记住的偏移（相对芸芸，不出屏幕），没拖过就放在"芸芸 + 输入框"旁边。"""
@@ -441,10 +434,8 @@ class AssistantMode(QObject):
             self._pet.say(i18n.tr("assistant_confirm_waiting_said"), self.CONFIRM_SAY_MS)   # 卡片藏着：提醒一下
         self._show_confirm()
         self._update_notice()
-        if not pending and self._cards_shown and self._reader_card is not None:   # 确认完了：刚才看的那张回来
-            card, self._reader_card = self._reader_card, None
-            if card in self.cards:
-                self.reader.show_card(card, self._reader_anchor())
+        if not pending and self._cards_shown:   # 确认完了：刚才看的那张回来
+            self._bring_reader_back()
 
     # ---------- 撤销 ----------
 
@@ -638,9 +629,8 @@ class AssistantMode(QObject):
             self._idle_timer.start()
 
     def _on_idle(self):
-        if self.busy or self.session.rewinding or self.session.compacting:   # 还在回答 / 撤销 / 整理：等它做完再算
-            self._idle_timer.start()
-        elif self.session.browser_open:   # 芸芸的浏览器开着（你可能正在看）：释放大脑会把它一起关掉，等你关了窗口再说
+        # 还在回答 / 撤销 / 整理：等它做完再算；芸芸的浏览器开着（你可能正在看）：释放大脑会把它一起关掉，等你关了窗口再说
+        if self.busy or self.session.rewinding or self.session.compacting or self.session.browser_open:
             self._idle_timer.start()
         elif not self.input.is_open and self.session.process is not None:
             # 只释放大脑（约 300 MB），卡片照常显示；再唤出时接着这段对话聊（resume）

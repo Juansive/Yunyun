@@ -18,15 +18,15 @@ import os
 from datetime import date
 
 from PySide6.QtCore import QRect, Qt, Signal
-from PySide6.QtGui import QFont, QGuiApplication
-from PySide6.QtWidgets import (
-    QFrame, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QPushButton, QTextBrowser, QVBoxLayout, QWidget,
-)
+from PySide6.QtGui import QFont
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QListWidget, QListWidgetItem
 
 from yunyun import i18n
 from yunyun.assistant.settings import HISTORY_KEEP_DAYS
-from yunyun.pet.assistant_reader import _BODY_STYLE, _BUTTON_STYLE, _CLOSE_STYLE, style_code_blocks
-from yunyun.pet.side_panel import SidePanel
+from yunyun.pet.assistant_reader import style_code_blocks
+from yunyun.pet.side_panel import (
+    BUTTON_STYLE, SCROLLBAR_STYLE, TEXT_STYLE, SidePanel, divider, make_button, text_view,
+)
 
 TITLE_CHARS = 40
 
@@ -36,11 +36,7 @@ QListWidget::item { border-radius: 8px; padding: 6px 8px; margin: 1px 0; color: 
 QListWidget::item:hover { background: #F1F5FD; }
 QListWidget::item:selected { background: #E3ECFC; color: #1F2937; }
 QListWidget::item:disabled { color: #8A94A6; padding: 8px 4px 2px 4px; }
-QScrollBar:vertical { width: 6px; background: transparent; margin: 2px; }
-QScrollBar::handle:vertical { background: #CBD3E1; border-radius: 3px; min-height: 24px; }
-QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
-QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }
-"""
+""" + SCROLLBAR_STYLE
 _CONTINUE_STYLE = """
 QPushButton { background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #4FA8FF, stop:1 #7C8CFF); color: white;
               border: none; border-radius: 11px; padding: 4px 16px; font-weight: bold; }
@@ -92,8 +88,7 @@ def conversation_markdown(conversation):
 
 
 class AssistantHistoryPanel(SidePanel):
-    continue_requested = Signal(object)   # Conversation：接着这一段聊
-    closed_by_user = Signal()             # × / Esc（在列表里）
+    continue_requested = Signal(object)   # Conversation：接着这一段聊（× / Esc 在列表里：closed_by_user）
 
     PANEL_W = 470
     LIST_H = 420
@@ -104,23 +99,13 @@ class AssistantHistoryPanel(SidePanel):
         self.conversation = None          # 详情里正在看的那段（列表里是 None）
         self._conversations = []
 
-        self._content = QWidget(self)
-        layout = QVBoxLayout(self._content)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(6)
+        layout = self._make_content(6)
         top = QHBoxLayout()
-        self._back = QPushButton()
-        self._back.setStyleSheet(_BUTTON_STYLE)
-        self._back.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._back.clicked.connect(self.show_list)
+        self._back = make_button(BUTTON_STYLE, self.show_list)
         self._title = QLabel()
         self._title.setWordWrap(True)
         self._title.setStyleSheet("color: #111827; font-weight: bold;")
-        self._close = QPushButton("×")
-        self._close.setFixedSize(24, 24)
-        self._close.setStyleSheet(_CLOSE_STYLE)
-        self._close.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._close.clicked.connect(self._close_by_user)
+        self._close = self._close_button()
         top.addWidget(self._back, 0, Qt.AlignmentFlag.AlignTop)
         top.addWidget(self._title, 1)
         top.addWidget(self._close, 0, Qt.AlignmentFlag.AlignTop)
@@ -128,10 +113,7 @@ class AssistantHistoryPanel(SidePanel):
         self._meta = QLabel()
         self._meta.setStyleSheet("color: #8A94A6; font-size: 9pt;")
         layout.addWidget(self._meta)
-        line = QFrame()
-        line.setFixedHeight(1)
-        line.setStyleSheet("background: #E6EAF1;")
-        layout.addWidget(line)
+        layout.addWidget(divider())
 
         self._list = QListWidget()
         self._list.setStyleSheet(_LIST_STYLE)
@@ -143,21 +125,15 @@ class AssistantHistoryPanel(SidePanel):
         self._empty.setStyleSheet("color: #9AA3B2;")
         layout.addWidget(self._empty)
 
-        self._detail = QTextBrowser()
+        self._detail = text_view(TEXT_STYLE)
         self._detail.setOpenExternalLinks(True)
-        self._detail.setFrameShape(QFrame.Shape.NoFrame)
-        self._detail.setStyleSheet(_BODY_STYLE)
         self._detail.viewport().setAutoFillBackground(False)
-        self._detail.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         layout.addWidget(self._detail, 1)
         bottom = QHBoxLayout()
         self._note = QLabel()   # 找回来的对话：说明少了些什么
         self._note.setWordWrap(True)
         self._note.setStyleSheet("color: #8A94A6; font-size: 9pt;")
-        self._continue = QPushButton()
-        self._continue.setStyleSheet(_CONTINUE_STYLE)
-        self._continue.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._continue.clicked.connect(self._on_continue)
+        self._continue = make_button(_CONTINUE_STYLE, self._on_continue)
         bottom.addWidget(self._note, 1)
         bottom.addWidget(self._continue, 0, Qt.AlignmentFlag.AlignBottom)
         layout.addLayout(bottom)
@@ -235,12 +211,7 @@ class AssistantHistoryPanel(SidePanel):
         self._fit()
 
     def _fit(self):
-        m, pad = self.MARGIN, self.PAD
-        screen = QGuiApplication.screenAt(self._anchor.center()) or QGuiApplication.primaryScreen()
-        limit = screen.availableGeometry().height() - 40
-        height = min(self.DETAIL_H if self.conversation is not None else self.LIST_H, limit)
-        self.resize(self.PANEL_W, height)
-        self._content.setGeometry(m + pad, m + pad, self.PANEL_W - 2 * (m + pad), height - 2 * (m + pad))
+        self._set_size(self.PANEL_W, self._height_limit(self.DETAIL_H if self.conversation is not None else self.LIST_H))
         if self.isVisible():
             self._place()
             self._apply_open()
@@ -255,10 +226,6 @@ class AssistantHistoryPanel(SidePanel):
     def _on_continue(self):
         if self.conversation is not None:
             self.continue_requested.emit(self.conversation)
-
-    def _close_by_user(self):
-        self.hide_animated()
-        self.closed_by_user.emit()
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_Escape:
