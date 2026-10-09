@@ -648,10 +648,12 @@ def test_persona_languages():
 
 
 def test_tool_detail_shows_paths_inside_the_work_folder_relatively(tmp_path):
+    from yunyun.assistant.transcripts import tool_detail
     inside, outside = str(tmp_path / "src" / "a.py"), "Z:\\other\\b.py"
-    assert claude_brain._tool_detail("Read", {"file_path": inside}, str(tmp_path)) == str(claude_brain.os.path.join("src", "a.py"))
-    assert claude_brain._tool_detail("Read", {"file_path": outside}, str(tmp_path)) == outside
-    assert claude_brain._tool_detail("Bash", {"command": "pytest -q"}, str(tmp_path)) == "pytest -q"
+    assert tool_detail({"file_path": inside}, str(tmp_path)) == str(claude_brain.os.path.join("src", "a.py"))
+    assert tool_detail({"file_path": outside}, str(tmp_path)) == outside
+    assert tool_detail({"command": "pytest -q"}, str(tmp_path)) == "pytest -q"
+    assert tool_detail({"query": "x" * 200}, "", 120) == "x" * 120
 
 
 # ---------- 权限：PermissionGate ----------

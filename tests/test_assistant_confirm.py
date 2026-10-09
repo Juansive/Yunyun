@@ -9,7 +9,8 @@ from PySide6.QtWidgets import QApplication, QWidget
 
 from yunyun import i18n
 from yunyun.assistant.protocol import PermissionRequest
-from yunyun.pet.assistant_confirm import AssistantConfirm, detail_html, note_key, remember_text, show_path, title_key
+from yunyun.assistant.transcripts import relative_path
+from yunyun.pet.assistant_confirm import AssistantConfirm, detail_html, note_key, remember_text, title_key
 
 WS = "F:\\proj"
 
@@ -80,10 +81,10 @@ def test_notes_explain_why_it_always_asks():
 
 
 def test_paths_inside_the_work_folder_are_relative():
-    assert show_path("F:\\proj\\src\\a.py", WS) == os.path.join("src", "a.py")
-    assert show_path("F:\\other\\a.py", WS) == "F:\\other\\a.py"
-    assert show_path("C:\\a.py", WS) == "C:\\a.py"                # 别的盘
-    assert show_path("a.py", WS) == "a.py"
+    assert relative_path("F:\\proj\\src\\a.py", WS) == os.path.join("src", "a.py")
+    assert relative_path("F:\\other\\a.py", WS) == "F:\\other\\a.py"
+    assert relative_path("C:\\a.py", WS) == "C:\\a.py"                # 别的盘
+    assert relative_path("a.py", WS) == "a.py" and relative_path("", WS) == ""
 
 
 def test_detail_shows_the_full_command_escaped():

@@ -74,7 +74,7 @@ def test_answer_grows_and_turn_finishes(session):
     process.say(protocol.TurnFinished(0.0012, 0.0034, 10, 2))
     turn = logged(session, "turn_finished")[0]
     assert turn.question == "你好" and turn.answer == "你好**呀**" and turn.finished and not turn.stopped
-    assert turn.cost_text() == "这一轮 $0.0012 · 这次对话共 $0.0034"
+    assert (turn.cost_usd, turn.session_cost_usd) == (0.0012, 0.0034)
     assert not session.busy and logged(session, "busy_changed") == [True, False]
     assert session.turns == [turn]
 
@@ -95,13 +95,6 @@ def test_cannot_ask_while_answering_or_empty(session):
     session.ask("一")
     assert not session.ask("二")
     assert [t.question for t in session.turns] == ["一"]
-
-
-def test_cost_text_variants(monkeypatch):
-    monkeypatch.setattr(i18n, "_current", "zh")
-    assert Turn("q", cost_usd=None, session_cost_usd=0.0012).cost_text() == "这一轮 $0.0000 · 这次对话共 $0.0012"
-    assert Turn("q", input_tokens=120, output_tokens=30).cost_text() == "这一轮 120 / 30 token（输入 / 输出）"
-    assert Turn("q").cost_text() == ""
 
 
 def test_stop_interrupts_and_marks_the_turn(session):
@@ -324,7 +317,7 @@ def test_real_channel_with_fake_worker(qapp):
     session.ask("hello")
     assert wait_until(qapp, lambda: not session.busy)
     assert session.turns[0].answer == "你好呀"
-    assert session.turns[0].cost_text() == "这一轮 $0.0010 · 这次对话共 $0.0010"
+    assert (session.turns[0].cost_usd, session.turns[0].session_cost_usd) == (0.001, 0.001)
     process = processes[0]
     session.close(wait=True)
     assert not isValid(process) or not process.is_running()

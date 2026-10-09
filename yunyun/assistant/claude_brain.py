@@ -204,7 +204,7 @@ class PermissionGate:
             if tool == protocol.BROWSER_TYPE_TOOL and isinstance(tool_input, dict):
                 detail += f" ← {str(tool_input.get('text') or '')[:100]}"
         else:
-            detail = _tool_detail(tool, tool_input, self.workspace)
+            detail = transcripts.tool_detail(tool_input, self.workspace, 120)
         self._emit(protocol.ToolDecision(tool_id or "", tool, decision, detail))
 
     async def pre_tool_use(self, hook_input, tool_use_id, context):
@@ -341,8 +341,7 @@ class TurnState:
         if not isinstance(usage, dict):
             return
         if new_message:
-            self._context_input = sum(int(usage.get(k) or 0) for k in
-                                      ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"))
+            self._context_input = _input_tokens(usage)
         self.context_tokens = self._context_input + int(usage.get("output_tokens") or 0)
 
     @property
@@ -374,6 +373,11 @@ class TurnState:
             self.over_conversation = True
 
 
+def _input_tokens(usage):
+    """一次请求读的前文：输入 + 写缓存 + 读缓存。"""
+    return sum(int(usage.get(k) or 0) for k in ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"))
+
+
 _NETWORK_HINTS = ("connection error", "econnrefused", "econnreset", "enotfound", "etimedout", "fetch failed",
                   "getaddrinfo", "network", "timed out", "socket")
 _ASSISTANT_ERROR_KINDS = {"authentication_failed": "auth", "billing_error": "billing", "rate_limit": "rate_limit"}
@@ -393,23 +397,6 @@ def error_kind(text, sdk_error=None):
     if "429" in lowered or "rate limit" in lowered:
         return "rate_limit"
     return "other"
-
-
-def _tool_detail(name, tool_input, workspace=""):
-    """给人看的线索：搜索的关键词、读的网址、文件（工作文件夹里的显示相对路径）……没有就是空的。"""
-    for key in ("query", "url", "file_path", "notebook_path", "path", "pattern", "command", "title", "id", "target",
-                "name"):
-        value = tool_input.get(key) if isinstance(tool_input, dict) else None
-        if isinstance(value, str) and value:
-            if key in ("file_path", "notebook_path", "path") and workspace and os.path.isabs(value):
-                relative = os.path.relpath(value, workspace) if _same_drive(value, workspace) else value
-                value = value if relative.startswith("..") else relative
-            return value[:120]
-    return ""
-
-
-def _same_drive(a, b):
-    return os.path.splitdrive(a)[0].lower() == os.path.splitdrive(b)[0].lower()
 
 
 def _message_text(message):
@@ -436,7 +423,7 @@ def translate(message, state):
             if isinstance(block, (ToolUseBlock, ServerToolUseBlock)) and block.id not in state.seen_tools:
                 state.seen_tools.add(block.id)
                 events.append(protocol.ToolStarted(block.id, block.name,
-                                                   _tool_detail(block.name, block.input, state.workspace)))
+                                                   transcripts.tool_detail(block.input, state.workspace, 120)))
                 path = (block.input or {}).get("file_path") or (block.input or {}).get("notebook_path")
                 if block.name in permissions.EDIT_TOOLS and isinstance(path, str) and path:
                     state._editing[block.id] = path
@@ -495,8 +482,7 @@ def _turn_finished(message, state):
     events.append(protocol.TurnFinished(
         cost_usd=cost,
         session_cost_usd=state.conversation_cost,
-        input_tokens=sum(int(usage.get(k) or 0) for k in
-                         ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")),
+        input_tokens=_input_tokens(usage),
         output_tokens=int(usage.get("output_tokens") or 0),
         stopped=stopped,
         checkpoint=state.checkpoint if state.files else "",   # 没改文件就没什么可撤销的

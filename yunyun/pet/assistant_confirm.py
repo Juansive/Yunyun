@@ -16,7 +16,6 @@
 - 回答后发 answered(请求号, 允许, 理由, 这次对话都允许)。
 """
 import html
-import os
 import re
 from urllib.parse import unquote
 
@@ -25,6 +24,7 @@ from PySide6.QtGui import QColor, QGuiApplication
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton, QTextBrowser, QVBoxLayout, QWidget
 
 from yunyun import i18n, paths
+from yunyun.assistant.transcripts import relative_path
 from yunyun.pet.change_diff import change_html, proposed_change
 from yunyun.pet.side_panel import SidePanel
 
@@ -63,19 +63,6 @@ QLineEdit:focus { border: 1px solid #8FB4F5; }
 
 
 # ---------- 内容（纯函数，方便测） ----------
-
-def show_path(path, workspace):
-    """工作文件夹里的文件显示相对路径，外面的显示完整路径。"""
-    if not path:
-        return ""
-    if workspace and os.path.isabs(path):
-        try:
-            relative = os.path.relpath(path, workspace)
-        except ValueError:   # 不在同一个盘
-            return path
-        if not relative.startswith(".."):
-            return relative
-    return path
 
 
 def title_key(request):
@@ -151,7 +138,7 @@ def detail_html(request, workspace):
             rows.append(f'<div style="color:#6B7280;">'
                         f'{html.escape(i18n.tr("assistant_confirm_download_to", str(paths.downloads_dir())))}</div>')
         return "".join(rows)
-    path = show_path(str(data.get("file_path") or data.get("notebook_path") or data.get("path") or ""), workspace)
+    path = relative_path(str(data.get("file_path") or data.get("notebook_path") or data.get("path") or ""), workspace)
     head = f'<b>{html.escape(path)}</b>' if path else ""
     if request.tool in ("Glob", "Grep"):
         return f'<div {MONO}>{head}</div><div {MONO}>{html.escape(str(data.get("pattern", "")))}</div>'

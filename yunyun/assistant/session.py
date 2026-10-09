@@ -106,16 +106,6 @@ class Turn:
     def action(self, tool_id):
         return next((a for a in self.actions if a.tool_id and a.tool_id == tool_id), None)
 
-    def cost_text(self):
-        """底部那行小字："这一轮 $… · 这次对话共 $…"（按 token 计费的服务商显示 token 数）；什么都不知道就是空的。"""
-        if self.cost_usd is not None or self.session_cost_usd is not None:
-            turn = self.cost_usd or 0.0
-            total = self.session_cost_usd if self.session_cost_usd is not None else turn
-            return i18n.tr("assistant_cost", turn, total)
-        if self.input_tokens or self.output_tokens:
-            return i18n.tr("assistant_cost_tokens", self.input_tokens, self.output_tokens)
-        return ""
-
 
 class AssistantSession(QObject):
     busy_changed = Signal(bool)       # 开始 / 结束回答
@@ -129,8 +119,8 @@ class AssistantSession(QObject):
     activity_changed = Signal(str)    # 助手在做什么变了（见 activity；芸芸的样子跟着变）
     rewind_finished = Signal(str, bool, object)   # 检查点、成没成、撤销掉的那几轮（[Turn]）
     compact_changed = Signal(object)  # 某一轮答完后的"整理前面的对话"开始了 / 做完了（Turn.compact）
-    screenshot_requested = Signal(object)   # 大脑要看屏幕（protocol.ScreenshotRequest）：界面截好后调 answer_screenshot
-    open_app_requested = Signal(object)     # 大脑要打开软件（protocol.OpenAppRequest，你已同意）：打开后调 answer_open_app
+    screenshot_requested = Signal(object)   # 大脑要看屏幕（protocol.ScreenshotRequest）：界面截好后调 answer
+    open_app_requested = Signal(object)     # 大脑要打开软件（protocol.OpenAppRequest，你已同意）：打开后调 answer
     downloaded = Signal(object)             # 芸芸的浏览器下载好了一个文件（protocol.Downloaded）
 
     def __init__(self, parent=None, make_process=None):
@@ -277,13 +267,8 @@ class AssistantSession(QObject):
         self.permissions_changed.emit()
         return True
 
-    def answer_screenshot(self, reply):
-        """把截好的图（protocol.ScreenshotReply）交给大脑。子进程已经换了 / 没了就算了。"""
-        if self._process is not None:
-            self._process.send(reply)
-
-    def answer_open_app(self, reply):
-        """打开软件的结果（protocol.OpenAppReply）交给大脑。"""
+    def answer(self, reply):
+        """芸芸进程替大脑做完的事（截好的图 ScreenshotReply、打开软件的结果 OpenAppReply）交回去。子进程换了 / 没了就算了。"""
         if self._process is not None:
             self._process.send(reply)
 
@@ -310,13 +295,18 @@ class AssistantSession(QObject):
 
     def _retire_process(self):
         """不再管这个子进程：请它退出，退出后自己销毁。它之后发来的事件，_on_event 认出不是当前的就不理。"""
-        process, self._process = self._process, None
-        self.browser_open = False   # 子进程一退出，浏览器也关了
-        self._abandon_rewind()
-        self._abandon_compact()
+        process = self._drop_process()
         if process is not None:
             process.finished.connect(process.deleteLater)
             process.stop()
+
+    def _drop_process(self):
+        """不再用这个子进程了：浏览器跟着它关了，等着的撤销、整理都当没做成。返回原来的子进程。"""
+        process, self._process = self._process, None
+        self.browser_open = False
+        self._abandon_rewind()
+        self._abandon_compact()
+        return process
 
     def _set_progress(self, text):
         if text != self._progress:
@@ -365,20 +355,17 @@ class AssistantSession(QObject):
             self._on_rewound(event)
         elif isinstance(event, (protocol.Compacting, protocol.Compacted)):
             self._on_compact(event)
-        elif isinstance(event, protocol.ScreenshotRequest):
-            if turn is None:   # 停下之后迟到的：不截了
-                process.send(protocol.ScreenshotReply(event.request_id, False, detail="The user stopped the task."))
+        elif isinstance(event, (protocol.ScreenshotRequest, protocol.OpenAppRequest)):
+            screenshot = isinstance(event, protocol.ScreenshotRequest)
+            if turn is None:   # 停下之后迟到的：不做了
+                reply = protocol.ScreenshotReply if screenshot else protocol.OpenAppReply
+                process.send(reply(event.request_id, False, detail="The user stopped the task."))
             else:
-                self.screenshot_requested.emit(event)
+                (self.screenshot_requested if screenshot else self.open_app_requested).emit(event)
         elif isinstance(event, protocol.BrowserChanged):
             self.browser_open = event.open
         elif isinstance(event, protocol.Downloaded):
             self.downloaded.emit(event)
-        elif isinstance(event, protocol.OpenAppRequest):
-            if turn is None:   # 停下之后迟到的：不打开了
-                process.send(protocol.OpenAppReply(event.request_id, False, "The user stopped the task."))
-            else:
-                self.open_app_requested.emit(event)
         elif isinstance(event, protocol.Ready):
             self._model = event.model
             self.model_changed.emit(event.model)
@@ -490,10 +477,7 @@ class AssistantSession(QObject):
     def _on_process_finished(self, process):
         if process is not self._process:
             return
-        self._process = None
-        self.browser_open = False
-        self._abandon_rewind()
-        self._abandon_compact()
+        self._drop_process()
         process.deleteLater()
         if self.busy:   # 回答到一半子进程没了（出错事件已经由 AssistantProcess 发过）
             self._pending = None

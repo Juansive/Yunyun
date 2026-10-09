@@ -77,20 +77,31 @@ def _texts(content):
     return [b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text"]
 
 
-def tool_detail(tool_input, cwd=""):
-    """给人看的目标：命令、文件（工作目录里的显示相对路径）、网址、搜索词。"""
+_DETAIL_KEYS = ("command", "query", "url", "file_path", "notebook_path", "path", "pattern", "title", "id", "target",
+                "name")
+_PATH_KEYS = ("file_path", "notebook_path", "path")
+
+
+def relative_path(path, folder):
+    """folder 里的文件显示相对路径；外面的、别的盘的原样。"""
+    if not folder or not os.path.isabs(path):
+        return path
+    try:
+        relative = os.path.relpath(path, folder)
+    except ValueError:   # 不在同一个盘
+        return path
+    return path if relative.startswith("..") else relative
+
+
+def tool_detail(tool_input, cwd="", limit=500):
+    """给人看的目标（进度行、操作记录、历史对话）：命令、搜索词、网址、文件（工作目录里的显示相对路径）、
+    记事本的标题、截图的目标、软件名……没有就是空的。"""
     if not isinstance(tool_input, dict):
         return ""
-    for key in ("command", "file_path", "notebook_path", "path", "url", "query", "pattern", "name"):
+    for key in _DETAIL_KEYS:
         value = tool_input.get(key)
         if isinstance(value, str) and value:
-            if key in ("file_path", "notebook_path", "path") and cwd and os.path.isabs(value):
-                try:
-                    relative = os.path.relpath(value, cwd)
-                except ValueError:   # 不在同一个盘
-                    relative = value
-                value = value if relative.startswith("..") else relative
-            return value[:500]
+            return (relative_path(value, cwd) if key in _PATH_KEYS else value)[:limit]
     return ""
 
 

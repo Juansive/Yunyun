@@ -114,7 +114,7 @@ def test_session_passes_requests_up_and_replies_down(session):
     process.say(protocol.ScreenshotRequest(1, "window"))
     assert requests == [protocol.ScreenshotRequest(1, "window")]
     reply = protocol.ScreenshotReply(1, True, "QUJD", "image/jpeg", 8, 6, "window")
-    session.answer_screenshot(reply)
+    session.answer(reply)
     assert process.sent == [reply]
 
 

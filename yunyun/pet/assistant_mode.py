@@ -576,7 +576,7 @@ class AssistantMode(QObject):
         else:
             target, data, width, height = result
             reply = protocol.ScreenshotReply(request.request_id, True, data, "image/jpeg", width, height, target)
-        self.session.answer_screenshot(reply)
+        self.session.answer(reply)
 
     def _on_open_app_requested(self, request):
         """打开软件（阶段 6，你已经在确认卡片上同意了）：在芸芸进程里打开（不在助手子进程里，见 assistant/apps.py），
@@ -584,7 +584,7 @@ class AssistantMode(QObject):
         ok, detail = apps.launch(request.app_id)
         if ok:
             self._pet.say(i18n.tr("assistant_open_app_said", request.name), self.OPEN_APP_SAY_MS)
-        self.session.answer_open_app(protocol.OpenAppReply(request.request_id, ok, detail))
+        self.session.answer(protocol.OpenAppReply(request.request_id, ok, detail))
 
     def _on_downloaded(self, event):
         """芸芸的浏览器下载好了一个文件（芸芸下的，或者你自己在那个窗口里点的）：气泡说一声在哪儿。"""

@@ -894,16 +894,6 @@ TEXTS = {
     # 芸芸被挡住时，任务栏上方的角落小条（pet/assistant_notice.py）
     "assistant_notice_confirm": {"zh": "{}：{}", "en": "{}: {}", "ja": "{}：{}"},   # 确认卡片的标题：目标
     "assistant_notice_done": {"zh": "芸芸：{}", "en": "Yunyun: {}", "ja": "芸芸：{}"},
-    "assistant_cost": {   # 这一轮花费、这次对话累计（美元）
-        "zh": "这一轮 ${:.4f} · 这次对话共 ${:.4f}",
-        "en": "This reply ${:.4f} · This chat ${:.4f}",
-        "ja": "今回 ${:.4f} · この会話の合計 ${:.4f}",
-    },
-    "assistant_cost_tokens": {   # 不按美元计费的服务商：输入 / 输出 token
-        "zh": "这一轮 {} / {} token（输入 / 输出）",
-        "en": "This reply {} / {} tokens (in / out)",
-        "ja": "今回 {} / {} トークン（入力 / 出力）",
-    },
     "assistant_new_chat": {"zh": "+ 新对话", "en": "+ New chat", "ja": "+ 新しい会話"},
     "assistant_new_chat_said": {"zh": "好，我们重新开始～", "en": "OK, let's start fresh!", "ja": "よし、新しく始めよう～"},
     "assistant_divider": {"zh": "新对话 · {}", "en": "New chat · {}", "ja": "新しい会話 · {}"},

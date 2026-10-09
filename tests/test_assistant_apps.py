@@ -210,7 +210,7 @@ def test_session_passes_open_app_requests_up_and_replies_down(session):
     assert session.progress == "正在打开软件…… 计算器"
     process.say(protocol.OpenAppRequest(1, "计算器", CALC))
     assert requests == [protocol.OpenAppRequest(1, "计算器", CALC)]
-    session.answer_open_app(protocol.OpenAppReply(1, True))
+    session.answer(protocol.OpenAppReply(1, True))
     assert process.sent == [protocol.OpenAppReply(1, True)]
 
 
