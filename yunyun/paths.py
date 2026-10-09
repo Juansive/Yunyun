@@ -27,3 +27,36 @@ def data_dir():
     """
     appdata = os.environ.get("APPDATA") or str(Path.home() / "AppData" / "Roaming")
     return Path(appdata) / "Yunyun" / "Yunyun"
+
+
+_FOLDERID_DOWNLOADS = "{374DE290-123F-4565-9164-39C4925E467B}"
+
+
+def downloads_dir():
+    """你的"下载"文件夹（阶段 6.2c：芸芸的浏览器下载的文件放这里）。问 Windows 要（你可能把它挪到了别的盘），
+    拿不到就用 ~/Downloads。（测试里 conftest 换成临时目录）"""
+    try:
+        import ctypes
+        import uuid
+        from ctypes import wintypes
+
+        class GUID(ctypes.Structure):
+            _fields_ = [("Data1", wintypes.DWORD), ("Data2", wintypes.WORD), ("Data3", wintypes.WORD),
+                        ("Data4", ctypes.c_ubyte * 8)]
+
+        raw = uuid.UUID(_FOLDERID_DOWNLOADS)
+        guid = GUID(raw.fields[0], raw.fields[1], raw.fields[2], (ctypes.c_ubyte * 8).from_buffer_copy(raw.bytes[8:]))
+        shell32, ole32 = ctypes.WinDLL("shell32"), ctypes.WinDLL("ole32")
+        shell32.SHGetKnownFolderPath.argtypes = [ctypes.POINTER(GUID), wintypes.DWORD, wintypes.HANDLE,
+                                                 ctypes.POINTER(ctypes.c_void_p)]
+        shell32.SHGetKnownFolderPath.restype = ctypes.HRESULT   # 失败时 ctypes 自己抛 OSError
+        ole32.CoTaskMemFree.argtypes = [ctypes.c_void_p]
+        ole32.CoTaskMemFree.restype = None
+        buffer = ctypes.c_void_p()
+        shell32.SHGetKnownFolderPath(ctypes.byref(guid), 0, None, ctypes.byref(buffer))
+        try:
+            return Path(ctypes.wstring_at(buffer.value))
+        finally:
+            ole32.CoTaskMemFree(buffer)
+    except (OSError, AttributeError, ValueError):
+        return Path.home() / "Downloads"

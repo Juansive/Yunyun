@@ -101,6 +101,7 @@ class AssistantMode(QObject):
     CONFIRM_SAY_MS = 15000        # 收起着时来了确认请求：气泡提醒多久
     SCREENSHOT_SAY_MS = 2500      # "我看一下屏幕哦"说多久
     OPEN_APP_SAY_MS = 3000        # "帮你打开「计算器」啦"说多久
+    DOWNLOADED_SAY_MS = 5000      # "下载好了：xxx（在"下载"文件夹里）"说多久
 
     def __init__(self, pet, cards, make_process=None, state=None):
         """cards：当前这段对话的卡片（从旧到新）；state：要记着的东西（"offset"：卡片组相对芸芸的偏移）。
@@ -161,6 +162,7 @@ class AssistantMode(QObject):
         self.session.compact_changed.connect(self._on_compact_changed)
         self.session.screenshot_requested.connect(self._on_screenshot_requested)
         self.session.open_app_requested.connect(self._on_open_app_requested)
+        self.session.downloaded.connect(self._on_downloaded)
         self.session.error_occurred.connect(self._on_error)
         self.notice.clicked.connect(self._on_notice_clicked)
         pet.cover_checked.connect(self._update_notice)   # 芸芸被挡住 / 露出来（约每 0.5 秒检查一次）
@@ -583,6 +585,10 @@ class AssistantMode(QObject):
         if ok:
             self._pet.say(i18n.tr("assistant_open_app_said", request.name), self.OPEN_APP_SAY_MS)
         self.session.answer_open_app(protocol.OpenAppReply(request.request_id, ok, detail))
+
+    def _on_downloaded(self, event):
+        """芸芸的浏览器下载好了一个文件（芸芸下的，或者你自己在那个窗口里点的）：气泡说一声在哪儿。"""
+        self._pet.say(i18n.tr("assistant_downloaded_said", event.name), self.DOWNLOADED_SAY_MS)
 
     def _on_compact_changed(self, turn):
         """大脑在整理 / 整理好了前面的对话：那一轮的卡片底行跟着变（整理的那一会儿不能撤销）。"""

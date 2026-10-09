@@ -747,6 +747,9 @@ TEXTS = {
                                     "ja": "ページに入力しています…"},
     "assistant_tool_browser_select": {"zh": "正在网页上选择……", "en": "Choosing on the page…",
                                       "ja": "ページで選んでいます…"},
+    "assistant_tool_browser_download": {"zh": "正在下载……", "en": "Downloading…", "ja": "ダウンロードしています…"},
+    "assistant_downloaded_said": {"zh": "下载好了：{}（在\"下载\"文件夹里）", "en": "Downloaded: {} (in your Downloads folder)",
+                                  "ja": "ダウンロードしたよ：{}（「ダウンロード」フォルダーにあります）"},
     # 打开软件（阶段 6）：打开后气泡说一声
     "assistant_open_app_said": {"zh": "帮你打开「{}」啦", "en": "Opened “{}” for you", "ja": "「{}」を開いたよ"},
     # 看屏幕（阶段 5）：截之前气泡说一声；操作记录里截的是哪里
@@ -800,6 +803,14 @@ TEXTS = {
     "assistant_confirm_web_select": {"zh": "芸芸想在网页上选一项", "en": "Yunyun wants to choose an option on a web page",
                                      "ja": "芸芸がページで項目を選ぼうとしています"},
     "assistant_confirm_web_enter": {"zh": "输入后按回车", "en": "Then press Enter", "ja": "入力後に Enter を押す"},
+    "assistant_confirm_web_download": {"zh": "芸芸想从网页下载一个文件", "en": "Yunyun wants to download a file",
+                                       "ja": "芸芸がファイルをダウンロードしようとしています"},
+    "assistant_confirm_download_to": {"zh": "存到：{}", "en": "Saved to: {}", "ja": "保存先：{}"},
+    "assistant_confirm_note_web_download": {
+        "zh": "下载每次都要问你。",
+        "en": "You'll be asked before every download.",
+        "ja": "ダウンロードは毎回確認します。",
+    },
     "assistant_confirm_note_web_risky": {
         "zh": "看起来是提交、下单、付款、发送、删除或者下载这类做了就撤不回的操作，所以每次都要问你。",
         "en": "This looks like submitting, ordering, paying, sending, deleting or downloading — things that can't be "
@@ -1009,6 +1020,7 @@ TEXTS = {
     "assistant_action_browser_click": {"zh": "网页点击", "en": "Web: click", "ja": "ページでクリック"},
     "assistant_action_browser_type": {"zh": "网页输入", "en": "Web: type", "ja": "ページに入力"},
     "assistant_action_browser_select": {"zh": "网页选择", "en": "Web: choose", "ja": "ページで選択"},
+    "assistant_action_browser_download": {"zh": "网页下载", "en": "Web: download", "ja": "ダウンロード"},
     "assistant_action_failed": {"zh": "（没成功）", "en": " (failed)", "ja": "（失敗）"},
     "assistant_decision_auto": {"zh": "不用问", "en": "No need to ask", "ja": "確認不要"},
     "assistant_decision_granted": {"zh": "之前允许过同类", "en": "Allowed earlier", "ja": "以前に許可済み"},

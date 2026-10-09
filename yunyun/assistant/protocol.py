@@ -181,7 +181,8 @@ class PermissionRequest:
 
     kind：permissions.KINDS 里的一种（界面按它显示说明）；can_remember：能不能选"这次对话都允许"，
     scope：那样的话管到哪里（命令开头 / 文件夹 / 网站）；danger：危险命令 / 敏感文件 / 撤不回的网页操作，要醒目地提醒；
-    element：网页操作时芸芸自己看到的那个元素（快照里那一行，比如 button "提交订单"；不是模型说的）。
+    element：网页操作时芸芸自己看到的那个元素（快照里那一行，比如 button "提交订单"；不是模型说的）；
+    link：下载时那个链接指向的网址（看得出来的话）。
     """
     TYPE: ClassVar[str] = "permission_request"
     request_id: int
@@ -193,6 +194,7 @@ class PermissionRequest:
     danger: bool = False
     tool_id: str = ""      # 是哪一次工具调用（和 ToolStarted 的 tool_id 一样；操作记录用）
     element: str = ""
+    link: str = ""
 
 
 @_message
@@ -237,7 +239,18 @@ BROWSER_BACK_TOOL = "mcp__yunyun__browser_back"
 BROWSER_CLICK_TOOL = "mcp__yunyun__browser_click"   # 6.2b：点击、输入、选下拉框（要问你）
 BROWSER_TYPE_TOOL = "mcp__yunyun__browser_type"
 BROWSER_SELECT_TOOL = "mcp__yunyun__browser_select"
-BROWSER_ACTION_TOOLS = (BROWSER_CLICK_TOOL, BROWSER_TYPE_TOOL, BROWSER_SELECT_TOOL)
+BROWSER_DOWNLOAD_TOOL = "mcp__yunyun__browser_download"   # 6.2c：点一下、把下载的文件存到你的"下载"文件夹（每次问）
+BROWSER_ACTION_TOOLS = (BROWSER_CLICK_TOOL, BROWSER_TYPE_TOOL, BROWSER_SELECT_TOOL, BROWSER_DOWNLOAD_TOOL)
+
+
+@_message
+class Downloaded:
+    """芸芸的浏览器下载好了一个文件（阶段 6.2c），存在你的"下载"文件夹里。name：文件名；path：完整路径；
+    by_user：是你自己在那个窗口里点的下载（芸芸照常帮你存好），不是芸芸用下载工具下的。"""
+    TYPE: ClassVar[str] = "downloaded"
+    name: str
+    path: str
+    by_user: bool = False
 
 
 @_message
@@ -338,4 +351,4 @@ ERROR_KINDS = (
 
 COMMANDS = (Ask, Interrupt, PermissionReply, Rewind, ScreenshotReply, OpenAppReply, Quit)
 EVENTS = (Ready, TextDelta, ToolStarted, ToolFinished, PermissionRequest, ToolDecision, ScreenshotRequest,
-          OpenAppRequest, BrowserChanged, TurnFinished, Compacting, Compacted, Rewound, Error)
+          OpenAppRequest, BrowserChanged, Downloaded, TurnFinished, Compacting, Compacted, Rewound, Error)

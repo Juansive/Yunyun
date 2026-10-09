@@ -1,5 +1,6 @@
 """芸芸的浏览器（阶段 6.2）：browser_open 打开网页、browser_read 读现在这一页、browser_back 后退——都不用问；
-browser_click 点击、browser_type 输入、browser_select 选下拉框（6.2b）——要问你（规则在 permissions.decide）。
+browser_click 点击、browser_type 输入、browser_select 选下拉框（6.2b）——要问你（规则在 permissions.decide）；
+browser_download 下载（6.2c）——每次问，存到你的"下载"文件夹。
 浏览器本身在 assistant/browser.py。
 
 交给模型的是"网址 + 标题 + 快照"；快照太长就分段，一次一段（PART_CHARS），模型要看后面的用 browser_read(part=2)。
@@ -49,6 +50,9 @@ TYPE_SCHEMA = {
                    "submit": {"type": "boolean", "description": "Press Enter afterwards (default false)"}},
     "required": ["ref", "text"],
 }
+DOWNLOAD = ("Download a file: click the element (a download link or button) and save what it downloads to the user's "
+            "Downloads folder. The user is asked every time. Use this instead of browser_click for downloads.")
+DOWNLOAD_SCHEMA = {"type": "object", "properties": {"ref": _REF_PROPERTY}, "required": ["ref"]}
 SELECT = "Choose option(s) in a drop-down list on the page in Yunyun's browser, by value or visible text. " + _ASKS
 SELECT_SCHEMA = {
     "type": "object",
@@ -137,4 +141,23 @@ def browser_tools(browser):
             return _text("Give at least one option to choose.", error=True)
         return await run(lambda: browser.select(str(args.get("ref") or ""), values))
 
-    return [browser_open, browser_read, browser_back, browser_click, browser_type, browser_select]
+    @tool("browser_download", DOWNLOAD, DOWNLOAD_SCHEMA)
+    async def browser_download(args):
+        try:
+            name, path, size = await browser.download(str(args.get("ref") or ""))
+        except BrowserError as e:
+            log.info("没下载成：%s", str(e)[:200])
+            return _text(f"Browser: {e}", error=True)
+        if size is None:
+            return _text(f"Still downloading \"{name}\"; it will be saved to {path} (Yunyun tells the user when it's done).")
+        return _text(f"Downloaded \"{name}\" ({_size(size)}) to the user's Downloads folder: {path}")
+
+    return [browser_open, browser_read, browser_back, browser_click, browser_type, browser_select, browser_download]
+
+
+def _size(size):
+    for unit in ("bytes", "KB", "MB"):
+        if size < 1024 or unit == "MB":
+            return f"{size} {unit}" if unit == "bytes" else f"{size:.1f} {unit}"
+        size /= 1024
+    return ""

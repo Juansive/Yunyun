@@ -76,6 +76,9 @@ def no_real_assistant(monkeypatch, tmp_path):
         raise RuntimeError("测试里不许真的开浏览器（要测就用 tools/try_browser.py）")
     monkeypatch.setattr(browser, "start_playwright", no_browser)
     monkeypatch.setattr(browser, "PROFILE_DIR", tmp_path / "assistant_browser")
+    # 下载（6.2c）：不往你真的"下载"文件夹里放东西
+    from yunyun import paths
+    monkeypatch.setattr(paths, "downloads_dir", lambda: tmp_path / "Downloads")
     yield
     apps.clear_cache()
 

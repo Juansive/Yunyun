@@ -18,12 +18,13 @@
 import html
 import os
 import re
+from urllib.parse import unquote
 
 from PySide6.QtCore import QRect, Qt, Signal
 from PySide6.QtGui import QColor, QGuiApplication
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton, QTextBrowser, QVBoxLayout, QWidget
 
-from yunyun import i18n
+from yunyun import i18n, paths
 from yunyun.pet.change_diff import change_html, proposed_change
 from yunyun.pet.side_panel import SidePanel
 
@@ -90,7 +91,7 @@ def title_key(request):
     return "assistant_confirm_other"
 
 
-WEB_KINDS = ("web_click", "web_type", "web_select")   # 网页上点击、输入、选择（阶段 6.2b）
+WEB_KINDS = ("web_click", "web_type", "web_select", "web_download")   # 网页上点击、输入、选择（6.2b）、下载（6.2c）
 WEB_ROLES = ("button", "link", "textbox", "searchbox", "combobox", "checkbox", "radio", "tab", "menuitem", "option",
              "switch", "listbox", "img")
 
@@ -105,6 +106,8 @@ def element_text(element):
 
 def note_key(request):
     """标题下面的一行说明（为什么每次都问）；没有就是 None。"""
+    if request.kind == "web_download":
+        return "assistant_confirm_note_web_download"
     if request.danger and request.kind in WEB_KINDS:
         return "assistant_confirm_note_web_risky"
     if request.danger and request.kind == "command":
@@ -142,6 +145,11 @@ def detail_html(request, workspace):
             values = data.get("values")
             values = [values] if isinstance(values, str) else values if isinstance(values, list) else []
             rows.append(f'<div {MONO}>{html.escape(" · ".join(str(v) for v in values))}</div>')
+        elif request.kind == "web_download":   # 链接指向哪里（看得出来的话）+ 存到哪里
+            if request.link:   # 网址里的中文是转码过的（%E8%AF%B4…）：还原了给人看
+                rows.append(f'<div {MONO}>{html.escape(unquote(request.link))}</div>')
+            rows.append(f'<div style="color:#6B7280;">'
+                        f'{html.escape(i18n.tr("assistant_confirm_download_to", str(paths.downloads_dir())))}</div>')
         return "".join(rows)
     path = show_path(str(data.get("file_path") or data.get("notebook_path") or data.get("path") or ""), workspace)
     head = f'<b>{html.escape(path)}</b>' if path else ""

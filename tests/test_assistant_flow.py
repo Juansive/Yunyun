@@ -130,6 +130,16 @@ def test_open_app_request_opens_it_in_yunyun_and_says_so(world, monkeypatch):
     assert process.sent[-1] == protocol.OpenAppReply(1, True)
 
 
+def test_download_finished_is_said_in_a_bubble(world, monkeypatch):
+    """芸芸的浏览器下载好了（芸芸下的，或者你自己在那个窗口里点的）：气泡说一声在"下载"文件夹里。"""
+    pet, _, processes = world
+    has_key(monkeypatch)
+    pet.open_assistant()
+    process = processes[0]
+    process.say(protocol.Ready("anthropic", "m"), protocol.Downloaded("报告.pdf", "C:\\D\\报告.pdf", True))
+    assert '下载好了：报告.pdf（在"下载"文件夹里）' in bubbles(pet)
+
+
 def test_failed_open_app_tells_the_brain(world, monkeypatch):
     from yunyun.assistant import apps
     pet, _, processes = world

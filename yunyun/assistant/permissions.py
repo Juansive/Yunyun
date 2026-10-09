@@ -19,6 +19,8 @@
   点击、输入、选下拉框（6.2b）：每次问，可以选"这次对话在这个网站都允许"（按网站记）；
   提交表单、下单、付款、发送、发布、删除、下载这类**做了就撤不回**的：每次问、标红、不给"都允许"（搜索不算）；
   密码、卡号、验证码这类输入框：一律拒绝，请用户自己在浏览器窗口里填。
+  下载（6.2c）：只能用下载工具，每次问、标红、不给"都允许"，存到你的"下载"文件夹；用普通点击去点下载链接直接拒绝
+  （叫模型改用下载工具——免得问两遍）。
   元素是什么由芸芸自己看网页得出（ElementFacts，claude_brain.PermissionGate 去问浏览器），不信模型的说法；
 - 别的工具一律拒绝（本来也没开，这里是兜底）。
 
@@ -32,8 +34,8 @@ from urllib.parse import urlsplit
 
 from yunyun.assistant.memory import NOTEBOOK_TOOLS
 from yunyun.assistant.protocol import (
-    BROWSER_ACTION_TOOLS, BROWSER_BACK_TOOL, BROWSER_CLICK_TOOL, BROWSER_OPEN_TOOL, BROWSER_READ_TOOL,
-    BROWSER_SELECT_TOOL, BROWSER_TYPE_TOOL, FIND_APP_TOOL, OPEN_APP_TOOL, SCREENSHOT_TOOL,
+    BROWSER_ACTION_TOOLS, BROWSER_BACK_TOOL, BROWSER_CLICK_TOOL, BROWSER_DOWNLOAD_TOOL, BROWSER_OPEN_TOOL,
+    BROWSER_READ_TOOL, BROWSER_SELECT_TOOL, BROWSER_TYPE_TOOL, FIND_APP_TOOL, OPEN_APP_TOOL, SCREENSHOT_TOOL,
 )
 
 ALLOW, ASK, DENY = "allow", "ask", "deny"
@@ -45,8 +47,9 @@ SHELL_TOOLS = ("Bash", "PowerShell")   # Windows 上有 Git Bash 时 Claude Code
 
 # 要问你的几种情况（界面按它显示说明）
 KINDS = ("read_outside", "edit", "edit_sensitive", "write_outside", "command", "screenshot", "open_app",
-         "web_click", "web_type", "web_select")
-WEB_KINDS = {BROWSER_CLICK_TOOL: "web_click", BROWSER_TYPE_TOOL: "web_type", BROWSER_SELECT_TOOL: "web_select"}
+         "web_click", "web_type", "web_select", "web_download")
+WEB_KINDS = {BROWSER_CLICK_TOOL: "web_click", BROWSER_TYPE_TOOL: "web_type", BROWSER_SELECT_TOOL: "web_select",
+             BROWSER_DOWNLOAD_TOOL: "web_download"}
 
 SENSITIVE_DIRS = (".git", ".claude")   # 工作文件夹里这些文件夹里的东西，改了可能让程序以后自动运行别的东西
 
@@ -62,6 +65,7 @@ class ElementFacts:
     search: bool = False    # 搜索框 / 搜索表单（搜索不算提交）
     sensitive: bool = False  # 密码、卡号、验证码这类输入框
     problem: str = ""       # 看不了这个元素（浏览器没开、编号过期了）：告诉模型的原因
+    link: str = ""          # 在链接里的话，链接指向哪里（下载时给你看；密码 / 令牌参数已经遮掉）
 
 
 # 做了就撤不回的：按钮上的字（短的才看，长的多半是一大块内容）
@@ -164,6 +168,11 @@ def _decide_web_action(tool, tool_input, grants, element):
     if tool == BROWSER_TYPE_TOOL and element.sensitive:
         return Decision(DENY, reason="This looks like a password, payment or verification-code field. Yunyun never "
                                      "types into these: ask the user to type it in the browser window themselves.")
+    if tool == BROWSER_DOWNLOAD_TOOL:   # 下载：每次问，不给"都允许"
+        return Decision(ASK, kind, scope=element.site, danger=True)
+    if tool == BROWSER_CLICK_TOOL and element.download:
+        return Decision(DENY, reason="This link downloads a file. Use browser_download with the same ref instead "
+                                     "(the user will be asked).")
     if is_risky(tool, tool_input, element):
         return Decision(ASK, kind, scope=element.site, danger=True)
     grant = ("web", element.site)

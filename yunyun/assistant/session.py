@@ -46,6 +46,7 @@ _TOOL_TEXT = {
     protocol.BROWSER_OPEN_TOOL: "assistant_tool_browser_open", protocol.BROWSER_READ_TOOL: "assistant_tool_browser_read",
     protocol.BROWSER_BACK_TOOL: "assistant_tool_browser_back", protocol.BROWSER_CLICK_TOOL: "assistant_tool_browser_click",
     protocol.BROWSER_TYPE_TOOL: "assistant_tool_browser_type", protocol.BROWSER_SELECT_TOOL: "assistant_tool_browser_select",
+    protocol.BROWSER_DOWNLOAD_TOOL: "assistant_tool_browser_download",
 }
 SETTINGS_ERRORS = {"no_key", "auth", "model", "budget", "reply_budget"}   # 这几种错误在设置页能改好（界面可以给个"去设置"）
 UNDO_NOTE = transcripts.UNDO_NOTE   # 历史对话读回来时要认出它、去掉它，所以放在 transcripts 里
@@ -130,6 +131,7 @@ class AssistantSession(QObject):
     compact_changed = Signal(object)  # 某一轮答完后的"整理前面的对话"开始了 / 做完了（Turn.compact）
     screenshot_requested = Signal(object)   # 大脑要看屏幕（protocol.ScreenshotRequest）：界面截好后调 answer_screenshot
     open_app_requested = Signal(object)     # 大脑要打开软件（protocol.OpenAppRequest，你已同意）：打开后调 answer_open_app
+    downloaded = Signal(object)             # 芸芸的浏览器下载好了一个文件（protocol.Downloaded）
 
     def __init__(self, parent=None, make_process=None):
         """make_process(语言, parent, resume=会话编号) → 和 AssistantProcess 一样的对象；不传就用 default_process。"""
@@ -370,6 +372,8 @@ class AssistantSession(QObject):
                 self.screenshot_requested.emit(event)
         elif isinstance(event, protocol.BrowserChanged):
             self.browser_open = event.open
+        elif isinstance(event, protocol.Downloaded):
+            self.downloaded.emit(event)
         elif isinstance(event, protocol.OpenAppRequest):
             if turn is None:   # 停下之后迟到的：不打开了
                 process.send(protocol.OpenAppReply(event.request_id, False, "The user stopped the task."))

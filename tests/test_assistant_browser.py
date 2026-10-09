@@ -121,6 +121,11 @@ class FakeLocator:
         if self.ref == "popup":                                          # 这个链接在新标签页打开
             new = await self.page.context.new_page()
             new.url, new._title = "https://a.com/new", "新标签页"
+        elif self.ref.startswith("dl"):                                  # 这个按钮会下载一个文件
+            self.page.start_download("报告.pdf")
+            if self.ref == "dlhub":                                      # Edge 第一次下载时自己开的下载列表
+                hub = await self.page.context.new_page()
+                hub.url = "edge://downloads-hub/"
 
     async def fill(self, text):
         self.page.done.append(("fill", self.ref, text))
@@ -132,6 +137,23 @@ class FakeLocator:
         self.page.done.append(("select", self.ref, values))
 
 
+class FakeDownload:
+    def __init__(self, name, fail=False):
+        self.suggested_filename, self.fail = name, fail
+        self.cancelled, self.saved_to = False, None
+
+    async def save_as(self, path):
+        await asyncio.sleep(0)
+        if self.cancelled or self.fail:
+            raise RuntimeError("Download was canceled")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("文件内容")
+        self.saved_to = path
+
+    async def cancel(self):
+        self.cancelled = True
+
+
 class FakePage:
     def __init__(self, context):
         self.context = context
@@ -139,9 +161,43 @@ class FakePage:
         self.snapshot, self.sensitive, self.broken = "- generic [ref=e1]", set(), set()
         self.facts, self.done, self.visible = {}, [], True
         self.history = []
+        self.handlers = {}
+        self.waiting_download = None   # expect_download 正在等的
 
     def is_closed(self):
         return self.closed
+
+    def on(self, event, handler):
+        self.handlers[event] = handler
+
+    def start_download(self, name):
+        """网页开始下载 name：expect_download 在等就交给它；浏览器的 download 事件照样发。"""
+        download = FakeDownload(name)
+        if self.waiting_download is not None and not self.waiting_download.done():
+            self.waiting_download.set_result(download)
+        self.handlers["download"](download)
+        return download
+
+    def expect_download(self, timeout=None):
+        page = self
+
+        class Waiting:
+            async def __aenter__(self):
+                page.waiting_download = asyncio.get_running_loop().create_future()
+                return self
+
+            async def __aexit__(self, *exc):
+                return False
+
+            @property
+            def value(self):
+                async def wait():
+                    try:
+                        return await asyncio.wait_for(page.waiting_download, 0.2)
+                    except asyncio.TimeoutError:
+                        raise TimeoutError("Timeout 15000ms exceeded while waiting for event \"download\"")
+                return wait()
+        return Waiting()
 
     async def evaluate(self, script):
         assert script == "document.visibilityState"
@@ -195,6 +251,8 @@ class FakeContext:
     async def new_page(self):
         page = FakePage(self)
         self.pages.append(page)
+        if "page" in self.handlers:
+            self.handlers["page"](page)
         return page
 
     async def close(self):
@@ -251,7 +309,7 @@ def test_browser_opens_lazily_with_its_own_visible_edge(fake_playwright, tmp_pat
     user_data_dir, options, _ = fake_playwright[0]
     assert user_data_dir == str(tmp_path / "profile") and (tmp_path / "profile").is_dir()
     assert options["channel"] == "msedge" and options["headless"] is False   # 系统 Edge，窗口看得见
-    assert options["accept_downloads"] is False                              # 下载等 6.2c
+    assert options["accept_downloads"] is True                               # 下载由芸芸自己管（6.2c）
 
 
 def test_snapshot_hides_sensitive_values(fake_playwright, tmp_path):
@@ -342,6 +400,10 @@ class StubBrowser:
 
     def select(self, ref, values):
         return self._answer(("select", ref, values))
+
+    async def download(self, ref):
+        await self._answer(("download", ref))
+        return "a.zip", "C:\\D\\a.zip", 3
 
 
 def call(stub, name, args):
@@ -443,7 +505,10 @@ def facts(**kw):
     (CLICK, {"ref": "e5"}, facts(), (("web", "taobao.com"),), (ASK, "web_click", True, False)),   # 别的网站不算
     # 撤不回的：每次问、标红、不给"都允许"——就算这个网站已经"都允许"了
     (CLICK, {"ref": "e5"}, facts(submit=True), (("web", SITE),), (ASK, "web_click", False, True)),
-    (CLICK, {"ref": "e5"}, facts(download=True), (("web", SITE),), (ASK, "web_click", False, True)),
+    (CLICK, {"ref": "e5"}, facts(download=True), (("web", SITE),), (DENY, "", False, False)),   # 下载要用下载工具
+    (protocol.BROWSER_DOWNLOAD_TOOL, {"ref": "e5"}, facts(download=True), (("web", SITE),),
+     (ASK, "web_download", False, True)),                                                      # 下载：每次问、不给都允许
+    (protocol.BROWSER_DOWNLOAD_TOOL, {"ref": "e5"}, facts(), (), (ASK, "web_download", False, True)),
     (CLICK, {"ref": "e5"}, facts(label="立即购买"), (("web", SITE),), (ASK, "web_click", False, True)),
     (CLICK, {"ref": "e5"}, facts(label="Place order"), (), (ASK, "web_click", False, True)),
     (CLICK, {"ref": "e5"}, facts(label="删除这条评论"), (), (ASK, "web_click", False, True)),
@@ -704,3 +769,147 @@ def test_confirm_card_for_web_actions(qapp, monkeypatch):
     assert "&lt;b&gt;猫&lt;/b&gt;" in html and "输入后按回车" in html and "搜索框「搜索」" in html
     choosing = web_request("web_select", SELECT, {"ref": "e8", "values": ["甲", "乙"]}, element='combobox "城市"')
     assert "甲 · 乙" in card.detail_html(choosing, "")
+
+
+# ================= 6.2c：下载 =================
+
+from yunyun import paths  # noqa: E402
+from yunyun.assistant.browser import safe_name, unique_path  # noqa: E402
+
+
+@pytest.mark.parametrize("given, expected", [
+    ("报告.pdf", "报告.pdf"),
+    ("..\\..\\Windows\\evil.exe", "evil.exe"),                # 不许带路径
+    ("a/b/c.zip", "c.zip"),
+    ('what?"is<this>.txt', "what__is_this_.txt"),
+    ("CON.txt", "download_CON.txt"),                          # Windows 的保留名
+    ("", "download"), ("...", "download"),
+    ("x" * 300 + ".zip", "x" * 140 + ".zip"),
+])
+def test_safe_name(given, expected):
+    assert safe_name(given) == expected
+
+
+def test_unique_path_numbers_like_a_browser(tmp_path):
+    assert unique_path(tmp_path, "a.zip") == tmp_path / "a.zip"
+    (tmp_path / "a.zip").write_text("1")
+    (tmp_path / "a (1).zip").write_text("2")
+    assert unique_path(tmp_path, "a.zip") == tmp_path / "a (2).zip"
+
+
+def test_download_saves_to_the_downloads_folder(fake_playwright, tmp_path):
+    downloads = []
+    browser = Browser(profile_dir=tmp_path / "profile",
+                      on_download=lambda name, path, by_user: downloads.append((name, path, by_user)))
+
+    async def main():
+        await browser.open("https://a.com")
+        (paths.downloads_dir()).mkdir(parents=True, exist_ok=True)
+        (paths.downloads_dir() / "报告.pdf").write_text("旧的")
+        return await browser.download("dl1")
+    name, path, size = asyncio.run(main())
+    assert name == "报告 (1).pdf" and path == str(paths.downloads_dir() / "报告 (1).pdf") and size > 0   # 不覆盖旧的
+    assert downloads == [("报告 (1).pdf", path, False)]
+
+
+def test_download_that_never_starts(fake_playwright, tmp_path):
+    browser = Browser(profile_dir=tmp_path)
+
+    async def main():
+        await browser.open("https://a.com")
+        with pytest.raises(BrowserError, match="didn't start a download"):
+            await browser.download("e1")
+    asyncio.run(main())
+
+
+def test_downloads_from_yunyuns_clicks_are_cancelled_and_reported(fake_playwright, tmp_path, monkeypatch):
+    monkeypatch.setattr(browser_module, "AFTER_ACTION_S", 0)
+    downloads = []
+    browser = Browser(profile_dir=tmp_path, on_download=lambda *a: downloads.append(a))
+
+    async def main():
+        await browser.open("https://a.com")
+        view = await browser.click("dl2")                 # 看不出是下载的按钮，点了却开始下载
+        page = fake_playwright[0][2].pages[0]
+        late = page.start_download("晚到的.zip")           # 点完一会儿才开始的：也算芸芸点出来的
+        await asyncio.sleep(0)
+        return view, late
+    view, late = asyncio.run(main())
+    assert "cancelled" in view.note and "browser_download" in view.note and "报告.pdf" in view.note
+    assert late.cancelled and downloads == []
+    assert not (paths.downloads_dir() / "报告.pdf").exists()
+
+
+def test_edges_own_download_list_is_not_a_new_tab(fake_playwright, tmp_path, monkeypatch):
+    """Edge 第一次下载时会开一个 edge://downloads-hub/：不跟过去，之后读的还是原来的网页（try_browser.py 实测发现的）。"""
+    monkeypatch.setattr(browser_module, "AFTER_ACTION_S", 0)
+    browser = Browser(profile_dir=tmp_path)
+
+    async def main():
+        await browser.open("https://a.com")
+        view = await browser.click("dlhub")
+        return view, await browser.read()
+    view, after = asyncio.run(main())
+    assert "new tab" not in view.note and after.url == "https://a.com"
+
+
+def test_downloads_the_user_clicks_are_saved(fake_playwright, tmp_path, monkeypatch):
+    downloads = []
+    browser = Browser(profile_dir=tmp_path, on_download=lambda *a: downloads.append(a))
+
+    async def main():
+        await browser.open("https://a.com")
+        browser._acted_at = 0                              # 芸芸好一会儿没动了：这是你自己在窗口里点的
+        page = fake_playwright[0][2].pages[0]
+        download = page.start_download("我自己点的.zip")
+        for _ in range(5):
+            await asyncio.sleep(0)
+        return download
+    download = asyncio.run(main())
+    target = paths.downloads_dir() / "我自己点的.zip"
+    assert download.saved_to == str(target) and target.exists()
+    assert downloads == [("我自己点的.zip", str(target), True)]
+
+
+def test_download_tool_results():
+    class Downloads(StubBrowser):
+        def __init__(self, size):
+            super().__init__()
+            self.size = size
+
+        async def download(self, ref):
+            return "a.zip", "C:\\D\\a.zip", self.size
+    assert "Downloaded \"a.zip\" (2.0 MB)" in call(Downloads(2 * 1024 * 1024), "browser_download", {"ref": "e1"})[1]
+    assert "Still downloading" in call(Downloads(None), "browser_download", {"ref": "e1"})[1]
+    error, text = call(StubBrowser(fail="Clicking it didn't start a download."), "browser_download", {"ref": "e1"})
+    assert error and "didn't start" in text
+
+
+def test_gate_download_shows_the_link_and_is_never_remembered():
+    _, events, _, gate = run_gate(facts(download=True, link="https://a.com/f.zip"), tool=protocol.BROWSER_DOWNLOAD_TOOL,
+                                  grants={("web", SITE)},
+                                  answer=lambda r: protocol.PermissionReply(r.request_id, True, "", True))
+    request = next(e for e in events if isinstance(e, protocol.PermissionRequest))
+    assert (request.kind, request.link, request.can_remember, request.danger) == (
+        "web_download", "https://a.com/f.zip", False, True)
+    assert gate.grants == {("web", SITE)}                                   # 没有多记什么
+
+
+def test_confirm_card_for_downloads(qapp, monkeypatch):
+    from yunyun.pet import assistant_confirm as card
+    monkeypatch.setattr(i18n, "_current", "zh")
+    request = protocol.PermissionRequest(1, protocol.BROWSER_DOWNLOAD_TOOL, {"ref": "e5"}, "web_download", False, SITE,
+                                         True, "t", 'link "下载安装包"', "https://a.com/%E5%AE%89%E8%A3%85.exe")
+    assert i18n.tr(card.title_key(request)) == "芸芸想从网页下载一个文件"
+    html = card.detail_html(request, "")
+    assert "链接「下载安装包」" in html and "https://a.com/安装.exe" in html and str(paths.downloads_dir()) in html
+    assert card.note_key(request) == "assistant_confirm_note_web_download" and card.remember_text(request) == ""
+
+
+def test_session_passes_downloads_up(session):
+    got = []
+    session.downloaded.connect(got.append)
+    session.ask("下载那个文件")
+    process = session.processes[0]
+    process.say(protocol.Ready("anthropic", "m"), protocol.Downloaded("a.zip", "C:\\D\\a.zip"))
+    assert got == [protocol.Downloaded("a.zip", "C:\\D\\a.zip")]

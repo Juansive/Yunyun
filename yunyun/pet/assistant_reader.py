@@ -99,6 +99,7 @@ _ACTION_VERBS = {
     protocol.BROWSER_BACK_TOOL: "assistant_action_browser_back",
     protocol.BROWSER_CLICK_TOOL: "assistant_action_browser_click", protocol.BROWSER_TYPE_TOOL: "assistant_action_browser_type",
     protocol.BROWSER_SELECT_TOOL: "assistant_action_browser_select",
+    protocol.BROWSER_DOWNLOAD_TOOL: "assistant_action_browser_download",
 }
 _DECISION_COLORS = {"auto": "#8A94A6", "granted": "#2E7D32", "allowed": "#2E7D32", "remembered": "#2E7D32",
                     "denied": "#C62828", "blocked": "#C62828", "stopped": "#B7791F"}

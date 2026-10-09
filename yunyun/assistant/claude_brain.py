@@ -243,7 +243,8 @@ class PermissionGate:
         self._pending[request_id] = (future, decision)
         self._emit(protocol.PermissionRequest(
             request_id, tool, tool_input if isinstance(tool_input, dict) else {}, decision.kind,
-            bool(decision.grant), decision.scope, decision.danger, tool_id, element.element if element else ""))
+            bool(decision.grant), decision.scope, decision.danger, tool_id, element.element if element else "",
+            element.link if element and tool == protocol.BROWSER_DOWNLOAD_TOOL else ""))
         try:
             reply = await future
         finally:
@@ -547,7 +548,8 @@ class ClaudeBrain:
         )
         self.compacting = False   # 正在整理前面的对话（worker 据此把这时来的提问排到整理之后）
         # 芸芸的浏览器（阶段 6.2）：第一次用时才打开；开 / 关告诉芸芸（开着时不闲置释放）
-        self.browser = Browser(on_change=lambda is_open: emit(protocol.BrowserChanged(is_open)))
+        self.browser = Browser(on_change=lambda is_open: emit(protocol.BrowserChanged(is_open)),
+                               on_download=lambda name, path, by_user: emit(protocol.Downloaded(name, path, by_user)))
         self.gate = PermissionGate(settings.workspace or WORKSPACE, emit, ask_screenshot=settings.screenshot_ask,
                                    browser=self.browser)
         self.bridge = Bridge(emit)   # 请芸芸进程截图、打开软件（服务商看不了图片就没有截图工具，见 build_options）
