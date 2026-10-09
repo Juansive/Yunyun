@@ -3,7 +3,6 @@
 大脑用 tests/fake_assistant_process.py（不开子进程）；最后一个用真的 AssistantProcess + 假 worker 测"芸芸退出时等子进程退出"。
 """
 import sys
-import time
 from pathlib import Path
 
 import pytest
@@ -26,16 +25,9 @@ from yunyun.pet.menu import FancyAction
 from yunyun.pet.sprites import load_sprites
 from yunyun.pet.state import PetState, StateMachine
 from yunyun.pet.window import PetWindow
+from helpers import wait_until
 
 FAKE_WORKER = Path(__file__).with_name("fake_assistant_worker.py")
-
-
-def wait_until(qapp, condition, timeout=10.0):
-    end = time.time() + timeout
-    while not condition() and time.time() < end:
-        qapp.processEvents()
-        time.sleep(0.01)
-    return condition()
 
 
 @pytest.fixture

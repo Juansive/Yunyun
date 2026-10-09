@@ -1,20 +1,12 @@
 """邮件服务的测试：检查 / 读取都用假的函数代替，不联网。"""
-import time
 
 from yunyun.mail import service as service_module
 from yunyun.mail.imap_client import MailAccount, MailboxStatus, MailError
 from yunyun.mail.message import MailMessage
 from yunyun.mail.tracker import MailTracker
+from helpers import wait_until
 
 A = MailAccount("QQ邮箱", "qq", "me@qq.com")
-
-
-def wait_until(qapp, condition, timeout=3.0):
-    end = time.time() + timeout
-    while not condition() and time.time() < end:
-        qapp.processEvents()
-        time.sleep(0.01)
-    return condition()
 
 
 def make_service(qapp, tmp_path, monkeypatch, mailbox):

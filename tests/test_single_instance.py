@@ -1,18 +1,10 @@
 """单实例的测试（用测试专用的通道名，不会影响正在运行的芸芸）。"""
 import subprocess
 import sys
-import time
 import uuid
 
 from yunyun import single_instance
-
-
-def wait_until(qapp, condition, timeout=3.0):
-    end = time.time() + timeout
-    while not condition() and time.time() < end:
-        qapp.processEvents()
-        time.sleep(0.01)
-    return condition()
+from helpers import wait_until
 
 
 def test_nobody_running(qapp):

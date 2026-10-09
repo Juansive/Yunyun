@@ -5,13 +5,11 @@ import asyncio
 
 import pytest
 
-from fake_assistant_process import FakeProcess
 from yunyun import i18n
 from yunyun.assistant import browser as browser_module
 from yunyun.assistant import permissions, proctree, protocol
 from yunyun.assistant.browser import HIDDEN, Browser, BrowserError, PageView, describe, mask_values, valued_refs
 from yunyun.assistant.permissions import ALLOW, DENY, browser_url
-from yunyun.assistant.session import AssistantSession
 from yunyun.assistant.tools.browser import browser_tools, page_text, split_parts
 
 
@@ -449,17 +447,6 @@ def test_brain_has_the_browser_tools_and_says_so():
 
 
 # ---------- 会话、总管 ----------
-
-@pytest.fixture
-def session(qapp, monkeypatch):
-    monkeypatch.setattr(i18n, "_current", "zh")
-    processes = []
-    s = AssistantSession(make_process=lambda language, parent, resume="": processes.append(
-        FakeProcess(language, parent, resume)) or processes[-1])
-    s.processes = processes
-    yield s
-    s.close()
-
 
 def test_session_knows_whether_the_browser_is_open(session):
     session.ask("打开 example.com")

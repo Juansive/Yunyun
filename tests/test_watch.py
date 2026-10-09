@@ -6,7 +6,6 @@ import json
 import os
 import subprocess
 import sys
-import time
 import uuid
 
 import pytest
@@ -15,14 +14,6 @@ from yunyun.watch import relay
 from yunyun.watch.server import WatchEvent, WatchServer, parse
 
 RELAY = os.path.abspath(relay.__file__)
-
-
-def wait_until(qapp, condition, timeout=10.0):
-    end = time.time() + timeout
-    while not condition() and time.time() < end:
-        qapp.processEvents()
-        time.sleep(0.01)
-    return condition()
 
 
 # ---------- hook 脚本：要发什么 ----------
@@ -276,6 +267,7 @@ def test_reminder_without_a_project():
 from PySide6.QtWidgets import QMessageBox  # noqa: E402
 
 from yunyun.pet.watch_page import WatchPage  # noqa: E402
+from helpers import wait_until
 
 
 def test_page_connects_and_disconnects(qapp, monkeypatch):

@@ -4,14 +4,12 @@
 import asyncio
 import base64
 
-import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QImage
 
-from fake_assistant_process import FakeProcess
 from yunyun import i18n
 from yunyun.assistant import protocol
-from yunyun.assistant.session import Action, AssistantSession
+from yunyun.assistant.session import Action
 from yunyun.assistant.tools import bridge as bridge_module
 from yunyun.assistant.tools.bridge import Bridge
 from yunyun.assistant.tools.screen import screen_tools
@@ -91,17 +89,6 @@ def test_encode_shrinks_big_screens_to_a_jpeg(qapp):
 
 
 # ---------- 会话 ----------
-
-@pytest.fixture
-def session(qapp, monkeypatch):
-    monkeypatch.setattr(i18n, "_current", "zh")
-    processes = []
-    s = AssistantSession(make_process=lambda language, parent, resume="": processes.append(
-        FakeProcess(language, parent, resume)) or processes[-1])
-    s.processes = processes
-    yield s
-    s.close()
-
 
 def test_session_passes_requests_up_and_replies_down(session):
     requests = []

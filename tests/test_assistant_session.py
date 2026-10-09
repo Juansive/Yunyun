@@ -3,7 +3,6 @@
 大部分用 tests/fake_assistant_process.py（纯 Qt 对象，测试决定事件顺序）；最后一个用真的 AssistantProcess + 假 worker。
 """
 import sys
-import time
 from pathlib import Path
 
 import pytest
@@ -12,17 +11,10 @@ from shiboken6 import isValid
 from fake_assistant_process import FakeProcess
 from yunyun import i18n
 from yunyun.assistant import protocol
-from yunyun.assistant.session import AssistantSession, Turn, error_text
+from yunyun.assistant.session import AssistantSession, error_text
+from helpers import wait_until
 
 FAKE_WORKER = Path(__file__).with_name("fake_assistant_worker.py")
-
-
-def wait_until(qapp, condition, timeout=10.0):
-    end = time.time() + timeout
-    while not condition() and time.time() < end:
-        qapp.processEvents()
-        time.sleep(0.01)
-    return condition()
 
 
 @pytest.fixture

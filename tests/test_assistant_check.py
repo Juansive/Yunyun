@@ -1,6 +1,5 @@
 """设置窗口的"测试连接"：小进程里的 check()（官方 SDK 换成假的）和芸芸这头的 KeyCheck（用假的小进程）。不联网、不花钱。"""
 import sys
-import time
 from pathlib import Path
 
 import anthropic
@@ -11,6 +10,7 @@ from yunyun.assistant import check as check_module
 from yunyun.assistant import process as assistant_process
 from yunyun.assistant import protocol
 from yunyun.assistant.process import KeyCheck
+from helpers import wait_until
 
 FAKE_CHECK = Path(__file__).with_name("fake_assistant_check.py")
 REQUEST = httpx2.Request("GET", "https://api.anthropic.com/v1/models/claude-haiku-4-5")
@@ -201,13 +201,6 @@ def test_get_json_network_and_ok(monkeypatch):
 
 
 # ---------- 芸芸这头的 KeyCheck（用假的小进程） ----------
-
-def wait_until(qapp, condition, timeout=10.0):
-    end = time.time() + timeout
-    while not condition() and time.time() < end:
-        qapp.processEvents()
-        time.sleep(0.01)
-    return condition()
 
 
 def run_check(qapp, model, key="sk-ant-test"):

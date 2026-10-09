@@ -16,16 +16,9 @@ from yunyun.notify.history import MailHistory
 from yunyun.pet.sprites import load_sprites
 from yunyun.pet.state import PetState, StateMachine
 from yunyun.pet.window import PetWindow
+from helpers import wait_until
 
 A = MailAccount("QQ邮箱", "qq", "me@qq.com")
-
-
-def wait_until(qapp, condition, timeout=5.0):
-    end = time.time() + timeout
-    while not condition() and time.time() < end:
-        qapp.processEvents()
-        time.sleep(0.01)
-    return condition()
 
 
 @pytest.fixture

@@ -6,11 +6,9 @@ import asyncio
 import pytest
 
 from conftest import FAKE_APPS
-from fake_assistant_process import FakeProcess
 from yunyun import i18n
 from yunyun.assistant import apps, permissions, protocol
 from yunyun.assistant.permissions import ALLOW, ASK, DENY
-from yunyun.assistant.session import AssistantSession
 from yunyun.assistant.tools.apps import app_tools
 from yunyun.assistant.tools.bridge import Bridge
 from yunyun.pet import assistant_confirm
@@ -189,17 +187,6 @@ def test_tool_names_match_the_protocol():
 
 
 # ---------- 会话、确认卡片 ----------
-
-@pytest.fixture
-def session(qapp, monkeypatch):
-    monkeypatch.setattr(i18n, "_current", "zh")
-    processes = []
-    s = AssistantSession(make_process=lambda language, parent, resume="": processes.append(
-        FakeProcess(language, parent, resume)) or processes[-1])
-    s.processes = processes
-    yield s
-    s.close()
-
 
 def test_session_passes_open_app_requests_up_and_replies_down(session):
     requests = []

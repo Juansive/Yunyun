@@ -28,6 +28,21 @@ def isolate_user_data(tmp_path, monkeypatch):
     monkeypatch.setattr(service, "IDLE_ENABLED", False)   # 也不许真的去连邮箱做实时接收
 
 
+@pytest.fixture
+def session(qapp, monkeypatch):
+    """一次助手会话（中文界面），子进程是假的（tests/fake_assistant_process.py）：session.processes 是开过的假子进程。"""
+    from fake_assistant_process import FakeProcess
+    from yunyun import i18n
+    from yunyun.assistant.session import AssistantSession
+    monkeypatch.setattr(i18n, "_current", "zh")
+    processes = []
+    s = AssistantSession(make_process=lambda language, parent, resume="": processes.append(
+        FakeProcess(language, parent, resume)) or processes[-1])
+    s.processes = processes
+    yield s
+    s.close()
+
+
 FAKE_SCREENSHOT = "ZmFrZSBzY3JlZW5zaG90"   # 假截图的 base64（"fake screenshot"）
 
 

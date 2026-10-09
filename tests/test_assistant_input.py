@@ -1,5 +1,4 @@
 """助手模式的输入框（pet/assistant_input.py）和"边说边改字"的气泡（pet/bubble.py）。"""
-import time
 
 import pytest
 from PySide6.QtCore import QEvent, QRect, Qt
@@ -9,14 +8,7 @@ from PySide6.QtWidgets import QApplication, QWidget
 from yunyun import i18n
 from yunyun.pet.assistant_input import AssistantInput
 from yunyun.pet.bubble import BubbleStack, bubble_font, elide_lines
-
-
-def wait_until(qapp, condition, timeout=5.0):
-    end = time.time() + timeout
-    while not condition() and time.time() < end:
-        qapp.processEvents()
-        time.sleep(0.01)
-    return condition()
+from helpers import wait_until
 
 
 @pytest.fixture

@@ -7,8 +7,6 @@
   2026-10-08 摸底：进程内 MCP 工具返回的 {"type": "image"} 会变成工具结果里的 image 块，两家都一样。
 """
 import asyncio
-import base64
-import json
 import shutil
 import tempfile
 from pathlib import Path

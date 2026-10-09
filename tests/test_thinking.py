@@ -1,7 +1,7 @@
 """思考状态和小红点"转圈"的测试。"""
 import time
 
-from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
+from PySide6.QtCore import QEvent, QPointF, Qt
 from PySide6.QtGui import QMouseEvent
 
 from yunyun.pet.badge import Badge

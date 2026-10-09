@@ -1,6 +1,5 @@
 """助手模式的确认卡片（pet/assistant_confirm.py）：每种请求显示什么、按钮发出什么回答。"""
 import os
-import time
 
 import pytest
 from PySide6.QtCore import QEvent, QRect, Qt
@@ -11,16 +10,9 @@ from yunyun import i18n
 from yunyun.assistant.protocol import PermissionRequest
 from yunyun.assistant.transcripts import relative_path
 from yunyun.pet.assistant_confirm import AssistantConfirm, detail_html, note_key, remember_text, title_key
+from helpers import wait_until
 
 WS = "F:\\proj"
-
-
-def wait_until(qapp, condition, timeout=5.0):
-    end = time.time() + timeout
-    while not condition() and time.time() < end:
-        qapp.processEvents()
-        time.sleep(0.01)
-    return condition()
 
 
 def request(tool="Bash", data=None, kind="command", can_remember=True, scope="pytest", danger=False, request_id=1):

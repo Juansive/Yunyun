@@ -1,5 +1,4 @@
 """助手模式的卡片堆（pet/assistant_deck.py）。"""
-import time
 from datetime import datetime
 
 import pytest
@@ -9,14 +8,7 @@ from PySide6.QtWidgets import QWidget
 
 from yunyun import i18n
 from yunyun.pet.assistant_deck import AssistantCard, AssistantDeck, context_status, token_amount
-
-
-def wait_until(qapp, condition, timeout=5.0):
-    end = time.time() + timeout
-    while not condition() and time.time() < end:
-        qapp.processEvents()
-        time.sleep(0.01)
-    return condition()
+from helpers import wait_until
 
 
 def turn(question, answer="回答", **kw):

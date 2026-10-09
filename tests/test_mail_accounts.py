@@ -7,6 +7,7 @@ from yunyun import config as cfg
 from yunyun.mail import accounts
 from yunyun.mail.imap_client import MailAccount, MailError
 from yunyun.pet import mail_page
+from helpers import wait_until
 
 QQ = MailAccount(name="QQ邮箱", provider="qq", address="me@qq.com")
 
@@ -36,14 +37,6 @@ def test_other_config_sections_are_kept(fake_store):
 
 
 # ---------- 窗口 ----------
-
-def wait_until(qapp, condition, timeout=3.0):
-    """处理事件循环，直到条件成立（后台线程的结果要靠事件循环送回主线程）。"""
-    end = time.time() + timeout
-    while not condition() and time.time() < end:
-        qapp.processEvents()
-        time.sleep(0.01)
-    return condition()
 
 
 def make_dialog(qapp, monkeypatch, login_error=None):

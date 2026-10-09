@@ -9,16 +9,9 @@ from yunyun.assistant import process as assistant_process
 from yunyun.assistant import protocol
 from yunyun.assistant.process import AssistantProcess
 from yunyun.assistant.process import subprocess_command as real_subprocess_command   # import 时拿到的是真的（conftest 之后才拦截）
+from helpers import wait_until
 
 FAKE_WORKER = Path(__file__).with_name("fake_assistant_worker.py")
-
-
-def wait_until(qapp, condition, timeout=10.0):
-    end = time.time() + timeout
-    while not condition() and time.time() < end:
-        qapp.processEvents()
-        time.sleep(0.01)
-    return condition()
 
 
 def start_fake(qapp, *flags):

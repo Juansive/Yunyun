@@ -1,5 +1,4 @@
 """助手模式的阅读框（pet/assistant_reader.py）。剪贴板用假的，不动用户真实的剪贴板。"""
-import time
 from datetime import datetime
 
 import pytest
@@ -11,6 +10,7 @@ from yunyun import i18n
 from yunyun.pet import assistant_reader
 from yunyun.pet.assistant_deck import AssistantCard
 from yunyun.pet.assistant_reader import CODE_BACKGROUND, AssistantReader, code_groups
+from helpers import wait_until
 
 ANSWER = """有两种写法：
 
@@ -25,14 +25,6 @@ print(nums[::-1])
 nums.reverse()
 ```
 """
-
-
-def wait_until(qapp, condition, timeout=5.0):
-    end = time.time() + timeout
-    while not condition() and time.time() < end:
-        qapp.processEvents()
-        time.sleep(0.01)
-    return condition()
 
 
 def card(question="怎么倒序？", answer=ANSWER, **kw):
