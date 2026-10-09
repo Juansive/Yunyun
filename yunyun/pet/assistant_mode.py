@@ -636,6 +636,8 @@ class AssistantMode(QObject):
     def _on_idle(self):
         if self.busy or self.session.rewinding or self.session.compacting:   # 还在回答 / 撤销 / 整理：等它做完再算
             self._idle_timer.start()
+        elif self.session.browser_open:   # 芸芸的浏览器开着（你可能正在看）：释放大脑会把它一起关掉，等你关了窗口再说
+            self._idle_timer.start()
         elif not self.input.is_open and self.session.process is not None:
             # 只释放大脑（约 300 MB），卡片照常显示；再唤出时接着这段对话聊（resume）
             self._resume_next = self.session.session_id

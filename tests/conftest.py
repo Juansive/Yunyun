@@ -69,6 +69,13 @@ def no_real_assistant(monkeypatch, tmp_path):
     monkeypatch.setattr(apps, "_query_start_apps", lambda: [dict(item) for item in FAKE_APPS])
     monkeypatch.setattr(apps, "_startfile", opened.append)
     monkeypatch.setattr(apps, "opened", opened, raising=False)
+    # 芸芸的浏览器（阶段 6.2）：绝不真的启动 Playwright / Edge；配置文件夹也在临时目录
+    from yunyun.assistant import browser
+
+    def no_browser():
+        raise RuntimeError("测试里不许真的开浏览器（要测就用 tools/try_browser.py）")
+    monkeypatch.setattr(browser, "start_playwright", no_browser)
+    monkeypatch.setattr(browser, "PROFILE_DIR", tmp_path / "assistant_browser")
     yield
     apps.clear_cache()
 

@@ -6,7 +6,7 @@ sleep.exe 的"父进程"是个早就退出的进程号——顺着进程树根�
 
 做法：**作业对象（Job Object）**。助手子进程一启动大脑就把自己放进一个作业（guard_this_process），之后它开的所有子孙进程
 （claude.exe、bash、sleep……）都自动在这个作业里，不管中间的父进程还在不在。停止时（stop_commands）把作业里
-除了"助手子进程自己、claude.exe、它们的控制台宿主 conhost"以外的都结束掉。
+除了"助手子进程自己、claude.exe、它们的控制台宿主 conhost、芸芸的浏览器（驱动 node.exe 和 Edge）"以外的都结束掉。
 顺带的兜底（计划 1.8）：作业设了 KILL_ON_JOB_CLOSE，助手子进程退出或被强行结束时，作业里剩下的进程全部跟着结束。
 
 放不进作业时（很老的 Windows、所在的作业不许嵌套）退回到"顺着进程树找 shell 的子孙"（找不到 MSYS 的孤儿，聊胜于无）。
@@ -20,6 +20,9 @@ from dataclasses import dataclass
 log = logging.getLogger(__name__)
 
 KEEP = {"claude.exe", "conhost.exe"}   # 作业里不结束的（只认助手子进程的直接子进程和它们的 conhost）
+# 芸芸的浏览器（阶段 6.2）：助手子进程直接开的 node.exe 只能是 Playwright 的驱动（命令都是 claude.exe 开的）。
+# 它和它的子孙（Edge）都不结束——"停止"只停 Claude Code 在做的事，浏览器窗口留着
+BROWSER_DRIVER = "node.exe"
 SHELLS = {"bash.exe", "sh.exe", "zsh.exe", "powershell.exe", "pwsh.exe", "cmd.exe"}
 
 _TH32CS_SNAPPROCESS = 0x00000002
@@ -142,18 +145,35 @@ def _job_members():
     return [int(ids[i]) for i in range(listed)]
 
 
-def _keepers(root_pid):
-    """不结束的：root 自己、root 直接开的 claude.exe / conhost.exe、claude.exe 的 conhost.exe。"""
-    processes = _all_processes()
+def keepers(root_pid, processes):
+    """不结束的：root 自己、root 直接开的 claude.exe / conhost.exe、claude.exe 的 conhost.exe，
+    还有 root 直接开的浏览器驱动和它的全部子孙。processes：[(进程号, 父进程号, 程序名)]。"""
     keep = {root_pid}
+    drivers = set()
     for pid, ppid, name in processes:
         if ppid == root_pid and name.lower() in KEEP:
             keep.add(pid)
+        elif ppid == root_pid and name.lower() == BROWSER_DRIVER:
+            drivers.add(pid)
     claude = {pid for pid in keep if pid != root_pid}
     for pid, ppid, name in processes:
         if ppid in claude and name.lower() == "conhost.exe":
             keep.add(pid)
+    children = {}
+    for pid, ppid, _ in processes:
+        if pid != ppid:
+            children.setdefault(ppid, []).append(pid)
+    stack = list(drivers)
+    while stack:
+        pid = stack.pop()
+        if pid not in keep:
+            keep.add(pid)
+            stack.extend(children.get(pid, []))
     return keep
+
+
+def _keepers(root_pid):
+    return keepers(root_pid, _all_processes())
 
 
 def _kill_job_leftovers(root_pid):

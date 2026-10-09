@@ -229,6 +229,16 @@ class OpenAppRequest:
 
 FIND_APP_TOOL = "mcp__yunyun__find_app"   # 打开软件的两个工具（assistant/tools/apps.py）
 OPEN_APP_TOOL = "mcp__yunyun__open_app"
+BROWSER_OPEN_TOOL = "mcp__yunyun__browser_open"   # 芸芸的浏览器（assistant/tools/browser.py）：打开网页、读、后退
+BROWSER_READ_TOOL = "mcp__yunyun__browser_read"
+BROWSER_BACK_TOOL = "mcp__yunyun__browser_back"
+
+
+@_message
+class BrowserChanged:
+    """芸芸的浏览器开了 / 关了（阶段 6.2）。开着的时候芸芸不闲置释放大脑（释放会把浏览器窗口一起关掉）。"""
+    TYPE: ClassVar[str] = "browser_changed"
+    open: bool
 
 
 DECISIONS = (
@@ -322,4 +332,4 @@ ERROR_KINDS = (
 
 COMMANDS = (Ask, Interrupt, PermissionReply, Rewind, ScreenshotReply, OpenAppReply, Quit)
 EVENTS = (Ready, TextDelta, ToolStarted, ToolFinished, PermissionRequest, ToolDecision, ScreenshotRequest,
-          OpenAppRequest, TurnFinished, Compacting, Compacted, Rewound, Error)
+          OpenAppRequest, BrowserChanged, TurnFinished, Compacting, Compacted, Rewound, Error)

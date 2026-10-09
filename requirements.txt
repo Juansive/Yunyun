@@ -7,3 +7,6 @@ PyYAML>=6
 claude-agent-sdk>=0.2.164,<0.3
 # 设置窗口"测试连接"用（Models API，不花钱）；同样只在单独的小进程里 import（yunyun/assistant/check.py）。
 anthropic>=1.11,<2
+# 芸芸的浏览器（阶段 6.2）：只在助手子进程里、第一次用浏览器时才 import；用系统自带的 Edge，不下载浏览器
+# （不要跑 playwright install）。要用 aria_snapshot(mode="ai")（带元素编号的快照，1.63 上实测可用）。
+playwright>=1.63,<2

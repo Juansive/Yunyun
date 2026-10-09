@@ -23,6 +23,7 @@ from claude_agent_sdk import (
 )
 
 from yunyun.assistant import apps, memory, permissions, proctree, protocol, transcripts
+from yunyun.assistant.browser import Browser
 from yunyun.assistant.environment import (   # noqa: F401（clean_environment、hide_child_consoles 也从这里用）
     clean_environment, hide_child_consoles, prepare_process, system_proxy_env,
 )
@@ -109,10 +110,11 @@ def read_project_notes(workspace):
     return text
 
 
-def build_options(settings, api_key, language, stderr=None, gate=None, resume="", bridge=None):
+def build_options(settings, api_key, language, stderr=None, gate=None, resume="", bridge=None, browser=None):
     """启动 Claude Code 的全部选项。gate：PermissionGate（每次用工具前拍板）；测试里可以不传。
     resume：接着哪一段对话聊（Claude Code 的会话编号；空 = 新对话）；
-    bridge：tools.Bridge（请芸芸进程截图、打开软件；有它才有这些工具，截图还要服务商能看图片）。"""
+    bridge：tools.Bridge（请芸芸进程截图、打开软件；有它才有这些工具，截图还要服务商能看图片）；
+    browser：assistant.browser.Browser（有它才有浏览器的工具）。"""
     provider = settings.info
     screen = bridge is not None and provider.images
     env = {
@@ -126,7 +128,8 @@ def build_options(settings, api_key, language, stderr=None, gate=None, resume=""
     tools = usable_tools(provider, wanted_tools(settings))
     # 记事本（阶段 10）：目录接在人设后面（这段对话里不变，命中缓存），细节和写入用芸芸自己的工具（进程内 MCP）
     notebook = memory.index_lines(memory.load(), settings.workspace) if settings.notebook else None
-    server = yunyun_server(settings.workspace, notebook=settings.notebook, bridge=bridge, screen=screen)
+    server = yunyun_server(settings.workspace, notebook=settings.notebook, bridge=bridge, screen=screen,
+                           browser=browser)
     return ClaudeAgentOptions(
         resume=resume or None,            # 历史对话"接着聊"：Claude Code 读回那段对话的记录
         # 撤销（2.7）：Claude Code 改文件前先备份（放在 CLAUDE_CONFIG_DIR 里），每一问传回一个 uuid，rewind_files 到它
@@ -143,7 +146,7 @@ def build_options(settings, api_key, language, stderr=None, gate=None, resume=""
         strict_mcp_config=True,           # 不加载别处配置的 MCP 服务器
         system_prompt={"type": "preset", "preset": "claude_code",
                        "append": persona(language, working, notes, web_search="WebSearch" in tools, notebook=notebook,
-                                         screen=screen, apps=bridge is not None)},
+                                         screen=screen, apps=bridge is not None, browser=browser is not None)},
         include_partial_messages=True,    # 逐字显示
         # 每段对话的上限：Claude Code 按整段对话累计算；但它只认 Claude 的价格，自己算钱的服务商由 TurnState 管。
         # 每次回答的上限都由 TurnState 估算
@@ -527,6 +530,8 @@ class ClaudeBrain:
         self.compacting = False   # 正在整理前面的对话（worker 据此把这时来的提问排到整理之后）
         self.gate = PermissionGate(settings.workspace or WORKSPACE, emit, ask_screenshot=settings.screenshot_ask)
         self.bridge = Bridge(emit)   # 请芸芸进程截图、打开软件（服务商看不了图片就没有截图工具，见 build_options）
+        # 芸芸的浏览器（阶段 6.2）：第一次用时才打开；开 / 关告诉芸芸（开着时不闲置释放）
+        self.browser = Browser(on_change=lambda is_open: emit(protocol.BrowserChanged(is_open)))
         self._stderr = deque(maxlen=30)   # Claude Code 的错误输出：启动失败时看最后几行
 
     async def start(self):
@@ -543,7 +548,7 @@ class ClaudeBrain:
         if removed:
             log.info("清理了 %d 个 %d 天以前的对话记录 / 备份文件", removed, HISTORY_KEEP_DAYS)
         options = build_options(self._settings, self._api_key, self._language, stderr=self._stderr.append,
-                                gate=self.gate, resume=self._resume, bridge=self.bridge)
+                                gate=self.gate, resume=self._resume, bridge=self.bridge, browser=self.browser)
         if self._resume:
             # 接着聊：Claude Code 报的花费会接着那段对话的累计往上加（try_resume.py 实测），先把以前花的当起点，
             # 不然第一问会把以前的钱再算一遍
@@ -671,6 +676,7 @@ class ClaudeBrain:
     async def close(self):
         self.gate.deny_all(PermissionGate.STOPPED)
         self.bridge.cancel_all()
+        await self.browser.close()   # 好好关浏览器（不然作业对象一结束它，下次打开 Edge 会说没有正常关闭）
         if self._client is not None:
             client, self._client = self._client, None
             running = proctree.before_stop()

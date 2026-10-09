@@ -109,6 +109,25 @@ _APPS = {
            "- ほかのソフトの操作はまだできません。"),
 }
 
+# 芸芸的浏览器（阶段 6.2：tools/browser.py）
+_BROWSER = {
+    "zh": "\n- 你有自己的浏览器（一个用户看得见的 Edge 窗口，登录状态和用户自己的浏览器分开）：browser_open 打开网页、"
+          "browser_read 重新读当前页、browser_back 后退。用户让你打开某个网页 / 网站、网页要登录或者要运行脚本时用它；"
+          "只是读一篇文章，用 WebFetch 也行。现在还不能在网页上点击、输入；需要的话请用户在那个窗口里自己操作，做完你再读。"
+          "要登录、输密码、付款时，一律请用户自己在窗口里操作。",
+    "en": "\n- You have your own browser (an Edge window the user can see, with logins separate from the user's own "
+          "browsers): browser_open opens a page, browser_read reads the current page again, browser_back goes back. "
+          "Use it when the user asks you to open a page or website, or when a page needs a login or JavaScript; for "
+          "simply reading an article WebFetch is fine too. You can't click or type on pages yet; if needed, ask the "
+          "user to do it in that window, then read the page again. Logging in, passwords and payments are always "
+          "left to the user.",
+    "ja": "\n- 自分のブラウザー（ユーザーにも見える Edge のウィンドウ。ログイン状態はユーザー自身のブラウザーとは別）があります："
+          "browser_open でページを開き、browser_read で今のページを読み直し、browser_back で戻ります。"
+          "ページやサイトを開いてと言われたとき、ログインやスクリプトが必要なページで使います。記事を読むだけなら WebFetch でも構いません。"
+          "ページ上のクリックや入力はまだできないので、必要ならユーザーにそのウィンドウで操作してもらい、終わったら読み直してください。"
+          "ログイン・パスワード入力・支払いは必ずユーザー自身に任せてください。",
+}
+
 # 能不能搜索网页（服务商不支持时没有 WebSearch 工具，见 providers.usable_tools）：(能, 不能)
 _WEB = {
     "zh": ("上网搜索和阅读网页", "阅读网页"),
@@ -179,14 +198,17 @@ _NOTEBOOK_HEADINGS = {   # (关于用户, 这个项目, 还没有)
 }
 
 
-def persona(language, working=False, project_notes="", web_search=True, notebook=None, screen=False, apps=False):
+def persona(language, working=False, project_notes="", web_search=True, notebook=None, screen=False, apps=False,
+            browser=False):
     """这种语言的人设（不认识的语言用中文）。working：选了工作文件夹；project_notes：工作文件夹里 CLAUDE.md 的内容；
     web_search：有没有网页搜索工具（DeepSeek 这类没有）；notebook：记事本的目录 (关于用户的几行, 这个项目的几行)，
-    None = 不用记事本；screen：有没有截图工具；apps：有没有打开软件的工具。"""
+    None = 不用记事本；screen：有没有截图工具；apps：有没有打开软件的工具；browser：有没有芸芸的浏览器。"""
     if language not in _BASE:
         language = "zh"
     web = _WEB[language][0 if web_search else 1]
     limits = _SCREEN[language][0 if screen else 1] + "\n" + _APPS[language][0 if apps else 1]
+    if browser:
+        limits += _BROWSER[language]
     text = _BASE[language] + (_WORKING if working else _CHAT_ONLY)[language].format(web=web, limits=limits)
     if not web_search:
         text += _NO_WEB_SEARCH[language]

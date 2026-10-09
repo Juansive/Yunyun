@@ -27,6 +27,7 @@ SAMPLES = [
     protocol.OpenAppRequest(1, "计算器", "Microsoft.WindowsCalculator_8wekyb3d8bbwe!App"),
     protocol.OpenAppReply(1, True),
     protocol.OpenAppReply(2, False, "The user stopped the task."),
+    protocol.BrowserChanged(True),
     protocol.Quit(),
     protocol.Ready("anthropic", "claude-haiku-4-5"),
     protocol.TextDelta("你好～"),

@@ -14,6 +14,8 @@
   设置里选了"截图前先问我"（ask_screenshot）就每次问，可以选"这次对话都允许截图"；
 - 打开软件（阶段 6，2026-10-09 用户定的）：按名字找不用问；打开每次问，可以选"这次对话都允许打开它"（按软件记）；
   只能打开开始菜单里有的（名字对不上直接拒绝，叫模型先找）；
+- 芸芸的浏览器（阶段 6.2，2026-10-09 用户定的）：打开网页、读、后退不用问；只能打开 http / https 的网址
+  （file:// 之类会绕过"读工作文件夹以外要问"，直接拒绝）；
 - 别的工具一律拒绝（本来也没开，这里是兜底）。
 
 拿不准的时候一律往"问你"那边靠：多问一次只是麻烦一点，少问一次可能出事。
@@ -24,7 +26,9 @@ import shlex
 from dataclasses import dataclass
 
 from yunyun.assistant.memory import NOTEBOOK_TOOLS
-from yunyun.assistant.protocol import FIND_APP_TOOL, OPEN_APP_TOOL, SCREENSHOT_TOOL
+from yunyun.assistant.protocol import (
+    BROWSER_BACK_TOOL, BROWSER_OPEN_TOOL, BROWSER_READ_TOOL, FIND_APP_TOOL, OPEN_APP_TOOL, SCREENSHOT_TOOL,
+)
 
 ALLOW, ASK, DENY = "allow", "ask", "deny"
 
@@ -58,8 +62,12 @@ def decide(tool, tool_input, workspace, grants=frozenset(), ask_screenshot=False
     apps：开始菜单里的软件名（小写，assistant/apps.names()），打开软件时查名字；None = 不查。
     """
     tool_input = tool_input if isinstance(tool_input, dict) else {}
-    if tool in WEB_TOOLS or tool in NOTEBOOK_TOOLS or tool == FIND_APP_TOOL:
+    if tool in WEB_TOOLS or tool in NOTEBOOK_TOOLS or tool in (FIND_APP_TOOL, BROWSER_READ_TOOL, BROWSER_BACK_TOOL):
         return Decision(ALLOW)
+    if tool == BROWSER_OPEN_TOOL:
+        if browser_url(tool_input.get("url")):
+            return Decision(ALLOW)
+        return Decision(DENY, reason="Yunyun's browser only opens http:// and https:// web pages.")
     if tool == SCREENSHOT_TOOL:
         if not ask_screenshot:
             return Decision(ALLOW)
@@ -75,6 +83,21 @@ def decide(tool, tool_input, workspace, grants=frozenset(), ask_screenshot=False
     if tool in SHELL_TOOLS:
         return _decide_command(str(tool_input.get("command") or ""), grants)
     return Decision(DENY, reason=f"Yunyun does not allow the {tool} tool.")
+
+
+def browser_url(text):
+    """模型给的网址 → 浏览器能打开的网址；不是 http / https 的就是 ""。没写 http 的（"example.com/a"）补成 https。"""
+    url = str(text or "").strip()
+    if not url or any(c in url for c in "\r\n\t\x00 "):
+        return ""
+    if re.match(r"^(localhost|127\.0\.0\.1|\[::1\])([:/?#]|$)", url, re.I):   # 本机开发的网站多半是 http
+        return "http://" + url
+    if re.match(r"^[\w-]+(\.[\w-]+)*\.[A-Za-z]{2,}([:/?#]|$)", url):          # example.com/a
+        return "https://" + url
+    scheme = re.match(r"^([A-Za-z][A-Za-z0-9+.-]*):", url)
+    if scheme and scheme.group(1).lower() in ("http", "https") and url[len(scheme.group(0)):].startswith("//"):
+        return url
+    return ""
 
 
 def _decide_open_app(name, grants, apps):

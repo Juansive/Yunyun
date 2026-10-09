@@ -406,6 +406,25 @@ def test_idle_exit_waits_for_the_answer(qapp, world, monkeypatch):
     assert pet.assistant is mode and not processes[0].stopped
 
 
+def test_idle_release_waits_while_the_browser_is_open(qapp, world, monkeypatch):
+    """芸芸的浏览器开着（你可能正在看）：闲置时间到了也不释放大脑（释放会把浏览器窗口一起关掉）；你关了窗口再释放。"""
+    pet, _, processes = world
+    has_key(monkeypatch)
+    pet.open_assistant()
+    mode = pet.assistant
+    process = processes[0]
+    process.say(protocol.Ready("anthropic", "m"))
+    finish_turn(pet, process, "打开 example.com")
+    process.say(protocol.BrowserChanged(True))
+    mode.input.collapse()
+    assert wait_until(qapp, lambda: not mode.input.isVisible())
+    mode._on_idle()
+    assert mode.session.process is process and not process.stopped
+    process.say(protocol.BrowserChanged(False))     # 你把浏览器窗口关了
+    mode._on_idle()
+    assert mode.session.process is None and process.stopped
+
+
 def test_exit_from_menu_while_answering(qapp, world, monkeypatch):
     pet, machine, processes = world
     has_key(monkeypatch)

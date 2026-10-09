@@ -43,6 +43,8 @@ _TOOL_TEXT = {
     memory.REMEMBER_TOOL: "assistant_tool_remember", memory.RECALL_TOOL: "assistant_tool_recall",
     memory.FORGET_TOOL: "assistant_tool_forget", protocol.SCREENSHOT_TOOL: "assistant_tool_screenshot",
     protocol.FIND_APP_TOOL: "assistant_tool_find_app", protocol.OPEN_APP_TOOL: "assistant_tool_open_app",
+    protocol.BROWSER_OPEN_TOOL: "assistant_tool_browser_open", protocol.BROWSER_READ_TOOL: "assistant_tool_browser_read",
+    protocol.BROWSER_BACK_TOOL: "assistant_tool_browser_back",
 }
 SETTINGS_ERRORS = {"no_key", "auth", "model", "budget", "reply_budget"}   # 这几种错误在设置页能改好（界面可以给个"去设置"）
 UNDO_NOTE = transcripts.UNDO_NOTE   # 历史对话读回来时要认出它、去掉它，所以放在 transcripts 里
@@ -147,6 +149,7 @@ class AssistantSession(QObject):
         self._undo_note = []          # 撤销过的文件：下一问发给大脑时附一句说明
         self._activity = ""           # 上次告诉外面的 activity
         self._compact_turn = None     # 正在整理：是哪一轮答完后开始的（Turn）；None = 没在整理
+        self.browser_open = False     # 芸芸的浏览器开着（阶段 6.2；开着时总管不闲置释放大脑）
 
     # ---------- 对外 ----------
 
@@ -305,6 +308,7 @@ class AssistantSession(QObject):
     def _retire_process(self):
         """不再管这个子进程：请它退出，退出后自己销毁。它之后发来的事件，_on_event 认出不是当前的就不理。"""
         process, self._process = self._process, None
+        self.browser_open = False   # 子进程一退出，浏览器也关了
         self._abandon_rewind()
         self._abandon_compact()
         if process is not None:
@@ -363,6 +367,8 @@ class AssistantSession(QObject):
                 process.send(protocol.ScreenshotReply(event.request_id, False, detail="The user stopped the task."))
             else:
                 self.screenshot_requested.emit(event)
+        elif isinstance(event, protocol.BrowserChanged):
+            self.browser_open = event.open
         elif isinstance(event, protocol.OpenAppRequest):
             if turn is None:   # 停下之后迟到的：不打开了
                 process.send(protocol.OpenAppReply(event.request_id, False, "The user stopped the task."))
@@ -480,6 +486,7 @@ class AssistantSession(QObject):
         if process is not self._process:
             return
         self._process = None
+        self.browser_open = False
         self._abandon_rewind()
         self._abandon_compact()
         process.deleteLater()

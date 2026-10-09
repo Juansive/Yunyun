@@ -735,6 +735,12 @@ TEXTS = {
     "assistant_tool_screenshot": {"zh": "正在看屏幕……", "en": "Looking at the screen…", "ja": "画面を見ています…"},
     "assistant_tool_find_app": {"zh": "正在找软件……", "en": "Looking for the app…", "ja": "ソフトを探しています…"},
     "assistant_tool_open_app": {"zh": "正在打开软件……", "en": "Opening the app…", "ja": "ソフトを開いています…"},
+    "assistant_tool_browser_open": {"zh": "正在用浏览器打开……", "en": "Opening in the browser…",
+                                    "ja": "ブラウザーで開いています…"},
+    "assistant_tool_browser_read": {"zh": "正在看浏览器里的网页……", "en": "Reading the page in the browser…",
+                                    "ja": "ブラウザーのページを読んでいます…"},
+    "assistant_tool_browser_back": {"zh": "浏览器后退……", "en": "Going back in the browser…",
+                                    "ja": "ブラウザーで戻っています…"},
     # 打开软件（阶段 6）：打开后气泡说一声
     "assistant_open_app_said": {"zh": "帮你打开「{}」啦", "en": "Opened “{}” for you", "ja": "「{}」を開いたよ"},
     # 看屏幕（阶段 5）：截之前气泡说一声；操作记录里截的是哪里
@@ -961,6 +967,9 @@ TEXTS = {
     "assistant_action_screenshot": {"zh": "看屏幕", "en": "Screenshot", "ja": "画面を見る"},
     "assistant_action_find_app": {"zh": "找软件", "en": "Find app", "ja": "ソフトを探す"},
     "assistant_action_open_app": {"zh": "打开软件", "en": "Open app", "ja": "ソフトを開く"},
+    "assistant_action_browser_open": {"zh": "浏览器打开", "en": "Browser: open", "ja": "ブラウザーで開く"},
+    "assistant_action_browser_read": {"zh": "浏览器读页", "en": "Browser: read", "ja": "ブラウザーで読む"},
+    "assistant_action_browser_back": {"zh": "浏览器后退", "en": "Browser: back", "ja": "ブラウザーで戻る"},
     "assistant_action_failed": {"zh": "（没成功）", "en": " (failed)", "ja": "（失敗）"},
     "assistant_decision_auto": {"zh": "不用问", "en": "No need to ask", "ja": "確認不要"},
     "assistant_decision_granted": {"zh": "之前允许过同类", "en": "Allowed earlier", "ja": "以前に許可済み"},
