@@ -10,5 +10,8 @@ releases/
 .vscode/
 # Added by code-review-graph
 .code-review-graph/
+# 开发用的文档只留在本机、不上传（仓库是公开的，2026-10-10 用户定）；使用说明、更新日志照常上传（打包要用）
 CLAUDE.md
-docs/
+docs/开发交接.md
+docs/设计细节.md
+docs/助手模式计划.md

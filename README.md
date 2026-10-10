@@ -17,12 +17,14 @@
 - **旁观模式**：你自己用 Claude Code 时，它做完、等你确认时芸芸提醒你。
 - 界面支持中文、English、日本語。
 
-## 安装
+## 下载和安装
 
 需要 Windows 10/11（64 位），**不需要安装 Python**。
 
-1. 下载 `Yunyun-<版本>-windows.zip`（约 200 MB，解压后约 470 MB，大部分是助手模式要用的 Claude Code 和浏览器驱动），
+1. 打开本页右边的 **Releases**（或者 [点这里](https://github.com/Juansive/Yunyun/releases/latest)），在最新版本下面的 Assets 里下载
+   **`Yunyun-<版本>-windows.zip`**（约 200 MB，解压后约 470 MB，大部分是助手模式要用的 Claude Code 和浏览器驱动），
    解压到你喜欢的位置（比如 `D:\芸芸`）。
+   > ⚠️ 不要点页面上绿色的 **Code → Download ZIP**：那是源代码，要装 Python 才能用。
 2. 双击文件夹里的 **`芸芸.exe`**。整个文件夹要放在一起，不要只把 exe 拷出来（它要用旁边 `_internal` 里的文件）。
 3. 第一次运行时，Windows 可能提示"Windows 已保护你的电脑"（因为芸芸没有付费的数字签名）：点 **更多信息 → 仍要运行**。
 4. 芸芸出现后，**右键芸芸 → 设置… → 通用**，可以创建桌面快捷方式、设置开机时启动。
@@ -183,8 +185,8 @@ python -m venv .venv
 打包结果：`dist\芸芸\芸芸.exe`，发给别人用的压缩包在项目文件夹旁边的 `..\Yunyun\Yunyun-<版本>-windows.zip`（只留最新一版，旧的挪到 `releases\`）。
 构建脚本会在"没有 Python"的环境里运行 exe 的自检（看到 8 行 `OK`，其中两行会真的启动 Claude Code 和不显示窗口的 Edge），
 再以"助手子进程"的身份试一下 exe，都过了才压缩。
-zip 里会附上 [docs/使用说明.txt](docs/使用说明.txt)（自动填上版本号）和更新日志；开发用的 `CLAUDE.md`、`docs/开发交接.md` 不会进去（脚本会检查）。
-发给别人前记得在 `yunyun/__init__.py` 里把版本号加一。
+zip 里会附上 [docs/使用说明.txt](docs/使用说明.txt)（自动填上版本号）和 [更新日志](docs/更新日志.txt)；开发用的说明不会进去（脚本会检查）。
+发给别人前记得在 `yunyun/__init__.py` 里把版本号加一，再把 zip 发到 GitHub 的 Releases。
 
-- 架构、设计决定和开发约定见 [CLAUDE.md](CLAUDE.md)，各模块的细节见 [docs/设计细节.md](docs/设计细节.md)。
+- 开发用的说明（CLAUDE.md、设计细节、开发计划、交接）只在开发者自己的电脑上，不在这个仓库里。
 - 给画师的形象素材要求见 [assets/pet/README.md](assets/pet/README.md)。
