@@ -29,6 +29,7 @@ from yunyun.pet.state import PetState
 from yunyun.pet.sway import Sway
 
 _ALWAYS_ON_TOP_KEY = "window/always_on_top"
+_ANNOUNCED_VERSION_KEY = "update/announced"   # 已经说过的新版本号
 _POSITION_KEY = "window/position"
 _SCALE_KEY = "window/scale"   # 芸芸的大小（1.0 = 默认）
 _AI_OFFERED_KEY = "onboarding/ai_offered"  # 是否已经引导过"设置 AI"（只引导一次）
@@ -120,6 +121,10 @@ class PetWindow(QWidget):
         self._assistant_state = {}    # 助手要记着的（卡片组拖到了哪、历史读过没有）：退出助手模式也记着
         self.history = None           # 邮件提醒的历史记录（main 里设置）
         self.mail_accounts = lambda: []   # 现在添加的邮箱（main.connect_mail 里设置；卡片上标"哪个邮箱收的"要用）
+        self.updates = None           # 新版本检查（notify.update.UpdateChecker，main 里设置；设置窗口的开关和"检查更新"用）
+        self._new_version = None      # 查到的新版本 (版本号, 下载页)：右键菜单最上面有"下载新版本"
+        # 新版本只说一次；免打扰 / 全屏 / 被挡住 / 助手开着时先不说，过 10 分钟再看
+        self._announce_timer = QTimer(self, singleShot=True, interval=10 * 60_000, timeout=self._announce_new_version)
         self.quiet_hours = None       # 免打扰时段（main 里设置）
         self.watch_reminder = None    # 旁观模式的提醒（main 里设置；设置 → 旁观的"发一条测试提醒"用）
 
@@ -381,6 +386,22 @@ class PetWindow(QWidget):
     def is_visible_to_user(self):
         """用户此刻能不能看到芸芸。"""
         return self.isVisible() and not self._occluded
+
+    def on_new_version(self, version, url):
+        """查到新版本（UpdateChecker.found）：右键菜单最上面多一项"下载新版本"，芸芸说一次。"""
+        self._new_version = (version, url)
+        self._announce_new_version()
+
+    def _announce_new_version(self):
+        version = self._new_version[0] if self._new_version else None
+        if version is None or QSettings().value(_ANNOUNCED_VERSION_KEY, "") == version:
+            return   # 同一个版本只说一次（重启了也不再说）
+        quiet = self.quiet_hours is not None and self.quiet_hours.active
+        if quiet or winapi.is_user_busy() or not self.is_visible_to_user() or self._assistant is not None:
+            self._announce_timer.start()
+            return
+        self.say(i18n.tr("update_available", version), 8000)
+        QSettings().setValue(_ANNOUNCED_VERSION_KEY, version)
 
     def _check_covered(self):
         """定时调用：看看芸芸有没有被别的窗口挡住。"""
@@ -730,6 +751,10 @@ class PetWindow(QWidget):
         """每次右键都重新创建菜单，这样菜单的语言、"暂停/开始"、勾选状态总是最新的。"""
         tr = i18n.tr
         menu = KeepOpenMenu(self)
+        if self._new_version is not None:   # 有新版本：放最上面，一直在，直到更新（打开 GitHub 的下载页，自己选节能版 / 完整版）
+            version, url = self._new_version
+            menu.addAction(tr("menu_update", version), lambda: QDesktopServices.openUrl(QUrl(url)))
+            menu.addSeparator()
         # "✦ 助手模式"：第一项、蓝紫渐变的字，要醒目（2026-10-07 用户要求）；开着时下面多一项"退出助手模式"，
         # 芸芸在干活时再多一项"停止助手"（紧急停止：输入框收起着也能停）
         # （这个版本没有助手模式就不显示：打包版要到阶段 9 才带上 Claude Code）

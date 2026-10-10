@@ -236,20 +236,46 @@ TEXTS = {
     "date_yesterday": {"zh": "昨天", "en": "Yesterday", "ja": "昨日"},
     "date_month_day": {"zh": "{}月{}日", "en": "{}/{}", "ja": "{}月{}日"},
     "about_version": {"zh": "版本 {}", "en": "Version {}", "ja": "バージョン {}"},
+    # 新版本提醒（notify/update.py）
+    "update_available": {
+        "zh": "有新版本 {} 啦～右键我就能去下载",
+        "en": "Version {} is out! Right-click me to download it~",
+        "ja": "新しいバージョン {} が出たよ～右クリックでダウンロードできるよ",
+    },
+    "menu_update": {"zh": "⬆ 下载新版本 {}", "en": "⬆ Download version {}", "ja": "⬆ 新バージョン {} をダウンロード"},
+    "setting_auto_update": {"zh": "自动检查新版本", "en": "Check for new versions automatically", "ja": "新しいバージョンを自動で確認"},
+    "setting_auto_update_tip": {
+        "zh": "每天最多问一次 GitHub 最新的版本号，不会发送你的任何信息。",
+        "en": "Asks GitHub for the latest version number at most once a day. None of your information is sent.",
+        "ja": "1 日に 1 回まで GitHub に最新のバージョン番号を問い合わせます。あなたの情報は一切送りません。",
+    },
+    "about_check_update": {"zh": "检查更新", "en": "Check for Updates", "ja": "更新を確認"},
+    "about_checking": {"zh": "正在检查……", "en": "Checking…", "ja": "確認中…"},
+    "about_up_to_date": {"zh": "已经是最新版本啦。", "en": "You're on the latest version.", "ja": "最新バージョンです。"},
+    "about_update_found": {"zh": "有新版本 {}：{}", "en": "Version {} is available: {}", "ja": "新しいバージョン {} があります：{}"},
+    "about_download": {"zh": "去下载", "en": "Download", "ja": "ダウンロード"},
+    "about_update_failed": {
+        "zh": "没查到：连不上 GitHub，等会儿再试试。",
+        "en": "Couldn't reach GitHub. Please try again later.",
+        "ja": "GitHub に接続できませんでした。あとでもう一度試してね。",
+    },
     "about_privacy_title": {"zh": "隐私", "en": "Privacy", "ja": "プライバシー"},
     "about_privacy_text": {
         "zh": "· 芸芸不会改动你的邮箱：看过的邮件在邮箱里仍然是未读。\n"
               "· 只有你点了小红点，才会把邮件的发件人、标题、附件名和正文开头（最多 1500 字）发给你选择的 AI 服务商；拖走小红点清掉的邮件不会发送。\n"
               "· 芸芸只检测你有没有在打字，从不记录按了哪个键。\n"
-              "· 日志里不写邮件内容、授权码和 API Key，邮箱地址会打码。",
+              "· 日志里不写邮件内容、授权码和 API Key，邮箱地址会打码。\n"
+              "· 每天最多问一次 GitHub 最新的版本号（设置 → 通用 可以关掉），不发送你的任何信息。",
         "en": "· Yunyun never changes your mailbox: emails it reads stay unread.\n"
               "· Only after you click the badge are the sender, subject, attachment names and the beginning of the body (up to 1,500 characters) sent to the AI provider you chose. Emails you dismiss are never sent.\n"
               "· Yunyun only notices whether you're typing — it never records which keys you press.\n"
-              "· Logs never contain email content, authorization codes or API keys, and email addresses are masked.",
+              "· Logs never contain email content, authorization codes or API keys, and email addresses are masked.\n"
+              "· At most once a day, Yunyun asks GitHub for the latest version number (you can turn this off in Settings → General). None of your information is sent.",
         "ja": "· 芸芸はメールボックスを変更しません。読んだメールも未読のままです。\n"
               "· バッジをクリックしたときだけ、差出人・件名・添付ファイル名・本文の冒頭（最大 1,500 文字）が選択した AI プロバイダーに送られます。消したメールは送られません。\n"
               "· 芸芸は入力しているかどうかだけを検知し、どのキーを押したかは記録しません。\n"
-              "· ログにはメール本文・認証コード・API キーは書かれず、メールアドレスは伏せ字になります。",
+              "· ログにはメール本文・認証コード・API キーは書かれず、メールアドレスは伏せ字になります。\n"
+              "· 1 日に 1 回まで GitHub に最新のバージョン番号を問い合わせます（設定 → 一般 でオフにできます）。あなたの情報は一切送りません。",
     },
     "about_data_title": {"zh": "数据存放在哪里", "en": "Where your data lives", "ja": "データの保存場所"},
     "about_data_secrets": {"zh": "授权码、API Key", "en": "Auth codes, API keys", "ja": "認証コード・API キー"},

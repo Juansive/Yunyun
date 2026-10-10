@@ -18,6 +18,7 @@ from yunyun.mail import accounts
 from yunyun.mail.imap_client import MailError
 from yunyun.mail.service import MailService
 from yunyun.notify.history import HistoryEntry, MailHistory, default_path as history_path
+from yunyun.notify.update import UpdateChecker
 from yunyun.notify.quiet import QuietHours
 from yunyun.pet.card_deck import MailCard, mailbox_label
 from yunyun.pet.sprites import load_sprites
@@ -78,6 +79,12 @@ def main():
         pet.say(i18n.tr("quiet_start" if active else "quiet_end"))
 
     quiet.changed.connect(on_quiet_changed)
+
+    # ---- 新版本提醒：每天最多问一次 GitHub 最新版本号，有新的就说一次、右键菜单里放"下载新版本" ----
+    updates = UpdateChecker(app)
+    pet.updates = updates
+    updates.found.connect(pet.on_new_version)
+
     connect_mail(mail, pet, machine, history, quiet)
     connect_assistant(pet, machine)
     watch = connect_watch(app, pet)
@@ -91,6 +98,7 @@ def main():
     pet.show()
     keyboard.start()
     mail.start()
+    updates.start()
 
     # 托盘图标（极少数系统环境没有托盘，那就不显示）
     if QSystemTrayIcon.isSystemTrayAvailable():

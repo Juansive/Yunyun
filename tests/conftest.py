@@ -30,6 +30,12 @@ def isolate_user_data(tmp_path, monkeypatch):
     monkeypatch.setattr(ollama_service, "ENABLED", False)
     monkeypatch.setattr(service, "IDLE_ENABLED", False)   # 也不许真的去连邮箱做实时接收
 
+    from yunyun.notify import update
+
+    def no_network(*args, **kwargs):
+        raise update.UpdateError("测试里不许联网查新版本")
+    monkeypatch.setattr(update, "fetch_latest", no_network)   # 新版本检查：要用的测试自己换成假的
+
 
 @pytest.fixture
 def session(qapp, monkeypatch):

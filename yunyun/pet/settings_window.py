@@ -28,7 +28,7 @@ from yunyun.pet.history_page import HistoryPage
 from yunyun.pet.mail_page import MailAccountsPage
 from yunyun.pet.notebook_page import NotebookPage
 from yunyun.pet.watch_page import WatchPage
-from yunyun.pet.widgets import note
+from yunyun.pet.widgets import StatusLabel, note
 
 # 页面顺序；open_settings(page) 用这些名字。"旁观"（阶段 8）和助手模式无关，打包版也有
 PAGES = ["general", "mail", "ai", "assistant", "notebook", "watch", "history", "about"]
@@ -165,6 +165,12 @@ class GeneralPage(QWidget):
         self._autostart = QCheckBox(tr("menu_autostart"))
         form.addRow(self._on_top)
         form.addRow(self._autostart)
+        self._auto_update = QCheckBox(tr("setting_auto_update"))   # 新版本提醒（pet.updates 可能是 None，比如测试里）
+        self._auto_update.setToolTip(tr("setting_auto_update_tip"))
+        if pet.updates is not None:
+            form.addRow(self._auto_update)
+        else:
+            self._auto_update.hide()
 
         self._shortcut_button = QPushButton(tr("button_create"))
         shortcut_row = QHBoxLayout()
@@ -203,6 +209,8 @@ class GeneralPage(QWidget):
         self._size_reset.clicked.connect(lambda: self._size.setValue(100))
         self._on_top.toggled.connect(pet.set_always_on_top)
         self._autostart.toggled.connect(pet.set_autostart)
+        if pet.updates is not None:
+            self._auto_update.toggled.connect(pet.updates.set_auto_check)
         self._shortcut_button.clicked.connect(pet.create_desktop_shortcut)
         self._quiet_check.toggled.connect(self._on_quiet_toggled)
         self._quiet_start.timeChanged.connect(self._on_quiet_range)
@@ -217,6 +225,8 @@ class GeneralPage(QWidget):
             (self._autostart, lambda: self._autostart.setChecked(shortcut.is_autostart_enabled())),
             (self._size, lambda: self._size.setValue(round(self._pet.scale * 100))),
         ]
+        if self._pet.updates is not None:
+            updates.append((self._auto_update, lambda: self._auto_update.setChecked(self._pet.updates.auto_check)))
         if self._quiet is not None:
             updates += [
                 (self._quiet_check, lambda: self._quiet_check.setChecked(self._quiet.enabled)),
@@ -261,7 +271,24 @@ class AboutPage(QWidget):
 
         title = QLabel(f"<b style='font-size:14pt'>{tr('app_name')}</b>　"
                        f"<span style='color:#888'>{tr('about_version', __version__)}</span>")
-        layout.addWidget(title)
+        # 版本号旁边"检查更新"：点了马上问 GitHub，结果写在下面一行（有新版本时带下载链接）
+        self._updates = pet.updates   # 可能是 None（比如测试里）
+        title_row = QHBoxLayout()
+        title_row.addWidget(title)
+        self._check_button = QPushButton(tr("about_check_update"), clicked=self._check_update)
+        title_row.addWidget(self._check_button)
+        title_row.addStretch()
+        layout.addLayout(title_row)
+        self._update_status = StatusLabel()
+        self._update_status.setOpenExternalLinks(True)
+        self._update_status.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)   # 链接能点
+        layout.addWidget(self._update_status)
+        if self._updates is None:
+            self._check_button.hide()
+        else:
+            self._updates.checked.connect(self._on_update_checked)
+            if self._updates.latest is not None:   # 已经知道有新版本：直接写出来
+                self._show_new_version()
 
         layout.addWidget(_heading(tr("about_privacy_title")))
         privacy = QLabel(tr("about_privacy_text"))
@@ -290,6 +317,24 @@ class AboutPage(QWidget):
         row.addStretch()
         layout.addLayout(row)
         layout.addStretch()
+
+    def _check_update(self):
+        self._check_button.setEnabled(False)
+        self._update_status.show_text(i18n.tr("about_checking"))
+        self._updates.check_now()
+
+    def _on_update_checked(self, version, error):
+        self._check_button.setEnabled(True)
+        if error is not None:
+            self._update_status.show_text(i18n.tr("about_update_failed"), error=True)
+        elif self._updates.latest is not None and self._updates.latest[0] == version:
+            self._show_new_version()
+        else:
+            self._update_status.show_text(i18n.tr("about_up_to_date"))
+
+    def _show_new_version(self):
+        version, url = self._updates.latest
+        self._update_status.show_text(i18n.tr("about_update_found", version, f'<a href="{url}">{i18n.tr("about_download")}</a>'))
 
 
 def _heading(text):
