@@ -6,9 +6,9 @@
 import sys
 
 if __name__ == "__main__":
-    if len(sys.argv) == 3 and sys.argv[1] == "--self-check":   # 构建脚本检查打包结果用（见 yunyun/selfcheck.py）
+    if len(sys.argv) in (3, 4) and sys.argv[1] == "--self-check":   # 构建脚本检查打包结果用：报告文件 [full / lite]（见 yunyun/selfcheck.py）
         from yunyun import selfcheck
-        sys.exit(selfcheck.run(sys.argv[2]))
+        sys.exit(selfcheck.run(*sys.argv[2:]))
 
     if len(sys.argv) >= 2 and sys.argv[1] == "--assistant-worker":   # 助手子进程（见 yunyun/assistant/worker.py）
         from yunyun.assistant import worker   # 这条路不 import Qt，子进程要轻

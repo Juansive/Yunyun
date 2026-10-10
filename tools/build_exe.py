@@ -2,18 +2,26 @@
 
 运行（在项目根目录）：
     .\\.venv\\Scripts\\python -m pip install -r requirements-dev.txt    # 第一次：安装 PyInstaller
-    .\\.venv\\Scripts\\python tools\\build_exe.py
+    .\\.venv\\Scripts\\python tools\\build_exe.py          # 两种都打（发新版本时用这个）
+    .\\.venv\\Scripts\\python tools\\build_exe.py lite     # 只打一种（full / lite），开发时试打包用
 也可以直接双击 tools\\build_exe.bat。
 
+两种压缩包（2026-10-10 用户定）：
+- 完整版 full：桌宠 + 邮件 + 旁观模式 + 助手模式。约 200 MB——其中 Claude Code 243 MB、浏览器驱动 102 MB（解压后）只有助手模式用。
+- 节能版 lite：不带助手模式的组件，约 35 MB。代码一样，没有 SDK 时助手的入口自己会藏起来（features.assistant_available）。
+
 结果：
-    dist\\芸芸\\芸芸.exe                 双击运行。整个"芸芸"文件夹要放在一起（exe 要用的文件在旁边的 _internal 里）
+    dist\\芸芸\\芸芸.exe                 完整版，双击运行。整个"芸芸"文件夹要放在一起（exe 要用的文件在旁边的 _internal 里）。
+                                        桌面快捷方式和开机启动指向它，所以完整版一直在这里
     dist\\芸芸\\使用说明.txt             给拿到 zip 的人看的说明（来自 docs\\使用说明.txt，版本号会自动填上）
     dist\\芸芸\\更新日志.txt             每一版更新了什么（来自 docs\\更新日志.txt）
-    ..\\Yunyun\\Yunyun-<版本>-windows.zip 把上面的文件夹压缩好，发给别人用这个（F:\\cwx\\yunyun\\Yunyun，用户定的地方）；
-                                        解压后双击里面的 芸芸.exe
-    releases\\Yunyun-<旧版本>-windows.zip 以前各版本的压缩包（打新版时自动挪过来，不删）
+    dist\\lite\\芸芸\\                    节能版（内容同上，少了助手组件）
+    ..\\Yunyun\\Yunyun-<版本>-windows.zip       完整版的压缩包，发给别人用这个（F:\\cwx\\yunyun\\Yunyun，用户定的地方）；
+    ..\\Yunyun\\Yunyun-<版本>-windows-lite.zip  节能版的压缩包（文件名只用英文：GitHub 会把附件名里的中文换掉）；
+                                               解压后都是双击里面的 芸芸.exe
+    releases\\Yunyun-<旧版本>-windows(-lite).zip 以前各版本的压缩包（打新版时自动挪过来，不删）
 
-步骤：生成图标和版本信息 → PyInstaller 打包 → 在"没装 Python"的环境里运行 exe 的自检、试一下助手子进程 →
+步骤：生成图标和版本信息 → 每种各自：PyInstaller 打包 → 在"没装 Python"的环境里运行 exe 的自检（完整版再试一下助手子进程）→
 放进使用说明 → 检查没有不该发出去的文件 → 压缩成 zip。
 
 为什么用 onedir（一个文件夹）而不是 onefile（单个 exe）：onefile 每次启动都要先把几十 MB 的文件
@@ -40,7 +48,10 @@ ASSETS = ROOT / "assets" / "pet"
 GUIDE = ROOT / "docs" / "使用说明.txt"
 CHANGELOG = ROOT / "docs" / "更新日志.txt"
 BUILD = ROOT / "build"          # 中间文件，可以随时删掉
-DIST = ROOT / "dist"            # 打包结果（最新的一版）
+DIST = ROOT / "dist"            # 打包结果（最新的一版）：完整版在 dist\芸芸，节能版在 dist\lite\芸芸
+EDITIONS = {"full": "完整版", "lite": "节能版"}
+# 只有助手模式用的包：节能版不打包（芸芸进程本来就不 import 它们，有测试守着；它们连带的 pydantic、httpx 等也就不会带上）
+LITE_EXCLUDES = ["claude_agent_sdk", "anthropic", "playwright", "mcp"]
 SHARE = ROOT.parent / "Yunyun"  # 发给别人的压缩包放这里（F:\cwx\yunyun\Yunyun，用户定的），只留最新的一版
 RELEASES = ROOT / "releases"    # 以前各版本的压缩包，留着溯源（太大，不提交到 Git）
 # 绝不能进压缩包的东西（压缩前再查一遍）：开发用的说明和工具设置、用户的数据和日志（防止被误拷进程序文件夹）
@@ -78,10 +89,16 @@ UNUSED_QT_FILES = [
     "Qt6VirtualKeyboard.dll", "Qt6Quick.dll", "Qt6Qml.dll", "Qt6QmlModels.dll",
     "Qt6QmlMeta.dll", "Qt6QmlWorkerScript.dll", "Qt6OpenGL.dll",
     "plugins/imageformats/qpdf.dll", "Qt6Pdf.dll",                 # 把 PDF 当图片打开的插件，以及它用的 PDF 库
+    "plugins/platforms/qdirect2d.dll",                             # 另一种显示方式（1 MB），Windows 上用的是 qwindows.dll
 ]
+# Qt 自带界面文字的翻译（96 个文件、约 6 MB）芸芸没有加载，只留中文、日文（以后让对话框的 Yes / No 显示成中文时用）
+QT_TRANSLATIONS_KEPT = {"qt_zh_CN.qm", "qtbase_zh_CN.qm", "qt_ja.qm", "qtbase_ja.qm"}
 
 
-def main():
+def main(editions):
+    editions = editions or list(EDITIONS)   # 不写 = 两种都打
+    if set(editions) - set(EDITIONS):
+        sys.exit(f"只能打 {' / '.join(EDITIONS)}，收到的是：{editions}")
     try:
         import PyInstaller  # noqa: F401
     except ImportError:
@@ -89,39 +106,57 @@ def main():
                  "    .\\.venv\\Scripts\\python -m pip install -r requirements-dev.txt")
 
     BUILD.mkdir(exist_ok=True)
-    print("== 1/4 生成图标和版本信息")
+    print("== 生成图标和版本信息")
     icon = make_icon(BUILD / "yunyun.ico")
     version_file = write_version_file(BUILD / "version_info.txt")
+    results = [build(edition, icon, version_file) for edition in editions]
 
-    print("== 2/4 PyInstaller 打包（要一两分钟）")
-    run_pyinstaller(icon, version_file)
-    app_dir = DIST / APP_NAME
-    remove_unused_qt_files(app_dir / "_internal" / "PySide6")
-
-    print("== 3/4 在没有 Python 的环境里运行自检，再试一下助手子进程")
-    exe = app_dir / f"{APP_NAME}.exe"
-    self_check(exe)
-    check_worker(exe)
-
-    print("== 4/4 放进使用说明和更新日志，压缩成 zip")
-    for doc in (GUIDE, CHANGELOG):
-        write_doc(doc, app_dir / doc.name)
+    print("\n完成！")
+    for edition, app_dir, archive in results:
+        folder_mb = sum(f.stat().st_size for f in app_dir.rglob("*") if f.is_file()) / 1e6
+        print(f"  {EDITIONS[edition]}：{app_dir / (APP_NAME + '.exe')}（文件夹共 {folder_mb:.0f} MB）"
+              f"\n          压缩包 {archive}（{archive.stat().st_size / 1e6:.0f} MB）")
     if "还没打包" in CHANGELOG.read_text(encoding="utf-8"):
         print("提醒：更新日志里还有\"下一版（还没打包）\"，记得改成这一版的版本号和日期。")
-    leaked = [str(f.relative_to(DIST)) for f in app_dir.rglob("*")
+
+
+def dist_dir(edition):
+    return DIST if edition == "full" else DIST / edition
+
+
+def zip_suffix(edition):
+    return "" if edition == "full" else f"-{edition}"
+
+
+def build(edition, icon, version_file):
+    """打一种：PyInstaller → 自检 → 放进说明 → 查有没有不该发出去的文件 → 压缩。返回 (edition, 程序文件夹, 压缩包)。"""
+    name, dist = EDITIONS[edition], dist_dir(edition)
+    print(f"== {name} 1/3 PyInstaller 打包（要一两分钟）")
+    run_pyinstaller(edition, icon, version_file)
+    app_dir = dist / APP_NAME
+    remove_unused_qt_files(app_dir / "_internal" / "PySide6")
+
+    print(f"== {name} 2/3 在没有 Python 的环境里运行自检" + ("，再试一下助手子进程" if edition == "full" else ""))
+    exe = app_dir / f"{APP_NAME}.exe"
+    self_check(exe, edition)
+    if edition == "full":
+        check_worker(exe)
+
+    print(f"== {name} 3/3 放进使用说明和更新日志，压缩成 zip")
+    for doc in (GUIDE, CHANGELOG):
+        write_doc(doc, app_dir / doc.name)
+    leaked = [str(f.relative_to(dist)) for f in app_dir.rglob("*")
               if f.name in NOT_FOR_SHARING or f.suffix.lower() in NOT_FOR_SHARING_SUFFIXES]
     if leaked:
         sys.exit(f"程序文件夹里有不该发出去的文件，先不压缩：{leaked}")
     SHARE.mkdir(exist_ok=True)
-    # 上一版的压缩包挪到 releases\ 保存：发给别人的地方只留最新的，免得发错（dist\ 是以前放压缩包的地方）
-    for old in [*DIST.glob("Yunyun-*-windows.zip"), *SHARE.glob("Yunyun-*-windows.zip")]:
+    # 这一种上一版的压缩包挪到 releases\ 保存：发给别人的地方只留最新的，免得发错（dist\ 是以前放压缩包的地方）
+    old_name = f"Yunyun-*-windows{zip_suffix(edition)}.zip"   # 完整版的 "*-windows.zip" 不会匹配到节能版的 "*-windows-lite.zip"
+    for old in [*DIST.glob(old_name), *SHARE.glob(old_name)]:
         archive_old_zip(old)
-    archive = Path(shutil.make_archive(str(SHARE / f"Yunyun-{__version__}-windows"), "zip",
-                                       root_dir=DIST, base_dir=APP_NAME))
-
-    folder_mb = sum(f.stat().st_size for f in app_dir.rglob("*") if f.is_file()) / 1e6
-    print(f"\n完成！\n  程序：{app_dir / (APP_NAME + '.exe')}（文件夹共 {folder_mb:.0f} MB）"
-          f"\n  压缩包：{archive}（{archive.stat().st_size / 1e6:.0f} MB）")
+    archive = Path(shutil.make_archive(str(SHARE / f"Yunyun-{__version__}-windows{zip_suffix(edition)}"), "zip",
+                                       root_dir=dist, base_dir=APP_NAME))
+    return edition, app_dir, archive
 
 
 def make_icon(ico_path):
@@ -206,7 +241,7 @@ def write_doc(source, path):
     path.write_text(text, encoding="utf-8-sig", newline="\r\n")
 
 
-def run_pyinstaller(icon, version_file):
+def run_pyinstaller(edition, icon, version_file):
     args = [
         sys.executable, "-m", "PyInstaller", str(ROOT / "tools" / "exe_entry.py"),
         "--name", APP_NAME,
@@ -218,10 +253,15 @@ def run_pyinstaller(icon, version_file):
         "--version-file", str(version_file),
         "--paths", str(ROOT),          # 让 PyInstaller 找得到 yunyun 包
         "--add-data", f"{ASSETS / '*.png'}{os.pathsep}assets/pet",   # 芸芸的图片 → exe 里的 assets/pet
-        "--distpath", str(DIST), "--workpath", str(BUILD / "pyinstaller"), "--specpath", str(BUILD),
+        "--distpath", str(dist_dir(edition)), "--workpath", str(BUILD / "pyinstaller" / edition),
+        "--specpath", str(BUILD / edition),
     ]
-    for source, target in EXTRA_DATA:
-        args += ["--add-data", f"{source}{os.pathsep}{target}"]
+    if edition == "full":
+        for source, target in EXTRA_DATA:
+            args += ["--add-data", f"{source}{os.pathsep}{target}"]
+    else:
+        for name in LITE_EXCLUDES:
+            args += ["--exclude-module", name]
     if any((ASSETS / "assistant").glob("*.png")):   # 助手模式的形象：画好了才有（一张都没有时写上去，打包会报找不到文件）
         args += ["--add-data", f"{ASSETS / 'assistant' / '*.png'}{os.pathsep}assets/pet/assistant"]
     for name in HIDDEN_IMPORTS:
@@ -233,16 +273,16 @@ def run_pyinstaller(icon, version_file):
 
 def remove_unused_qt_files(pyside_dir):
     freed = 0
-    for name in UNUSED_QT_FILES:
-        path = pyside_dir / name
+    translations = [p for p in (pyside_dir / "translations").glob("*.qm") if p.name not in QT_TRANSLATIONS_KEPT]
+    for path in [pyside_dir / name for name in UNUSED_QT_FILES] + translations:
         if path.exists():   # 以后 PySide6 升级换了文件名，这里就静静跳过，不会报错
             freed += path.stat().st_size
             path.unlink()
     print(f"删掉了用不上的 Qt 文件，省下 {freed / 1e6:.0f} MB")
 
 
-def self_check(exe):
-    """运行 exe 的自检（见 yunyun/selfcheck.py）。
+def self_check(exe, edition):
+    """运行 exe 的自检（见 yunyun/selfcheck.py；节能版查"确实没带助手组件"，不查 Claude Code 和浏览器）。
 
     运行时把 PATH 换成只有 Windows 自己的文件夹、去掉 Python 相关的环境变量，
     模拟"别人的电脑上没装 Python"：如果 exe 偷偷用了本机 Python 里的 DLL，这里就会失败。
@@ -254,7 +294,7 @@ def self_check(exe):
            if not key.upper().startswith(("PYTHON", "CONDA", "VIRTUAL_ENV", "QT_"))}
     env["PATH"] = os.pathsep.join([rf"{windows}\System32", windows, rf"{windows}\System32\Wbem"])
 
-    result = subprocess.run([str(exe), "--self-check", str(report)], env=env, timeout=120)
+    result = subprocess.run([str(exe), "--self-check", str(report), edition], env=env, timeout=120)
     print(report.read_text(encoding="utf-8") if report.exists() else "（没有生成自检报告，exe 可能根本没启动）")
     if result.returncode != 0:
         sys.exit(f"自检没通过（退出码 {result.returncode}），先不要发给别人。")
@@ -277,4 +317,4 @@ def check_worker(exe):
 
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv[1:])

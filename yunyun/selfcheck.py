@@ -6,6 +6,7 @@
 
 自检不显示窗口、不联网、不读写用户的任何数据（不碰邮箱、配置和凭据管理器里的内容）。
 最后两项（助手模式要用的 Claude Code 和浏览器）会真的启动 claude.exe（只问版本号）和不显示窗口的 Edge（临时配置、不打开网页）。
+节能版没有助手模式：这两项换成"确实没带助手组件、入口藏起来了"。
 """
 import os
 import subprocess
@@ -13,10 +14,13 @@ import tempfile
 from pathlib import Path
 
 
-def run(report_path):
-    """逐项检查，一项一行写进 report_path。全部通过返回 0，否则返回 1（作为 exe 的退出码）。"""
+def run(report_path, edition="full"):
+    """逐项检查，一项一行写进 report_path。全部通过返回 0，否则返回 1（作为 exe 的退出码）。
+    edition：full 完整版 / lite 节能版（见 tools/build_exe.py）。"""
+    checks = CHECKS if edition == "full" else \
+        [c for c in CHECKS if c[1] not in HEAVY_CHECKS] + [("没有助手模式（节能版）", _no_assistant)]
     lines, ok = [], True
-    for name, check in CHECKS:
+    for name, check in checks:
         try:
             lines.append(f"OK    {name}: {check()}")
         except Exception as e:  # 自检就是要把每一项的错误都收集起来报告，而不是遇到第一个就停
@@ -109,6 +113,16 @@ def _browser():
     return f"Edge {asyncio.run(edge_version())}"
 
 
+def _no_assistant():
+    """节能版：助手组件确实没带（不然白白大了 170 MB），右键菜单和设置窗口里也就不会出现助手的入口。"""
+    import importlib.util
+    from yunyun import features
+    bundled = [name for name in ("claude_agent_sdk", "anthropic", "playwright") if importlib.util.find_spec(name)]
+    if bundled or features.assistant_available():
+        raise RuntimeError(f"节能版里带了助手模式的组件：{bundled}")
+    return "没带助手组件，助手的入口藏起来了"
+
+
 CHECKS = [
     ("模块", _modules),
     ("键盘监听", _keyboard),
@@ -119,4 +133,4 @@ CHECKS = [
     ("助手的大脑（Claude Code）", _claude_code),
     ("芸芸的浏览器（Playwright + Edge）", _browser),
 ]
-HEAVY_CHECKS = (_claude_code, _browser)   # 要真的启动 claude.exe / Edge：平时的测试里不跑（见 tests/test_real_claude_code.py）
+HEAVY_CHECKS = (_claude_code, _browser)   # 助手模式的两项：要真的启动 claude.exe / Edge，平时的测试里不跑（见 tests/test_real_claude_code.py）；节能版没有

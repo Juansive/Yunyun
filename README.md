@@ -13,7 +13,7 @@
 - **不打扰你**：被别的窗口挡住时自动暂停；全屏看视频、玩游戏、放 PPT 时不弹提醒；可以设置免打扰时段（比如深夜），芸芸会去睡觉。
 - **找得回来**：看过的提醒保存 7 天，随时可以翻看。
 - **不改动你的邮箱**：芸芸看过的邮件，在你的邮箱里仍然是"未读"。
-- **AI 助手**（0.6 起）：右键 →「✦ 助手模式」，用你自己的 DeepSeek / Claude API Key（按用量付费），见下面的"助手模式"。
+- **AI 助手**（0.6 起，完整版才有）：右键 →「✦ 助手模式」，用你自己的 DeepSeek / Claude API Key（按用量付费），见下面的"助手模式"。
 - **旁观模式**：你自己用 Claude Code 时，它做完、等你确认时芸芸提醒你。
 - 界面支持中文、English、日本語。
 
@@ -21,9 +21,14 @@
 
 需要 Windows 10/11（64 位），**不需要安装 Python**。
 
-1. 打开本页右边的 **Releases**（或者 [点这里](https://github.com/Juansive/Yunyun/releases/latest)），在最新版本下面的 Assets 里下载
-   **`Yunyun-<版本>-windows.zip`**（约 200 MB，解压后约 470 MB，大部分是助手模式要用的 Claude Code 和浏览器驱动），
-   解压到你喜欢的位置（比如 `D:\芸芸`）。
+1. 打开本页右边的 **Releases**（或者 [点这里](https://github.com/Juansive/Yunyun/releases/latest)），在最新版本下面的 Assets 里两种选一种：
+
+   | 压缩包 | 大小 | 有什么 |
+   |---|---|---|
+   | **`Yunyun-<版本>-windows-lite.zip`**（节能版） | 约 35 MB，解压后约 80 MB | 桌宠、新邮件提醒、旁观模式。**只想要邮件提醒选这个** |
+   | **`Yunyun-<版本>-windows.zip`**（完整版） | 约 200 MB，解压后约 470 MB | 上面全部，再加助手模式（多出来的是它要用的 Claude Code 和浏览器驱动） |
+
+   解压到你喜欢的位置（比如 `D:\芸芸`）。先用节能版、以后想用助手模式了，下载完整版替换文件夹就行，设置不会丢。
    > ⚠️ 不要点页面上绿色的 **Code → Download ZIP**：那是源代码，要装 Python 才能用。
 2. 双击文件夹里的 **`芸芸.exe`**。整个文件夹要放在一起，不要只把 exe 拷出来（它要用旁边 `_internal` 里的文件）。
 3. 第一次运行时，Windows 可能提示"Windows 已保护你的电脑"（因为芸芸没有付费的数字签名）：点 **更多信息 → 仍要运行**。
@@ -81,6 +86,8 @@ python -m venv .venv
 小红点只数**芸芸开始帮你看邮箱之后**新来的未读邮件，以前积攒的旧邮件不会算进去。
 
 ## 助手模式（0.6 起）
+
+> 只有完整版有（见上面"下载和安装"）。节能版的右键菜单里没有这一项。
 
 右键芸芸 → 第一项 **✦ 助手模式**，芸芸脚下会展开一个带淡蓝光晕的输入框，可以问她问题，需要时她会上网查资料。
 大脑默认是 Claude（Anthropic），也可以换成更便宜的 **DeepSeek**；**都要用你自己的 API Key，按用量付费**（Claude 的 API 和 Claude 的订阅分开计费）。
@@ -183,11 +190,12 @@ python -m venv .venv
 .\.venv\Scripts\python tools\build_exe.py   # 打包成 exe（也可以双击 tools\build_exe.bat）
 ```
 
-打包结果：`dist\芸芸\芸芸.exe`，发给别人用的压缩包在项目文件夹旁边的 `..\Yunyun\Yunyun-<版本>-windows.zip`（只留最新一版，旧的挪到 `releases\`）。
-构建脚本会在"没有 Python"的环境里运行 exe 的自检（看到 8 行 `OK`，其中两行会真的启动 Claude Code 和不显示窗口的 Edge），
-再以"助手子进程"的身份试一下 exe，都过了才压缩。
+一次打两种：完整版 `dist\芸芸\芸芸.exe`、节能版 `dist\lite\芸芸\芸芸.exe`（不带助手模式的组件，`build_exe.py lite` / `full` 可以只打一种）。
+发给别人用的压缩包在项目文件夹旁边的 `..\Yunyun\`：`Yunyun-<版本>-windows.zip` 和 `Yunyun-<版本>-windows-lite.zip`（只留最新一版，旧的挪到 `releases\`）。
+构建脚本会在"没有 Python"的环境里运行 exe 的自检（完整版看到 8 行 `OK`，其中两行会真的启动 Claude Code 和不显示窗口的 Edge，
+再以"助手子进程"的身份试一下 exe；节能版 7 行，最后一行确认没带助手组件），都过了才压缩。
 zip 里会附上 [docs/使用说明.txt](docs/使用说明.txt)（自动填上版本号）和 [更新日志](docs/更新日志.txt)；开发用的说明不会进去（脚本会检查）。
-发给别人前记得在 `yunyun/__init__.py` 里把版本号加一，再把 zip 发到 GitHub 的 Releases。
+发给别人前记得在 `yunyun/__init__.py` 里把版本号加一，再把两个 zip 都发到 GitHub 的 Releases。
 
 - 开发用的说明（CLAUDE.md、设计细节、开发计划、交接）只在开发者自己的电脑上，不在这个仓库里。
 - 给画师的形象素材要求见 [assets/pet/README.md](assets/pet/README.md)。
