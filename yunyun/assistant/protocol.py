@@ -22,13 +22,19 @@ class ProtocolError(ValueError):
 _TYPES = {}   # "ask" → Ask 类
 
 
-def _message(cls):
-    """把一个类变成消息：冻结的数据类，并按它的 TYPE 登记，decode() 才认得。"""
-    cls = dataclass(frozen=True)(cls)
-    if cls.TYPE in _TYPES:
-        raise ValueError(f"消息类型重名：{cls.TYPE}")
-    _TYPES[cls.TYPE] = cls
-    return cls
+def registry(types):
+    """消息登记器：被它装饰的类变成冻结的数据类，并按 TYPE 登记进 types，decode(line, types) 才认得。
+    语音子进程（voice/protocol.py）用它登记自己那一套。"""
+    def message(cls):
+        cls = dataclass(frozen=True)(cls)
+        if cls.TYPE in types:
+            raise ValueError(f"消息类型重名：{cls.TYPE}")
+        types[cls.TYPE] = cls
+        return cls
+    return message
+
+
+_message = registry(_TYPES)
 
 
 def encode(message):
@@ -60,11 +66,11 @@ def read_lines(fd=0):
         yield buffer
 
 
-def decode(line):
+def decode(line, types=_TYPES):
     """一行 JSON → 消息。认不得的字段直接忽略（以后加了字段，旧版本也能读）。"""
     try:
         data = json.loads(line)
-        cls = _TYPES[data.pop("type")]
+        cls = types[data.pop("type")]
     except (ValueError, KeyError, TypeError, AttributeError) as e:
         raise ProtocolError(f"看不懂的消息：{line[:200]!r}") from e
     known = {f.name for f in fields(cls)}

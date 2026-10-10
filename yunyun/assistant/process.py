@@ -1,4 +1,5 @@
 """芸芸这一头：启动 / 关闭助手子进程，给它发命令，把它发来的事件变成 Qt 信号。
+收发的部分是 LineProcess，语音子进程（voice/speaker.py）也用它。
 
 只 import Qt 和 protocol，**不碰 Agent SDK**（SDK 在子进程里）。用 QProcess 收发：数据到了 Qt 自己会发信号，
 不需要线程，界面不会卡（0.7 实测最大停顿 26 毫秒）。
@@ -31,14 +32,14 @@ QUIT_TIMEOUT_MS = 5_000     # 请它退出后，多久还不走就强制结束
 CHECK_TIMEOUT_MS = 40_000   # 测试连接最多等多久（小进程里自己的网络超时是 20 秒）
 
 
-def subprocess_command(role, *args):
-    """(程序, 参数, 工作目录)。role 是 "worker"（助手子进程）或 "check"（测试连接）。
+def subprocess_command(role, *args, package="assistant"):
+    """(程序, 参数, 工作目录)。role 是 "worker"（子进程）或 "check"（测试连接）；package：助手 "assistant" / 语音 "voice"。
 
-    开发版用当前的 Python 跑 yunyun.assistant.<role>；打包后用芸芸.exe 自己（tools/exe_entry.py 按 --assistant-<role> 分流）。
+    开发版用当前的 Python 跑 yunyun.<package>.<role>；打包后用芸芸.exe 自己（tools/exe_entry.py 按 --<package>-<role> 分流）。
     """
     if getattr(sys, "frozen", False):
-        return sys.executable, [f"--assistant-{role}", *args], None
-    return sys.executable, ["-m", f"yunyun.assistant.{role}", *args], str(PROJECT_ROOT)
+        return sys.executable, [f"--{package}-{role}", *args], None
+    return sys.executable, ["-m", f"yunyun.{package}.{role}", *args], str(PROJECT_ROOT)
 
 
 def worker_command(language, resume=""):
@@ -46,14 +47,19 @@ def worker_command(language, resume=""):
     return subprocess_command("worker", "--language", language, *(["--resume", resume] if resume else []))
 
 
-class AssistantProcess(QObject):
-    event = Signal(object)   # protocol 里的一个事件
+class LineProcess(QObject):
+    """一个子进程，标准输入 / 输出一行一条 JSON（助手子进程、语音子进程共用）。
+
+    messages：那一套消息的模块（要有 encode / decode / ProtocolError / Ready / Error / Quit）；name：日志里怎么称呼它。
+    """
+    event = Signal(object)   # messages 里的一个事件
     finished = Signal()      # 子进程没了（只发一次）
 
-    def __init__(self, language, parent=None, command=None, resume=""):
-        """command：(程序, 参数, 工作目录)，测试时换成假的子进程；平时不用传。resume：接着哪一段以前的对话聊。"""
+    def __init__(self, command, messages=protocol, name="助手子进程", parent=None):
         super().__init__(parent)
-        program, args, cwd = command or worker_command(language, resume)
+        program, args, cwd = command
+        self._messages = messages
+        self._name = name
         self._proc = QProcess(self)
         self._proc.setProgram(program)
         self._proc.setArguments(args)
@@ -85,22 +91,16 @@ class AssistantProcess(QObject):
 
     def send(self, command):
         if self.is_running():
-            self._proc.write(protocol.encode(command))
-
-    def ask(self, text, images=()):
-        self.send(protocol.Ask(text, tuple(images)))
-
-    def interrupt(self):
-        self.send(protocol.Interrupt())
+            self._proc.write(self._messages.encode(command))
 
     def stop(self):
-        """关掉助手：先请它自己退出（它会关掉 claude.exe），QUIT_TIMEOUT_MS 还不走就强制结束。"""
+        """关掉：先请它自己退出（助手子进程会关掉 claude.exe），QUIT_TIMEOUT_MS 还不走就强制结束。"""
         if self._stopping:
             return
         self._stopping = True
         self._ready_timer.stop()
         if self.is_running():
-            self.send(protocol.Quit())
+            self.send(self._messages.Quit())
             self._kill_timer.start()
         else:
             self._finish()
@@ -121,14 +121,14 @@ class AssistantProcess(QObject):
             if not line.strip():
                 continue
             try:
-                event = protocol.decode(line)
-            except protocol.ProtocolError as e:
-                log.warning("助手子进程发来看不懂的一行，跳过：%s", e)
+                event = self._messages.decode(line)
+            except self._messages.ProtocolError as e:
+                log.warning("%s发来看不懂的一行，跳过：%s", self._name, e)
                 continue
-            if isinstance(event, protocol.Ready):
+            if isinstance(event, self._messages.Ready):
                 self.ready = True
                 self._ready_timer.stop()
-            elif isinstance(event, protocol.Error) and not self.ready:
+            elif isinstance(event, self._messages.Error) and not self.ready:
                 self._failed = True
             self.event.emit(event)
 
@@ -138,30 +138,44 @@ class AssistantProcess(QObject):
 
     def _on_ready_timeout(self):
         if not self.ready and not self._stopping:
-            log.warning("助手子进程 %d 秒还没准备好，关掉它", READY_TIMEOUT_MS // 1000)
+            log.warning("%s %d 秒还没准备好，关掉它", self._name, READY_TIMEOUT_MS // 1000)
             self._failed = True
-            self.event.emit(protocol.Error("worker", "启动超时"))
+            self.event.emit(self._messages.Error("worker", "启动超时"))
             self.stop()
 
     def _on_error(self, error):
         if error == QProcess.ProcessError.FailedToStart:
-            log.warning("助手子进程启动不了：%s", self._proc.errorString())
+            log.warning("%s启动不了：%s", self._name, self._proc.errorString())
             self._ready_timer.stop()
-            self.event.emit(protocol.Error("worker", f"启动不了：{self._proc.errorString()}"))
+            self.event.emit(self._messages.Error("worker", f"启动不了：{self._proc.errorString()}"))
             self._finish()   # 根本没启动起来，不会再有 finished 信号
 
     def _on_finished(self, exit_code, exit_status):
         self._ready_timer.stop()
         self._kill_timer.stop()
         if not self._stopping and not self._failed:
-            log.warning("助手子进程意外退出（%s），最后的错误输出：%s", exit_code, " / ".join(self._stderr))
-            self.event.emit(protocol.Error("worker", f"意外退出（{exit_code}）"))
+            log.warning("%s意外退出（%s），最后的错误输出：%s", self._name, exit_code, " / ".join(self._stderr))
+            self.event.emit(self._messages.Error("worker", f"意外退出（{exit_code}）"))
         self._finish()
 
     def _finish(self):
         if not self._done:
             self._done = True
             self.finished.emit()
+
+
+class AssistantProcess(LineProcess):
+    """助手子进程（worker.py）。"""
+
+    def __init__(self, language, parent=None, command=None, resume=""):
+        """command：(程序, 参数, 工作目录)，测试时换成假的子进程；平时不用传。resume：接着哪一段以前的对话聊。"""
+        super().__init__(command or worker_command(language, resume), parent=parent)
+
+    def ask(self, text, images=()):
+        self.send(protocol.Ask(text, tuple(images)))
+
+    def interrupt(self):
+        self.send(protocol.Interrupt())
 
 
 class KeyCheck(QObject):

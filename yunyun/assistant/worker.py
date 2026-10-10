@@ -23,18 +23,10 @@ from yunyun.paths import data_dir
 log = logging.getLogger("yunyun.assistant.worker")
 
 
-async def serve(stdin, write, language, make_brain, resume=""):
-    """主循环。
-
-    stdin：能一行行读的二进制流；write(bytes)：把一行发给芸芸；
-    make_brain(settings, api_key, language, emit, resume=...)：造一个大脑（正式用 ClaudeBrain，测试用假的）；
-    resume：接着哪一段以前的对话聊（Claude Code 的会话编号；空 = 新对话）。
-    """
+def start_reader(stdin, decode, commands):
+    """后台线程一行行读芸芸发来的命令，放进 asyncio 那边的 commands 队列；读到头（芸芸不在了）放一个 None。
+    Windows 上 asyncio 读不了这种管道，所以用线程。要在事件循环里调用；语音子进程（voice/worker.py）也用。"""
     loop = asyncio.get_running_loop()
-    commands = asyncio.Queue()
-
-    def emit(event):
-        write(protocol.encode(event))
 
     def deliver(command):
         """从读线程交给 asyncio 那边；主循环已经结束（事件循环关了）就算了。"""
@@ -44,21 +36,35 @@ async def serve(stdin, write, language, make_brain, resume=""):
             return False
         return True
 
-    def read_stdin():
-        """后台线程：一行行读芸芸发来的命令（Windows 上 asyncio 读不了这种管道，所以用线程）。"""
+    def read():
         for line in stdin:
             if not line.strip():
                 continue
             try:
-                command = protocol.decode(line)
+                command = decode(line)
             except protocol.ProtocolError as e:
                 log.warning("收到看不懂的命令，跳过：%s", e)
                 continue
             if not deliver(command):
                 return
-        deliver(None)   # 读到头：芸芸不在了
+        deliver(None)
 
-    threading.Thread(target=read_stdin, name="assistant-stdin", daemon=True).start()
+    threading.Thread(target=read, name="stdin-reader", daemon=True).start()
+
+
+async def serve(stdin, write, language, make_brain, resume=""):
+    """主循环。
+
+    stdin：能一行行读的二进制流；write(bytes)：把一行发给芸芸；
+    make_brain(settings, api_key, language, emit, resume=...)：造一个大脑（正式用 ClaudeBrain，测试用假的）；
+    resume：接着哪一段以前的对话聊（Claude Code 的会话编号；空 = 新对话）。
+    """
+    commands = asyncio.Queue()
+
+    def emit(event):
+        write(protocol.encode(event))
+
+    start_reader(stdin, protocol.decode, commands)
 
     settings = assistant_settings.load_settings()
     api_key = assistant_settings.get_api_key(settings.provider)
