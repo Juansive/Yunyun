@@ -24,3 +24,5 @@ logs/
 mail_state.json
 cards.json
 memory.json
+# Archify 画的图（开发用，不进公开仓库）
+.archify/
