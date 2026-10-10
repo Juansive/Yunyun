@@ -6,7 +6,7 @@
     .\\.venv\\Scripts\\python tools\\usage_report.py 10 <projects 文件夹>
 
 在 Claude 桌面版里运行时 %APPDATA% 会被重定向，看用户真实的数据要把文件夹写成
-\\\\localhost\\C$\\Users\\Administrator\\AppData\\Roaming\\Yunyun\\Yunyun\\assistant\\claude\\projects
+\\\\localhost\\C$\\Users\\<用户名>\\AppData\\Roaming\\Yunyun\\Yunyun\\assistant\\claude\\projects
 """
 import json
 import sys

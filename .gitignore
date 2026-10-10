@@ -15,3 +15,12 @@ CLAUDE.md
 docs/开发交接.md
 docs/设计细节.md
 docs/助手模式计划.md
+# 开发工具（Claude Code / code-review-graph）的本机设置，带本机路径，不上传
+.claude/
+.mcp.json
+# 日志、用户数据都不进仓库（真实数据在 %APPDATA%\Yunyun，这里防止误拷进来）
+*.log
+logs/
+mail_state.json
+cards.json
+memory.json
