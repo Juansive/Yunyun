@@ -278,20 +278,21 @@ TEXTS = {
     "provider_qq": {"zh": "QQ邮箱", "en": "QQ Mail", "ja": "QQメール"},
     "provider_163": {"zh": "163邮箱", "en": "163 Mail", "ja": "163メール"},
     "provider_gmail": {"zh": "Gmail", "en": "Gmail", "ja": "Gmail"},
+    # 授权码怎么拿：{} 是能点的链接（mail_page.HELP_URLS）
     "mail_hint_qq": {
-        "zh": "授权码怎么拿：QQ 邮箱网页版 → 设置 → 账号与安全 → 开启「IMAP/SMTP 服务」→ 生成授权码（16 位字母）。",
-        "en": "How to get the code: QQ Mail (web) → Settings → Account & Security → enable “IMAP/SMTP service” → generate an authorization code (16 letters).",
-        "ja": "認証コードの取得：QQメール（Web版）→ 設定 → アカウントとセキュリティ →「IMAP/SMTPサービス」を有効化 → 認証コード（16文字）を生成。",
+        "zh": "授权码怎么拿：打开 {} 登录 → 设置 → 账号与安全 → 开启「IMAP/SMTP 服务」→ 生成授权码（16 位字母）。",
+        "en": "How to get the code: open {} and sign in → Settings → Account & Security → enable “IMAP/SMTP service” → generate an authorization code (16 letters).",
+        "ja": "認証コードの取得：{} を開いてログイン → 設定 → アカウントとセキュリティ →「IMAP/SMTPサービス」を有効化 → 認証コード（16文字）を生成。",
     },
     "mail_hint_163": {
-        "zh": "授权码怎么拿：163 邮箱网页版 → 设置 → POP3/SMTP/IMAP → 开启「IMAP/SMTP 服务」→ 新增授权密码。",
-        "en": "How to get the code: 163 Mail (web) → Settings → POP3/SMTP/IMAP → enable “IMAP/SMTP service” → add an authorization password.",
-        "ja": "認証コードの取得：163メール（Web版）→ 設定 → POP3/SMTP/IMAP →「IMAP/SMTPサービス」を有効化 → 認証パスワードを追加。",
+        "zh": "授权码怎么拿：打开 {} 登录 → 设置 → POP3/SMTP/IMAP → 开启「IMAP/SMTP 服务」→ 新增授权密码。",
+        "en": "How to get the code: open {} and sign in → Settings → POP3/SMTP/IMAP → enable “IMAP/SMTP service” → add an authorization password.",
+        "ja": "認証コードの取得：{} を開いてログイン → 設定 → POP3/SMTP/IMAP →「IMAP/SMTPサービス」を有効化 → 認証パスワードを追加。",
     },
     "mail_hint_gmail": {
-        "zh": "Gmail 要先开启两步验证，再到 Google 账号 → 安全性 → 应用专用密码，生成一个 16 位密码填在这里。",
-        "en": "Turn on 2-Step Verification first, then create a 16-character app password in Google Account → Security → App passwords, and enter it here.",
-        "ja": "まず2段階認証を有効にし、Googleアカウント → セキュリティ → アプリパスワードで16文字のパスワードを作成して入力します。",
+        "zh": "Gmail 要先开启两步验证，再打开 {} 生成一个 16 位的应用专用密码填在这里（Google 账号的菜单里常常找不到这一项，点链接最快）。",
+        "en": "Turn on 2-Step Verification first, then open {} to create a 16-character app password and enter it here (it's often hidden in the Google Account menus—the link is quickest).",
+        "ja": "まず2段階認証を有効にし、{} を開いて16文字のアプリパスワードを作成して入力します（Googleアカウントのメニューでは見つけにくいので、リンクからが早いです）。",
     },
     "mail_privacy_note": {
         "zh": "授权码只保存在这台电脑的 Windows 凭据管理器里，不会写进任何文件，以后也不用再输入。",

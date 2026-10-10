@@ -1,7 +1,7 @@
 """设置窗口的"邮箱"页：在芸芸里直接添加 / 删除邮箱，不需要打开终端。
 
-添加流程：填写 → 点"测试并保存" → 后台线程测试登录（界面不卡）→ 成功才保存。
-授权码保存在 Windows 凭据管理器，以后不用再输入。
+添加流程：填写（填好地址自动选上类型）→ 点"测试并保存" → 后台线程测试登录（界面不卡）→ 成功才保存。
+授权码保存在 Windows 凭据管理器，以后不用再输入。说明里的网址能点（HELP_URLS）。
 """
 import threading
 
@@ -13,8 +13,15 @@ from PySide6.QtWidgets import (
 
 from yunyun import i18n
 from yunyun.mail import accounts
-from yunyun.mail.imap_client import PROVIDERS, MailAccount, MailError, check_login
+from yunyun.mail.imap_client import PROVIDERS, MailAccount, MailError, check_login, provider_for
 from yunyun.pet.widgets import StatusLabel, button_row, note
+
+# 授权码说明里能点的链接：去哪里开 IMAP、拿授权码（Gmail 的应用专用密码在菜单里常常找不到，直接给页面）
+HELP_URLS = {
+    "qq": "https://mail.qq.com",
+    "163": "https://mail.163.com",
+    "gmail": "https://myaccount.google.com/apppasswords",
+}
 
 
 class MailAccountsPage(QWidget):
@@ -51,6 +58,7 @@ class MailAccountsPage(QWidget):
         self._provider.currentIndexChanged.connect(self._update_hint)
         self._address = QLineEdit()
         self._address.setPlaceholderText("123456@qq.com")
+        self._address.textEdited.connect(self._guess_provider)   # 填好地址就自动选上类型（还能手动改）
         self._password = QLineEdit()
         self._password.setEchoMode(QLineEdit.EchoMode.Password)  # 输入显示成圆点
         self._password.returnPressed.connect(self._test_and_save)  # 在授权码框按回车 = 点保存
@@ -59,6 +67,7 @@ class MailAccountsPage(QWidget):
         form.addRow(tr("mail_password"), self._password)
 
         self._hint = note()
+        self._hint.setOpenExternalLinks(True)   # 点链接直接用浏览器打开
         form.addRow(self._hint)
         form.addRow(note("🔒 " + tr("mail_privacy_note"), "#2E7D32"))
         layout.addWidget(box)
@@ -109,7 +118,15 @@ class MailAccountsPage(QWidget):
     # ---------- 添加 ----------
 
     def _update_hint(self):
-        self._hint.setText(i18n.tr(f"mail_hint_{self._provider.currentData()}"))
+        code = self._provider.currentData()
+        url = HELP_URLS[code]
+        link = f'<a href="{url}">{url.removeprefix("https://")}</a>'
+        self._hint.setText(i18n.tr(f"mail_hint_{code}", link))
+
+    def _guess_provider(self, address):
+        code = provider_for(address)
+        if code is not None:
+            self._provider.setCurrentIndex(self._provider.findData(code))
 
     def _test_and_save(self):
         if not self._save_button.isEnabled():

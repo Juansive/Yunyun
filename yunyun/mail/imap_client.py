@@ -18,6 +18,14 @@ PROVIDERS = {
     "163": ("imap.163.com", 993),
     "gmail": ("imap.gmail.com", 993),
 }
+# 邮箱地址的域名 → 类型（添加邮箱时填好地址就自动选上；foxmail 是 QQ 邮箱的别名，同一个服务器）
+DOMAINS = {"qq.com": "qq", "foxmail.com": "qq", "163.com": "163", "gmail.com": "gmail", "googlemail.com": "gmail"}
+
+
+def provider_for(address):
+    """按邮箱地址猜类型：认识的域名返回 qq / 163 / gmail，否则 None。"""
+    _, at, domain = address.strip().rpartition("@")
+    return DOMAINS.get(domain.lower()) if at else None
 TIMEOUT = 30                 # 网络超时（秒），防止网络不好时一直卡住
 MAX_FETCH_BYTES = 1_000_000  # 每封邮件最多下载 1 MB：正文在前面，后面多半是附件，没必要下载
 

@@ -3,7 +3,7 @@ import time
 
 from PySide6.QtWidgets import QMessageBox
 
-from yunyun import config as cfg
+from yunyun import config as cfg, i18n
 from yunyun.mail import accounts
 from yunyun.mail.imap_client import MailAccount, MailError
 from yunyun.pet import mail_page
@@ -64,6 +64,27 @@ def test_dialog_adds_account_after_successful_login(qapp, fake_store, monkeypatc
     assert dialog._password.text() == ""        # 保存后清空输入框
     assert "me@qq.com" in dialog._list.item(0).text()
     assert dialog._save_button.isEnabled()
+
+
+def test_provider_for_address():
+    from yunyun.mail.imap_client import provider_for
+    assert provider_for(" Me@QQ.com ") == provider_for("x@foxmail.com") == "qq"
+    assert provider_for("x@163.com") == "163" and provider_for("x@googlemail.com") == "gmail"
+    assert provider_for("x@126.com") is None and provider_for("qq.com") is None and provider_for("x@qq") is None
+
+
+def test_dialog_guesses_provider_and_links_help(qapp, fake_store, monkeypatch):
+    """填好地址自动选类型（手动改了也行）；说明里有能点的链接，跟着类型变。"""
+    i18n._current = "zh"
+    dialog = make_dialog(qapp, monkeypatch)
+    assert "https://mail.qq.com" in dialog._hint.text() and dialog._hint.openExternalLinks()
+    dialog._address.textEdited.emit("someone@gmail.com")              # 用户打字（textEdited 只在用户改的时候发）
+    assert dialog._provider.currentData() == "gmail"
+    assert 'href="https://myaccount.google.com/apppasswords"' in dialog._hint.text()
+    dialog._address.textEdited.emit("someone@school.edu.cn")          # 不认识的域名：不动用户选的
+    assert dialog._provider.currentData() == "gmail"
+    dialog._address.textEdited.emit("someone@163.com")
+    assert dialog._provider.currentData() == "163" and "https://mail.163.com" in dialog._hint.text()
 
 
 def test_dialog_shows_error_and_saves_nothing(qapp, fake_store, monkeypatch):
