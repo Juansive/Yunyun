@@ -1,17 +1,21 @@
-"""设置窗口的"历史"页：按日期分组列出最近 7 天芸芸展示过的提醒，单击一条看详情。"""
+"""设置窗口的"历史"页：按日期分组列出最近 7 天芸芸展示过的提醒，单击一条看详情。
+添加了两个以上邮箱时，每条前面写着是哪个邮箱收的（和卡片上的标签一样，card_deck.mailbox_label）。"""
 from datetime import datetime
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QLabel, QMessageBox, QPushButton, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget
 
 from yunyun import i18n
+from yunyun.pet.card_deck import mailbox_label
 from yunyun.pet.widgets import button_row, day_label, note
 
 
 class HistoryPage(QWidget):
-    def __init__(self, history):
+    def __init__(self, history, mail_accounts=lambda: []):
         super().__init__()
         self._history = history  # MailHistory，可能是 None（比如测试里）
+        self._mail_accounts = mail_accounts   # 返回现在添加的邮箱（标"哪个邮箱收的"用）
+        self._accounts = []
         tr = i18n.tr
         layout = QVBoxLayout(self)
 
@@ -47,6 +51,7 @@ class HistoryPage(QWidget):
         self._tree.clear()
         self._detail.clear()
         entries = self._history.recent() if self._history is not None else []
+        self._accounts = self._mail_accounts()
         self._clear_button.setEnabled(bool(entries))
         if not entries:
             empty = QTreeWidgetItem([tr("history_empty")])
@@ -67,7 +72,8 @@ class HistoryPage(QWidget):
                 self._tree.addTopLevelItem(header)
                 header.setExpanded(True)
                 groups[day] = header
-            item = QTreeWidgetItem([f"{shown:%H:%M}   {entry.bubble}"])
+            label = mailbox_label(entry.account, self._accounts)
+            item = QTreeWidgetItem([f"{shown:%H:%M}   " + (f"{label} · " if label else "") + entry.bubble])
             item.setData(0, Qt.ItemDataRole.UserRole, entry)  # 把整条记录藏在列表项里，显示详情时用
             item.setToolTip(0, entry.bubble)
             groups[day].addChild(item)
@@ -82,6 +88,8 @@ class HistoryPage(QWidget):
             tr("card_detail_line", tr("card_subject"), entry.subject or tr("card_no_subject")),
             tr("card_detail_line", tr("card_sender"), entry.sender),
         ]
+        if mailbox_label(entry.account, self._accounts):
+            lines.append(tr("card_detail_line", tr("card_mailbox"), entry.account))
         if entry.date:
             lines.append(tr("card_detail_line", tr("card_time"), f"{entry.date.astimezone():%Y-%m-%d %H:%M}"))
         if entry.attachments:

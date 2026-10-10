@@ -22,7 +22,7 @@ from yunyun.ai import settings as ai_settings
 from yunyun.pet import winapi
 from yunyun.pet.badge import Badge
 from yunyun.pet.bubble import BubbleStack
-from yunyun.pet.card_deck import CardDeck, MailCard
+from yunyun.pet.card_deck import CardDeck, MailCard, mailbox_label
 from yunyun.pet.menu import FancyAction, KeepOpenMenu
 from yunyun.pet.sprites import Sprites
 from yunyun.pet.state import PetState
@@ -119,6 +119,7 @@ class PetWindow(QWidget):
         self._assistant_cards = []    # 助手的问答卡片（从旧到新）：退出助手模式也留着，芸芸退出才清掉，不写硬盘
         self._assistant_state = {}    # 助手要记着的（卡片组拖到了哪、历史读过没有）：退出助手模式也记着
         self.history = None           # 邮件提醒的历史记录（main 里设置）
+        self.mail_accounts = lambda: []   # 现在添加的邮箱（main.connect_mail 里设置；卡片上标"哪个邮箱收的"要用）
         self.quiet_hours = None       # 免打扰时段（main 里设置）
         self.watch_reminder = None    # 旁观模式的提醒（main 里设置；设置 → 旁观的"发一条测试提醒"用）
 
@@ -492,8 +493,11 @@ class PetWindow(QWidget):
             return
         self._deck.reset()
         self._deck_accepting = False  # 这是回看历史，不是正在处理的一轮
+        accounts = self.mail_accounts()
         for e in entries:
-            self._deck.add_card(MailCard(e.bubble, e.subject, e.sender, e.date, e.attachments), self.body_rect())
+            label = mailbox_label(e.account, accounts)
+            self._deck.add_card(MailCard(e.bubble, e.subject, e.sender, e.date, e.attachments,
+                                         label, e.account if label else ""), self.body_rect())
 
     def add_mail_card(self, card):
         self._deck.add_card(card, self.body_rect())

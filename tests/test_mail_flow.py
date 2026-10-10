@@ -133,6 +133,35 @@ def test_history_records_batch_and_recent_mail_reopens_it(qapp, world):
     assert not pet.deck_accepting                              # 这是回看，不是在处理
 
 
+def test_cards_show_which_mailbox_with_two_or_more(qapp, world):
+    """两个以上邮箱：卡片标出是哪个邮箱收的，历史记下、"刚才的邮件"和历史页也一样；只有一个邮箱时不标。"""
+    from yunyun.pet.history_page import HistoryPage
+    mail, pet, machine = world
+    msg = MailMessage(20, "论文", "王老师", "wang@univ.edu.cn", None, "正文", [])
+    say = ai.Description("王老师说论文要补充", "ok")
+
+    pet.begin_mail_batch()
+    mail.message_ready.emit("me@qq.com", msg, say)              # world 里只有一个 QQ 邮箱
+    assert pet._deck._cards[-1].mailbox == ""
+
+    mail._accounts = [A, MailAccount("163邮箱", "163", "work@163.com")]
+    pet.begin_mail_batch()
+    mail.message_ready.emit("work@163.com", msg, say)
+    card = pet._deck._cards[-1]
+    assert (card.mailbox, card.mailbox_address) == ("163邮箱", "work@163.com")
+    assert "收件邮箱：work@163.com" in pet._deck._detail_lines(card)
+    assert pet.history.latest_batch()[-1].account == "work@163.com"
+
+    pet._deck.close_deck()
+    pet.show_recent_mail()
+    assert pet._deck._cards[-1].mailbox == "163邮箱"            # 回看时也有
+
+    page = HistoryPage(pet.history, pet.mail_accounts)
+    texts = [page._tree.topLevelItem(0).child(i).text(0) for i in range(page._tree.topLevelItem(0).childCount())]
+    assert texts[0].endswith("163邮箱 · 王老师说论文要补充")
+    assert texts[1].endswith("QQ邮箱 · 王老师说论文要补充")   # 按现在的邮箱来标：那时只有一个，现在两个了也标上
+
+
 def test_quiet_hours_only_count_new_mail(qapp, tmp_path, monkeypatch):
     """免打扰时来了新邮件：芸芸不激动、小红点不去角落，只在身上安静地计数。"""
     from datetime import time as dtime

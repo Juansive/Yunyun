@@ -389,6 +389,7 @@ TEXTS = {
     # ---- 卡片堆（放大后显示的原始信息）----
     "card_subject": {"zh": "标题", "en": "Subject", "ja": "件名"},
     "card_sender": {"zh": "发件人", "en": "From", "ja": "差出人"},
+    "card_mailbox": {"zh": "收件邮箱", "en": "Received at", "ja": "受信アカウント"},
     "card_time": {"zh": "时间", "en": "Time", "ja": "日時"},
     "card_attachments": {"zh": "附件", "en": "Attachments", "ja": "添付"},
     "card_no_subject": {"zh": "（无标题）", "en": "(No subject)", "ja": "（件名なし）"},

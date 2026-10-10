@@ -43,6 +43,24 @@ def test_purge_keeps_seven_days_and_survives_reopen(tmp_path):
     assert [e.bubble for e in h2.recent()] == ["提醒2"]
 
 
+def test_account_column_and_old_database(tmp_path):
+    """记下是哪个邮箱收的；旧版本的数据库（没有这一列）打开时自动补上，旧记录是空的。"""
+    import sqlite3
+    import time
+    path = tmp_path / "old.db"
+    db = sqlite3.connect(str(path))
+    db.execute("CREATE TABLE cards (id INTEGER PRIMARY KEY AUTOINCREMENT, batch TEXT NOT NULL, shown_at REAL NOT NULL,"
+               " bubble TEXT NOT NULL, subject TEXT NOT NULL, sender TEXT NOT NULL, mail_date TEXT, attachments TEXT NOT NULL)")
+    db.execute("INSERT INTO cards (batch, shown_at, bubble, subject, sender, mail_date, attachments)"
+               " VALUES ('old', ?, '旧提醒', '标题', '发件人', NULL, '[]')", (time.time(),))
+    db.commit()
+    db.close()
+
+    h = MailHistory(path)
+    h.add(entry(1, "new", time.time() + 1, account="work@163.com"))
+    assert [(e.bubble, e.account) for e in h.recent()] == [("提醒1", "work@163.com"), ("旧提醒", "")]
+
+
 def test_clear(tmp_path):
     h = MailHistory(tmp_path / "h.db")
     h.add(entry(1))

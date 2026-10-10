@@ -1,7 +1,7 @@
 """邮件提醒的历史记录：每张展示过的卡片存一条，方便找回看过的提醒。
 
 - 存在本机的 SQLite 数据库（%APPDATA%\\Yunyun\\Yunyun\\history.db），不上传到任何地方；
-- 只存 AI 写的那句话、标题、发件人、时间、附件名——**不存邮件正文**；
+- 只存 AI 写的那句话、标题、发件人、时间、附件名、哪个邮箱收的——**不存邮件正文**；
 - 只保留最近 7 天，超过的自动删除；
 - "一批" = 用户点一次小红点处理的那些邮件，右键菜单的"刚才的邮件"就是重新展开最近一批。
 
@@ -33,6 +33,7 @@ class HistoryEntry:
     attachments: list[str] = field(default_factory=list)
     shown_at: float = 0.0                     # 芸芸展示这张卡片的时间（时间戳，秒）
     batch: str = ""                           # 属于哪一批
+    account: str = ""                         # 哪个邮箱收的（0.6.2 以前的记录没有，是空的）
 
 
 class MailHistory:
@@ -49,19 +50,24 @@ class MailHistory:
                    subject     TEXT NOT NULL,
                    sender      TEXT NOT NULL,
                    mail_date   TEXT,
-                   attachments TEXT NOT NULL
+                   attachments TEXT NOT NULL,
+                   account     TEXT NOT NULL DEFAULT ''
                )"""
         )  # IF NOT EXISTS：第一次运行时建表，以后就直接用
+        columns = {row[1] for row in self._db.execute("PRAGMA table_info(cards)")}
+        if "account" not in columns:   # 旧版本建的表没有这一列：补上（旧记录是空的）
+            self._db.execute("ALTER TABLE cards ADD COLUMN account TEXT NOT NULL DEFAULT ''")
         self._db.commit()
         self.purge()
 
     def add(self, entry):
         """记下一张卡片。"""
         self._db.execute(
-            "INSERT INTO cards (batch, shown_at, bubble, subject, sender, mail_date, attachments)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?)",   # 用 ? 占位，让 sqlite3 自己处理引号等特殊字符（防 SQL 注入）
+            "INSERT INTO cards (batch, shown_at, bubble, subject, sender, mail_date, attachments, account)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",   # 用 ? 占位，让 sqlite3 自己处理引号等特殊字符（防 SQL 注入）
             (entry.batch, entry.shown_at or time.time(), entry.bubble, entry.subject, entry.sender,
-             entry.date.isoformat() if entry.date else None, json.dumps(entry.attachments, ensure_ascii=False)),
+             entry.date.isoformat() if entry.date else None, json.dumps(entry.attachments, ensure_ascii=False),
+             entry.account),
         )
         self._db.commit()
 
@@ -95,12 +101,12 @@ class MailHistory:
 
     def _query(self, tail, params):
         rows = self._db.execute(
-            "SELECT bubble, subject, sender, mail_date, attachments, shown_at, batch FROM cards " + tail, params)
+            "SELECT bubble, subject, sender, mail_date, attachments, shown_at, batch, account FROM cards " + tail, params)
         return [
             HistoryEntry(
                 bubble=bubble, subject=subject, sender=sender,
                 date=datetime.fromisoformat(mail_date) if mail_date else None,
-                attachments=json.loads(attachments), shown_at=shown_at, batch=batch,
+                attachments=json.loads(attachments), shown_at=shown_at, batch=batch, account=account,
             )
-            for bubble, subject, sender, mail_date, attachments, shown_at, batch in rows
+            for bubble, subject, sender, mail_date, attachments, shown_at, batch, account in rows
         ]

@@ -92,7 +92,7 @@ class SettingsWindow(QDialog):
         self.notebook_page = NotebookPage()
         self.watch_page = WatchPage()
         self.watch_page.test_requested.connect(self._test_watch)
-        self.history_page = HistoryPage(self._pet.history)
+        self.history_page = HistoryPage(self._pet.history, self._pet.mail_accounts)
         self.about_page = AboutPage(self._pet)
         self.mail_page.accounts_changed.connect(self.accounts_changed)
         self.mail_page.accounts_changed.connect(self.ai_page.privacy_box.refresh)   # AI 页的隐私规则按邮箱列出

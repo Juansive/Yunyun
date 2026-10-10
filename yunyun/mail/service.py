@@ -79,6 +79,11 @@ class MailService(QObject):
     def has_accounts(self):
         return bool(self._accounts)
 
+    @property
+    def accounts(self):
+        """现在添加的邮箱（卡片上标"哪个邮箱收的"要用）。"""
+        return list(self._accounts)
+
     def start(self):
         self._load_accounts()
         self._start_watchers()

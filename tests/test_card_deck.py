@@ -49,6 +49,19 @@ def front_center(deck):
     return deck._current_front_rect().center().toPoint()
 
 
+def test_mailbox_label():
+    from yunyun import i18n
+    from yunyun.mail.imap_client import MailAccount
+    from yunyun.pet.card_deck import mailbox_label
+    i18n._current = "zh"
+    qq, work = MailAccount("", "qq", "me@qq.com"), MailAccount("", "163", "Work@163.com")
+    assert mailbox_label("me@qq.com", [qq]) == ""                                 # 只有一个邮箱：不标
+    assert mailbox_label("work@163.com", [qq, work]) == "163邮箱"                 # 类型不重复：写类型（地址不分大小写）
+    assert mailbox_label("me@qq.com", [qq, work, MailAccount("", "qq", "you@qq.com")]) == "me"   # 两个 QQ：写 @ 前面
+    assert mailbox_label("gone@163.com", [qq, work]) == "gone"                    # 已经删掉的邮箱（历史记录里的）
+    assert mailbox_label("", [qq, work]) == ""                                    # 旧的历史记录没记邮箱
+
+
 def test_opacity_layers():
     o = CardDeck._opacity
     assert o(0) == 1.0

@@ -11,6 +11,7 @@
 
 - 滚轮 / 上下方向键：切换卡片（平滑滑动）
 - 单击当前卡片：按下时微微下沉，松开后平滑展开，显示原始的标题、发件人、时间、附件；再点一下平滑缩回
+- 添加了两个以上邮箱时，底部右边有个小标签写着是哪个邮箱收的（mailbox_label）
 - 单击后面露出来的卡片：直接跳到那张
 - 按 Esc、点卡片堆外面：收起
 
@@ -38,6 +39,19 @@ class MailCard:
     sender: str
     date: datetime | None = None
     attachments: list[str] = field(default_factory=list)
+    mailbox: str = ""            # 底部右边的邮箱小标签（mailbox_label 算的；空 = 不标）
+    mailbox_address: str = ""    # 展开后"收件邮箱"那一行（有标签时才有）
+
+
+def mailbox_label(address, accounts):
+    """是哪个邮箱收的：只有一个邮箱时不标（返回 ""）；类型不重复写"163邮箱"，同类型有好几个（或邮箱已经删了）写 @ 前面那部分。
+    accounts：现在添加的邮箱（有 .provider / .address 的对象）。"""
+    if not address or len(accounts) < 2:
+        return ""
+    provider = next((a.provider for a in accounts if a.address.lower() == address.lower()), None)
+    if provider is None or sum(a.provider == provider for a in accounts) > 1:
+        return address.partition("@")[0]
+    return i18n.tr(f"provider_{provider}")
 
 
 class CardDeck(QWidget):
@@ -210,6 +224,8 @@ class CardDeck(QWidget):
             (tr("card_subject"), card.subject or tr("card_no_subject")),
             (tr("card_sender"), card.sender),
         ]
+        if card.mailbox_address:
+            lines.append((tr("card_mailbox"), card.mailbox_address))
         if card.date:
             lines.append((tr("card_time"), f"{card.date.astimezone():%Y-%m-%d %H:%M}"))
         if card.attachments:
@@ -407,14 +423,24 @@ class CardDeck(QWidget):
         base_opacity = p.opacity()
         fm = QFontMetrics(self._small_font)
 
-        # 收起时底部那行"发件人 · 时间"：展开过程中先淡出
+        # 收起时底部那行"发件人 · 时间"（右边是邮箱小标签）：展开过程中先淡出
         footer = 1.0 - min(detail / 0.35, 1.0)
         if footer > 0.01:
             p.setOpacity(base_opacity * footer)
+            line_y = h - pad - fm.lineSpacing()
+            tag_w = fm.horizontalAdvance(card.mailbox) + 12 if card.mailbox else 0
+            if tag_w:
+                tag = QRectF(w - pad - tag_w, line_y + (fm.lineSpacing() - fm.height() - 2) / 2, tag_w, fm.height() + 2)
+                p.setPen(Qt.PenStyle.NoPen)
+                p.setBrush(QColor("#F1F3F4"))
+                p.drawRoundedRect(tag, 6, 6)
+                p.setPen(QColor("#5F6368"))
+                p.drawText(tag, Qt.AlignmentFlag.AlignCenter, card.mailbox)
             p.setPen(QColor("#80868B"))
             line = card.sender + (f" · {_short_time(card.date)}" if card.date else "")
-            line = fm.elidedText(line, Qt.TextElideMode.ElideRight, int(w - 2 * pad))  # 太长就用…截断
-            p.drawText(QRectF(pad, h - pad - fm.lineSpacing(), w - 2 * pad, fm.lineSpacing()), 0, line)
+            text_w = w - 2 * pad - (tag_w + 6 if tag_w else 0)
+            line = fm.elidedText(line, Qt.TextElideMode.ElideRight, int(text_w))  # 太长就用…截断
+            p.drawText(QRectF(pad, line_y, text_w, fm.lineSpacing()), 0, line)
 
         # 展开后的详细信息：卡片长到一定大小后才渐渐浮现，并且稍微从下往上"浮"出来
         shown = max(0.0, (detail - 0.35) / 0.65)

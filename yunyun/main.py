@@ -19,7 +19,7 @@ from yunyun.mail.imap_client import MailError
 from yunyun.mail.service import MailService
 from yunyun.notify.history import HistoryEntry, MailHistory, default_path as history_path
 from yunyun.notify.quiet import QuietHours
-from yunyun.pet.card_deck import MailCard
+from yunyun.pet.card_deck import MailCard, mailbox_label
 from yunyun.pet.sprites import load_sprites
 from yunyun.pet.state import StateMachine
 from yunyun.pet.tray import PetTray
@@ -137,6 +137,7 @@ def connect_mail(mail, pet, machine, history=None, quiet=None):
     history：可选，记录展示过的卡片；quiet：可选，免打扰时段（期间新邮件只计数）。
     """
     batch = {"id": ""}  # 当前这一轮处理的编号（用开始时间），历史记录按"批"分组
+    pet.mail_accounts = lambda: mail.accounts   # "刚才的邮件"、历史页标邮箱时要知道现在有哪些邮箱
 
     def on_pending_changed(total, newly):
         pet.set_mail_count(total)
@@ -152,17 +153,20 @@ def connect_mail(mail, pet, machine, history=None, quiet=None):
             description = ai.Description(ai.fallback_bubble(message), "failed")
         if description.status in ("not_configured", "failed"):  # AI 没用上：在卡片堆底部说明原因（隐私规则是用户自己设的，不用说）
             pet.set_mail_note(ai_note(description))
+        label = mailbox_label(address, mail.accounts)   # 两个以上邮箱时标出是哪个收的
         pet.add_mail_card(MailCard(
             bubble=description.bubble,
             subject=message.subject,
             sender=message.sender,
             date=message.date,
             attachments=message.attachments,
+            mailbox=label,
+            mailbox_address=address if label else "",
         ))
         mail.mark_handled(address, message.uid)  # 放进卡片堆了，才算处理过
         if history is not None:
             history.add(HistoryEntry(description.bubble, message.subject, message.sender,
-                                     message.date, message.attachments, time.time(), batch["id"]))
+                                     message.date, message.attachments, time.time(), batch["id"], address))
 
     def on_fetch_started():
         ai.prepare()                     # 本地模型：趁读邮箱的时候提前启动 Ollama、加载模型
