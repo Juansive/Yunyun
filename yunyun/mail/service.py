@@ -48,7 +48,7 @@ class MailService(QObject):
     _fetch_done = Signal()
 
     def __init__(self, tracker=None, process_message=None, parent=None):
-        """process_message(message)：可选，在后台线程里对每封邮件调用（比如交给 AI），
+        """process_message(邮箱地址, message)：可选，在后台线程里对每封邮件调用（比如交给 AI），
         它的返回值会随 message_ready 一起送出。不给就送出 None。"""
         super().__init__(parent)
         self._tracker = tracker or MailTracker(default_state_path())
@@ -188,7 +188,7 @@ class MailService(QObject):
         for account, uids in jobs:
             try:
                 for message in fetch_messages(account, uids):  # 读到一封、处理一封、送出一封
-                    _safe_emit(self._fetched, account.address, message, self._run_process(message))
+                    _safe_emit(self._fetched, account.address, message, self._run_process(account, message))
             except MailError as e:
                 # 这个邮箱读失败了：没读到的邮件仍然留在待处理里，下次点击再试
                 log.warning("读取邮箱 %s 的邮件失败（%s）：%s", mask_address(account.address), e.kind, e.detail or e)
@@ -196,11 +196,11 @@ class MailService(QObject):
                 log.exception("读取邮箱 %s 的邮件时出现意外错误", mask_address(account.address))
         _safe_emit(self._fetch_done)
 
-    def _run_process(self, message):
+    def _run_process(self, account, message):
         if self._process is None:
             return None
         try:
-            return self._process(message)
+            return self._process(account.address, message)
         except Exception:
             # 处理出意外：这封照样送出（界面会用兜底文字），不影响后面的邮件
             log.exception("处理邮件（UID %s）时出现意外错误", message.uid)

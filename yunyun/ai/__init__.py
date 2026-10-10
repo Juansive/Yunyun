@@ -1,7 +1,7 @@
 """AI 模块对外的入口：describe(message, language) → 芸芸要说的一句话。
 
 会在后台线程里被调用（它要联网，可能要好几秒）。不管 AI 能不能用，都保证返回一句话：
-AI 没设置或调用失败时，退回"发件人 + 标题"，并在 status 里说明原因。
+AI 没设置、调用失败、或按隐私规则不交给 AI（privacy.py）时，退回"发件人 + 标题"，并在 status 里说明原因。
 
 本地模型（Ollama）是需要时才启动的：开始处理邮件时调用 prepare() 提前准备，芸芸退出时调用 shutdown()。
 """
@@ -9,7 +9,7 @@ import logging
 import threading
 from dataclasses import dataclass
 
-from yunyun.ai import ollama_service
+from yunyun.ai import ollama_service, privacy
 from yunyun.ai import settings as ai_settings
 from yunyun.ai.client import AIError, load_ollama_model
 from yunyun.ai.summarizer import fallback_bubble, summarize
@@ -22,11 +22,14 @@ log = logging.getLogger(__name__)
 @dataclass
 class Description:
     bubble: str                 # 芸芸要说的话
-    status: str                 # "ok" / "not_configured"（还没设置 AI）/ "failed"（调用失败）
+    status: str                 # "ok" / "not_configured"（还没设置 AI）/ "failed"（调用失败）/ "private"（按隐私规则没交给 AI）
     error: AIError | None = None
 
 
-def describe(message, language):
+def describe(message, language, account=""):
+    """account：收到这封邮件的邮箱（隐私规则可以按邮箱设）。"""
+    if privacy.load_rules().is_private(account, message.sender_address):
+        return Description("🔒 " + fallback_bubble(message), "private")
     settings = ai_settings.load_settings()
     if settings is None:
         return Description(fallback_bubble(message), "not_configured")

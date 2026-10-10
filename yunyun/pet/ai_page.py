@@ -6,6 +6,8 @@
 
 "自定义"：多出"接口地址"一行，Key 可以不填。隐私说明跟着地址变：本机 / 局域网的地址说"不会发到网上"，
 网上的地址提醒"邮件会发到你填的地址，请确认你信任它"。
+
+最下面是"隐私"一块（privacy_box.py）：哪些邮件不交给 AI。
 """
 import threading
 
@@ -18,6 +20,7 @@ from yunyun.ai import settings as ai_settings
 from yunyun.ai.client import AIError, ask, pull_ollama
 from yunyun.ai.providers import PROVIDERS, is_local_url, normalize_base_url
 from yunyun.ai.settings import AISettings
+from yunyun.pet.privacy_box import PrivacyBox
 from yunyun.pet.widgets import StatusLabel, button_row, note
 
 
@@ -86,6 +89,8 @@ class AISettingsPage(QWidget):
         self._download_button.clicked.connect(self._download)
         self._download_button.hide()
         layout.addLayout(button_row(self._download_button, self._save_button))
+        self.privacy_box = PrivacyBox()   # 哪些邮件不交给 AI：改了马上存，和上面的"测试并保存"无关
+        layout.addWidget(self.privacy_box)
         layout.addStretch()  # 内容靠上，多余的空间留在下面
 
         # 预先填好上次的选择

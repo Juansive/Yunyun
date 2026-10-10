@@ -64,7 +64,7 @@ def main():
 
     # ---- 邮件：后台定时检查 → 小红点；点小红点 → 读邮件 → AI 写一句提醒 ----
     # describe 在后台线程里运行（要联网）；语言在调用时读取，切换语言后立刻生效
-    mail = MailService(process_message=lambda message: ai.describe(message, i18n.current_language()))
+    mail = MailService(process_message=lambda address, message: ai.describe(message, i18n.current_language(), address))
     history = MailHistory(history_path())   # 展示过的卡片存 7 天，可以找回
     pet.history = history
 
@@ -150,7 +150,7 @@ def connect_mail(mail, pet, machine, history=None, quiet=None):
             return  # 用户中途收起了卡片堆：这封不放进去，也不算处理过，下次点小红点再看
         if description is None:  # 处理时出了意外：用兜底文字
             description = ai.Description(ai.fallback_bubble(message), "failed")
-        if description.status != "ok":  # AI 没用上：在卡片堆底部说明原因
+        if description.status in ("not_configured", "failed"):  # AI 没用上：在卡片堆底部说明原因（隐私规则是用户自己设的，不用说）
             pet.set_mail_note(ai_note(description))
         pet.add_mail_card(MailCard(
             bubble=description.bubble,

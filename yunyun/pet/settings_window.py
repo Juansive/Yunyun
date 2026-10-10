@@ -95,6 +95,7 @@ class SettingsWindow(QDialog):
         self.history_page = HistoryPage(self._pet.history)
         self.about_page = AboutPage(self._pet)
         self.mail_page.accounts_changed.connect(self.accounts_changed)
+        self.mail_page.accounts_changed.connect(self.ai_page.privacy_box.refresh)   # AI 页的隐私规则按邮箱列出
         self.mail_page.account_added.connect(self.account_added)
 
         self._stack = QStackedWidget()  # 一叠页面，同时只显示一页（顺序和 PAGES 一样）

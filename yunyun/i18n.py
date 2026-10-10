@@ -462,6 +462,22 @@ TEXTS = {
         "en": "When AI is used, each email's sender, subject and the beginning of its body (up to 1,500 characters) are sent to the selected provider to write the reminder. The API key is stored only in Windows Credential Manager on this PC.",
         "ja": "AI を使うと、メールの差出人・件名・本文の冒頭（最大 1,500 文字）が通知文の作成のため選択したプロバイダーに送信されます。API キーはこの PC の Windows 資格情報マネージャーにのみ保存されます。",
     },
+    # AI 页的"隐私"一块：哪些邮件不交给 AI（ai/privacy.py）
+    "privacy_title": {"zh": "隐私：这些邮件不交给 AI", "en": "Privacy: keep these emails from AI", "ja": "プライバシー：これらのメールは AI に渡さない"},
+    "privacy_accounts": {"zh": "整个邮箱：", "en": "Whole mailboxes:", "ja": "メールボックス全体："},
+    "privacy_senders": {"zh": "发件人 / 域名：", "en": "Senders / domains:", "ja": "差出人 / ドメイン："},
+    "privacy_placeholder": {"zh": "boss@company.com 或 @icbc.com.cn", "en": "boss@company.com or @mybank.com", "ja": "boss@company.com または @mybank.co.jp"},
+    "privacy_add": {"zh": "添加", "en": "Add", "ja": "追加"},
+    "privacy_bad_sender": {
+        "zh": "请填邮箱地址（boss@company.com）或 @域名（@icbc.com.cn，这个域名发来的都算）。",
+        "en": "Enter an email address (boss@company.com) or @domain (@mybank.com covers everything from that domain).",
+        "ja": "メールアドレス（boss@company.com）か @ドメイン（@mybank.co.jp、そのドメインからのメールすべて）を入力してください。",
+    },
+    "privacy_explain": {
+        "zh": "这些邮件只显示发件人和标题（带 🔒），一个字都不发给 AI，本地模型也不给。改了马上生效。",
+        "en": "These emails show only the sender and subject (with 🔒); nothing is sent to any AI, local models included. Changes apply right away.",
+        "ja": "これらのメールは差出人と件名だけを表示し（🔒 付き）、ローカルモデルを含めどの AI にも一切送りません。変更はすぐに反映されます。",
+    },
     "ai_testing": {"zh": "正在测试连接……", "en": "Testing the connection…", "ja": "接続をテスト中…"},
     "ai_saved": {
         "zh": "设置好啦！之后芸芸会用 AI 帮你读邮件～",

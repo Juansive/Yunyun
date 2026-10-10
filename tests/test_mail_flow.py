@@ -31,7 +31,7 @@ def world(qapp, tmp_path, monkeypatch):
         MailMessage(uid, f"标题{uid}", f"发件人{uid}", f"s{uid}@x.com", None, "正文", []) for uid in uids))
     monkeypatch.setattr(service_module.accounts, "load_accounts", lambda: [A])
 
-    def slow_ai(message):
+    def slow_ai(address, message):
         time.sleep(0.15)
         return ai.Description(f"AI：标题{message.uid}来啦！", "ok")
 
@@ -74,6 +74,23 @@ def test_full_flow(qapp, world):
     assert machine.state is not PetState.THINKING   # 处理完回到工作 / 待机
     assert not pet._badge.loading and not pet._badge.isVisible()   # 都处理完了：小红点消失
     assert mail.pending_count == 0
+
+
+def test_private_mailbox_never_reaches_ai(qapp, world, monkeypatch):
+    """隐私规则：这个邮箱的邮件不交给 AI——只显示发件人 + 标题（带 🔒），卡片堆底部也不说"AI 没用上"。"""
+    from yunyun.ai import privacy, settings as ai_settings
+    from yunyun.ai.settings import AISettings
+    mail, pet, machine = world
+    called = []
+    monkeypatch.setattr(ai_settings, "load_settings", lambda: AISettings("ollama", "qwen3:1.7b", ""))
+    monkeypatch.setattr(ai, "summarize", lambda *args: called.append(args) or "AI 写的")
+    mail._process = lambda address, message: ai.describe(message, "zh", address)   # 和 main() 里一样
+    privacy.save_rules(privacy.PrivacyRules(accounts=["me@qq.com"]))
+
+    pet._on_badge_clicked()
+    assert wait_until(qapp, lambda: not mail.fetching)
+    assert [c.bubble for c in pet._deck._cards] == [f"🔒 发件人{uid} 发来了「标题{uid}」" for uid in (12, 11, 10)]
+    assert called == [] and pet._deck._note == ""
 
 
 def test_close_midway_keeps_rest_for_later(qapp, world):
