@@ -87,6 +87,7 @@ class PetWindow(QWidget):
     mail_badge_clicked = Signal()     # 用户左键点了小红点：要处理邮件
     dismiss_mail_requested = Signal() # 用户拖走了小红点 / 点了"全部标为已看"：这批邮件不处理
     assistant_activity_changed = Signal(str)  # 助手在做什么（"" / thinking / busy / waiting；main 里接到状态机）
+    assistant_speaking_changed = Signal(bool)  # 芸芸开始 / 停止出声回答（语音，阶段 7；main 里接到状态机）
     cover_checked = Signal()   # 刚检查完有没有被挡住（约每 0.5 秒）：助手据此决定角落小条显不显示
     speaking_changed = Signal(bool)   # 头顶有气泡了 / 气泡都消失了（main 里接到状态机：换成说话的样子）
     _task_done = Signal(object, object, object)  # 后台线程 → 主线程：(成功时说的话, 失败时的文字 key, 错误信息或 None)
@@ -766,6 +767,8 @@ class PetWindow(QWidget):
             if self._assistant is not None:
                 if self._assistant.busy:
                     menu.addAction(tr("menu_assistant_stop"), self.stop_assistant)
+                if self._assistant.speaking:   # 正在出声回答（阶段 7）：叫它别说了
+                    menu.addAction(tr("menu_assistant_hush"), self._assistant.hush)
                 if self._assistant.cards_shown:   # 卡片常亮：要收起就在这里（左键芸芸再唤出）
                     menu.addAction(tr("menu_assistant_hide_cards"), self._assistant.hide_cards)
                 if self._assistant.has_custom_place:
@@ -817,6 +820,7 @@ class PetWindow(QWidget):
             from yunyun.pet.assistant_mode import AssistantMode
             mode = AssistantMode(self, self._assistant_cards, state=self._assistant_state)
             mode.activity_changed.connect(self.assistant_activity_changed)
+            mode.speaking_changed.connect(self.assistant_speaking_changed)
             mode.closed.connect(self._on_assistant_closed)
             self.language_changed.connect(mode.retranslate)
             self._assistant = mode

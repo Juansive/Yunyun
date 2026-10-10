@@ -27,6 +27,8 @@
   不出屏幕。右键"卡片回到芸芸旁边"复位。位置由芸芸保管，退出助手模式再唤出还在。
 - 闲置：输入框收起后 IDLE_EXIT_MS 没再用，只释放大脑（子进程，约 300 MB），卡片照常显示；再唤出时接着同一段对话。
 - 退出（菜单"退出助手模式" / 芸芸退出）：关掉子进程和所有窗口，发 closed。当前这段的卡片留在 cards 里（芸芸保管）。
+- 出声回答（阶段 7，voice/speaker.py）：设置 → 语音"芸芸出声回答"是"每次都说"、或者是"你用语音问时"而这一问是说出来的，
+  回答就边生成边读（只读正文）。新的提问、停止、新对话、右键"别说了"都会让它停下；退出 / 闲置释放大脑时语音子进程也关掉。
 
 pet 只需要提供：body_rect()、say(text, ms)、say_live(text, max_width)、end_live(ms)。
 """
@@ -50,6 +52,8 @@ from yunyun.pet.assistant_input import AssistantInput, folder_name
 from yunyun.pet.assistant_notice import AssistantNotice
 from yunyun.pet.assistant_reader import AssistantReader
 from yunyun.pet.bubble import bubble_font, elide_lines
+from yunyun.voice import settings as voice_settings
+from yunyun.voice.speaker import Speaker
 
 log = logging.getLogger(__name__)
 
@@ -86,6 +90,7 @@ def card_from_turn(turn, workspace=""):
 class AssistantMode(QObject):
     busy_changed = Signal(bool)   # 开始 / 结束回答
     activity_changed = Signal(str)   # 助手在做什么（session.activity）：芸芸的样子跟着变
+    speaking_changed = Signal(bool)  # 开始 / 停止出声回答：芸芸的嘴跟着动
     closed = Signal()             # 助手模式退出了（子进程在关）
 
     IDLE_EXIT_MS = 10 * 60_000    # 收起后多久没用就释放大脑（卡片还在）
@@ -99,9 +104,9 @@ class AssistantMode(QObject):
     OPEN_APP_SAY_MS = 3000        # "帮你打开「计算器」啦"说多久
     DOWNLOADED_SAY_MS = 5000      # "下载好了：xxx（在"下载"文件夹里）"说多久
 
-    def __init__(self, pet, cards, make_process=None, state=None):
+    def __init__(self, pet, cards, make_process=None, state=None, make_voice=None):
         """cards：当前这段对话的卡片（从旧到新）；state：要记着的东西（"offset"：卡片组相对芸芸的偏移）。
-        都由芸芸保管，助手模式退出了也还在。"""
+        都由芸芸保管，助手模式退出了也还在。make_process / make_voice：造助手 / 语音子进程（测试时换成假的）。"""
         super().__init__(pet)
         self._pet = pet
         self.cards = cards
@@ -125,6 +130,13 @@ class AssistantMode(QObject):
         self._confirm_count = 0   # 上次看到有几个等确认（多了才提醒）
         self._last_turn = (None, None)   # 最近答完的一轮和它的卡片（整理前面的对话时更新这张卡片的底行）
         self._closed = False
+        self.speaker = Speaker(self, make_voice)
+        self._speak_turn = False      # 这一轮的回答要不要读出来（问的时候按设置定）
+        self.asked_by_voice = False   # 下一问是说出来的（快捷键说话，7.3）
+        self._audio_warned = False    # "放不出声音"只说一次
+        self.speaker.speaking_changed.connect(self.speaking_changed)
+        self.speaker.error_occurred.connect(self._on_voice_error)
+        self.session.turn_started.connect(self._on_turn_started)
 
         self.input.submitted.connect(self._on_submitted)
         self.input.image_refused.connect(self._on_image_refused)
@@ -173,6 +185,16 @@ class AssistantMode(QObject):
         return self.session.busy
 
     @property
+    def speaking(self):
+        """芸芸正在出声回答（右键菜单据此显示"别说了"）。"""
+        return self.speaker.speaking
+
+    def hush(self):
+        """右键"别说了"：正在读的回答不读了（回答照常写完，在卡片里）。"""
+        self._speak_turn = False
+        self.speaker.hush()
+
+    @property
     def cards_shown(self):
         """卡片组现在是不是显示着（右键菜单据此显示"隐藏卡片"）。"""
         return self._cards_shown
@@ -216,6 +238,7 @@ class AssistantMode(QObject):
             self.input.set_workspace(self.workspace)
         self._replace_cards(conversation.cards)
         self._resume_next = ""
+        self.hush()
         self.session.new_conversation(resume=conversation.session_id)
         if not self.input.is_open:
             self._idle_timer.start()
@@ -244,6 +267,7 @@ class AssistantMode(QObject):
     def new_conversation(self, said=None):
         """开始新的一段对话（正在回答就先停下）：卡片堆清空，上一段在历史对话里。"""
         self._resume_next = ""
+        self.hush()
         self.session.new_conversation()
         if not self.input.is_open:   # 输入框收着时点了卡片堆上的"+ 新对话"：新大脑也照常闲置释放
             self._idle_timer.start()
@@ -253,6 +277,7 @@ class AssistantMode(QObject):
     def stop_now(self):
         """停止（输入框的 ■、右键"停止助手"）：大脑停下、正在跑的命令结束、等着的确认都算拒绝。
         这一轮结束时气泡会说"（已停止）"。"""
+        self.hush()
         self.session.stop()
 
     def change_workspace(self, path):
@@ -284,6 +309,7 @@ class AssistantMode(QObject):
         for widget in widgets:
             widget.close_now()
         self.session.close(wait)
+        self.speaker.close(wait)
         self._pet.end_live(0)
         for widget in widgets:
             widget.deleteLater()
@@ -546,6 +572,22 @@ class AssistantMode(QObject):
         turn = self.session.current_turn
         if turn is not None and turn.answer:
             self._pet.say_live(self._snippet(turn.answer), self.ANSWER_WIDTH)
+            if self._speak_turn:   # 边生成边说：完整的新句子送去读
+                self.speaker.update(turn.answer)
+
+    def _on_turn_started(self, turn):
+        """新的一问：上一段还没读完就别读了；这一段要不要读，按设置和这一问是不是说出来的定。"""
+        reply = voice_settings.load_settings().reply
+        self._speak_turn = reply == "always" or (reply == "voice" and self.asked_by_voice)
+        self.asked_by_voice = False
+        self.speaker.hush()
+        if self._speak_turn:
+            self.speaker.begin()
+
+    def _on_voice_error(self, kind):
+        if kind == "audio" and not self._audio_warned:   # 没有扬声器 / 被独占：说一次就够了
+            self._audio_warned = True
+            self._pet.say(i18n.tr("voice_error_audio"), self.DONE_SAY_MS)
 
     def _snippet(self, markdown, lines=None):
         return elide_lines(markdown_to_plain(markdown), bubble_font(), self.ANSWER_WIDTH, lines or self.ANSWER_LINES)
@@ -591,6 +633,9 @@ class AssistantMode(QObject):
 
     def _on_turn_finished(self, turn):
         self._bubble_timer.stop()
+        if self._speak_turn and not turn.stopped and turn.answer:
+            self.speaker.update(turn.answer, final=True)   # 最后半句也读
+        self._speak_turn = False
         card = card_from_turn(turn, self.workspace)
         self._last_turn = (turn, card)   # 答完马上可能开始整理（compact_changed）：只记最近这一轮的
         self.cards.append(card)
@@ -636,4 +681,5 @@ class AssistantMode(QObject):
             # 只释放大脑（约 300 MB），卡片照常显示；再唤出时接着这段对话聊（resume）
             self._resume_next = self.session.session_id
             self.session.close()
+            self.speaker.close()   # 语音子进程也释放（以后有识别模型，约 300 MB）；要说话时再启动
             self.reader.refresh_undo()   # 换了大脑：以前的改动撤销不了了

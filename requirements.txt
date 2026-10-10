@@ -10,3 +10,8 @@ anthropic>=1.11,<2
 # 芸芸的浏览器（阶段 6.2）：只在助手子进程里、第一次用浏览器时才 import；用系统自带的 Edge，不下载浏览器
 # （不要跑 playwright install）。要用 aria_snapshot(mode="ai")（带元素编号的快照，1.63 上实测可用）。
 playwright>=1.63,<2
+# 语音（阶段 7）：只在语音子进程里 import。edge-tts = 微软的在线语音（免费）；miniaudio = 放音、解 mp3（一个库全包）；
+# pywin32 = 在线语音连不上时用 Windows 自带语音（SAPI）。
+edge-tts>=7.2,<8
+miniaudio>=1.61
+pywin32>=310

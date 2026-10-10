@@ -119,6 +119,7 @@ def connect_assistant(pet, machine):
     """助手模式和芸芸连起来：助手在想 / 干活 / 等你确认，芸芸就是那个样子（优先级见 StateMachine.set_assistant）。
     面板本身由 pet.open_assistant() 管；这里不 import 助手的代码（芸芸平时不加载它）。"""
     pet.assistant_activity_changed.connect(machine.set_assistant)
+    pet.assistant_speaking_changed.connect(lambda speaking: machine.set_talking(speaking, "voice"))   # 出声回答（阶段 7）
 
 
 def connect_watch(app, pet):

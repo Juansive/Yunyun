@@ -27,12 +27,13 @@ from yunyun.pet.assistant_page import AssistantSettingsPage
 from yunyun.pet.history_page import HistoryPage
 from yunyun.pet.mail_page import MailAccountsPage
 from yunyun.pet.notebook_page import NotebookPage
+from yunyun.pet.voice_page import VoicePage
 from yunyun.pet.watch_page import WatchPage
 from yunyun.pet.widgets import StatusLabel, note
 
 # 页面顺序；open_settings(page) 用这些名字。"旁观"（阶段 8）和助手模式无关，打包版也有
-PAGES = ["general", "mail", "ai", "assistant", "notebook", "watch", "history", "about"]
-ASSISTANT_PAGES = ("assistant", "notebook")   # 助手模式的页：这个版本没有助手模式时藏起来
+PAGES = ["general", "mail", "ai", "assistant", "notebook", "voice", "watch", "history", "about"]
+ASSISTANT_PAGES = ("assistant", "notebook", "voice")   # 助手模式的页：这个版本没有助手模式时藏起来
 
 
 class SettingsWindow(QDialog):
@@ -90,6 +91,7 @@ class SettingsWindow(QDialog):
         self.assistant_page = AssistantSettingsPage()
         self.assistant_page.history_cleared.connect(self._pet.clear_assistant_history)
         self.notebook_page = NotebookPage()
+        self.voice_page = VoicePage()   # 语音（阶段 7）
         self.watch_page = WatchPage()
         self.watch_page.test_requested.connect(self._test_watch)
         self.history_page = HistoryPage(self._pet.history, self._pet.mail_accounts)
@@ -100,7 +102,7 @@ class SettingsWindow(QDialog):
 
         self._stack = QStackedWidget()  # 一叠页面，同时只显示一页（顺序和 PAGES 一样）
         for widget in (self.general_page, self.mail_page, self.ai_page, self.assistant_page, self.notebook_page,
-                       self.watch_page, self.history_page, self.about_page):
+                       self.voice_page, self.watch_page, self.history_page, self.about_page):
             self._stack.addWidget(widget)
         self._sidebar.currentRowChanged.connect(self._stack.setCurrentIndex)
         self._sidebar.setCurrentRow(0)

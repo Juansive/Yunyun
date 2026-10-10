@@ -18,13 +18,15 @@ def test_lite_edition_checks_assistant_is_left_out(qapp, tmp_path, monkeypatch):
     assert selfcheck.run(report, "lite") == 1
     text = report.read_text(encoding="utf-8")
     assert "FAIL  没有助手模式（节能版）" in text and "Claude Code" not in text and "Edge" not in text
-    assert text.count("OK    ") == len(selfcheck.CHECKS) - len(selfcheck.HEAVY_CHECKS)   # 其余各项照常通过
+    assert "语音" not in text
+    assert text.count("OK    ") == len(selfcheck.CHECKS) - len(selfcheck.FULL_ONLY_CHECKS)   # 其余各项照常通过
 
     import importlib.util
     from yunyun import features
     real = importlib.util.find_spec
     monkeypatch.setattr(importlib.util, "find_spec",                      # 假装是打包好的节能版：这几个包都找不到
-                        lambda name, *a: None if name in ("claude_agent_sdk", "anthropic", "playwright") else real(name, *a))
+                        lambda name, *a: None if name in ("claude_agent_sdk", "anthropic", "playwright", "edge_tts",
+                                                                  "miniaudio") else real(name, *a))
     features.assistant_available.cache_clear()
     try:
         assert selfcheck.run(report, "lite") == 0, report.read_text(encoding="utf-8")

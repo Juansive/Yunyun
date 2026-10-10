@@ -134,6 +134,7 @@ Her "brain" is Claude (Anthropic) by default, or the cheaper **DeepSeek**. **Bot
 | Have her download a file | She always asks first; files go to your Downloads folder (name clashes become "name (1).zip", nothing is overwritten). Downloads you start yourself in her browser window go there too, and she tells you when they finish |
 | Show her an image | Paste a copied image with Ctrl+V or drag image files into the box: thumbnails appear above it (× to remove) and are sent with your text (up to 5 at a time). Dragging in other files inserts their paths |
 | Have her remember you | Say "remember …" and she will; she also notes useful things in her **Notebook** on her own (your preferences, project conventions, pitfalls), so she remembers them in later chats. Notes "about you" are used in every chat; project notes only in the same working folder. View, edit, delete or turn it off in Settings → "Notebook" |
+| Have her read replies aloud | Settings → "Voice": set "Read replies aloud" to "Every reply" and she reads while she writes — only the prose (code, tables and links are skipped; file paths become just the file name). 8 voices (Chinese / Japanese / English) with a preview button. Right-click → "Stop talking" stops her; a new question or Stop does too. Holding a hotkey to ask by voice is coming next |
 | Exit | Right-click → Exit assistant mode. If the input box stays closed for 10 minutes, the background is released first (~300 MB) while the cards stay; asking again reconnects to the same chat automatically |
 
 - **Cost**: with Haiku 4.5, each question is usually around 1 US cent (the first question of a chat costs a bit more). In the settings page you can change "Max per reply" (default $0.1) and
@@ -184,6 +185,7 @@ a small bar pops up above the taskbar — click it to switch to Claude Code. No 
 - **Assistant mode**: your questions and the conversation go to the provider you chose (Claude / DeepSeek), and so do the web pages she searches and reads; if you chose a working folder,
   so do the files she reads, command output and the project's `CLAUDE.md`; at the start of each chat, the Notebook's index (one line per note) is sent too;
   when she looks at your screen, the screenshot is sent (Yunyun's own windows are never captured).
+  When she reads a reply aloud, the text being read goes to Microsoft's free online voice service (if it can't be reached, the voice built into Windows is used, offline).
   Nothing is sent unless you open Assistant mode.
 - **Keyboard**: Yunyun only notices *whether* you're typing — **it never records which keys you press**.
 

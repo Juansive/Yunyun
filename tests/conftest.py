@@ -66,8 +66,8 @@ def no_real_assistant(monkeypatch, tmp_path):
     from yunyun.assistant import ledger, memory, process, settings as assistant_settings
     from yunyun.pet import assistant_history
 
-    def refuse(role, *args):
-        raise RuntimeError(f"测试里不许启动真的助手小进程（{role}），请用 tests/fake_assistant_*.py")
+    def refuse(role, *args, package="assistant"):
+        raise RuntimeError(f"测试里不许启动真的{package}小进程（{role}），请用 tests/fake_*.py")
 
     monkeypatch.setattr(process, "subprocess_command", refuse)
     monkeypatch.setattr(ledger, "LEDGER_PATH", tmp_path / "assistant_spending.json")
@@ -103,6 +103,13 @@ def no_real_assistant(monkeypatch, tmp_path):
     # 下载（6.2c）：不往你真的"下载"文件夹里放东西
     from yunyun import paths
     monkeypatch.setattr(paths, "downloads_dir", lambda: tmp_path / "Downloads")
+    # 语音（阶段 7）：绝不连微软的在线语音、不用 Windows 语音、不打开扬声器（要测就传假的进去）
+    from yunyun.voice import tts
+
+    def no_voice(*args, **kwargs):
+        raise RuntimeError("测试里不许真的合成 / 放出声音")
+    for name in ("edge_synthesize", "sapi_synthesize", "open_device"):
+        monkeypatch.setattr(tts, name, no_voice)
     yield
     apps.clear_cache()
 

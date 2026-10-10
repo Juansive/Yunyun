@@ -5,8 +5,8 @@
 要到用户电脑上才出问题。所以构建完马上在 exe 里真的跑一遍。
 
 自检不显示窗口、不联网、不读写用户的任何数据（不碰邮箱、配置和凭据管理器里的内容）。
-最后两项（助手模式要用的 Claude Code 和浏览器）会真的启动 claude.exe（只问版本号）和不显示窗口的 Edge（临时配置、不打开网页）。
-节能版没有助手模式：这两项换成"确实没带助手组件、入口藏起来了"。
+助手模式要用的 Claude Code 和浏览器两项会真的启动 claude.exe（只问版本号）和不显示窗口的 Edge（临时配置、不打开网页）；
+语音一项用不出声的空设备试放音。节能版没有助手模式和语音：这三项换成"确实没带助手组件、入口藏起来了"。
 """
 import os
 import subprocess
@@ -18,7 +18,7 @@ def run(report_path, edition="full"):
     """逐项检查，一项一行写进 report_path。全部通过返回 0，否则返回 1（作为 exe 的退出码）。
     edition：full 完整版 / lite 节能版（见 tools/build_exe.py）。"""
     checks = CHECKS if edition == "full" else \
-        [c for c in CHECKS if c[1] not in HEAVY_CHECKS] + [("没有助手模式（节能版）", _no_assistant)]
+        [c for c in CHECKS if c[1] not in FULL_ONLY_CHECKS] + [("没有助手模式（节能版）", _no_assistant)]
     lines, ok = [], True
     for name, check in checks:
         try:
@@ -123,11 +123,48 @@ def _browser():
     return f"Edge {asyncio.run(edge_version())}"
 
 
+def _voice():
+    """语音（阶段 7）：语音子进程要用的库都在；放音那一套能跑（用 miniaudio 不出声的空设备放 0.1 秒）；
+    Windows 自带语音（在线语音连不上时用）找得到声音（不出声，不联网）。"""
+    import time
+
+    import edge_tts
+    import miniaudio
+    import pythoncom
+    import win32com.client
+    import yunyun.voice.worker  # noqa: F401
+    from yunyun.voice import tts
+    played = []
+
+    def silence():
+        frames = yield b""
+        while True:
+            played.append(frames)
+            frames = yield b""   # 给空的 = 静音
+
+    generator = silence()
+    next(generator)
+    device = miniaudio.PlaybackDevice(output_format=miniaudio.SampleFormat.SIGNED16, nchannels=1, sample_rate=tts.RATE,
+                                      backends=[miniaudio.Backend.NULL])
+    device.start(generator)
+    time.sleep(0.1)
+    device.close()
+    if not played:
+        raise RuntimeError("放音设备没有来要声音")
+    pythoncom.CoInitialize()
+    try:
+        count = win32com.client.Dispatch("SAPI.SpVoice").GetVoices().Count
+    finally:
+        pythoncom.CoUninitialize()
+    return f"edge-tts {edge_tts.__version__}，miniaudio {miniaudio.__version__}，Windows 语音 {count} 种"
+
+
 def _no_assistant():
     """节能版：助手组件确实没带（不然白白大了 170 MB），右键菜单和设置窗口里也就不会出现助手的入口。"""
     import importlib.util
     from yunyun import features
-    bundled = [name for name in ("claude_agent_sdk", "anthropic", "playwright") if importlib.util.find_spec(name)]
+    bundled = [name for name in ("claude_agent_sdk", "anthropic", "playwright", "edge_tts", "miniaudio")
+               if importlib.util.find_spec(name)]
     if bundled or features.assistant_available():
         raise RuntimeError(f"节能版里带了助手模式的组件：{bundled}")
     return "没带助手组件，助手的入口藏起来了"
@@ -143,5 +180,7 @@ CHECKS = [
     ("对话框按钮的翻译", _qt_translation),
     ("助手的大脑（Claude Code）", _claude_code),
     ("芸芸的浏览器（Playwright + Edge）", _browser),
+    ("语音（edge-tts、放音、Windows 语音）", _voice),
 ]
-HEAVY_CHECKS = (_claude_code, _browser)   # 助手模式的两项：要真的启动 claude.exe / Edge，平时的测试里不跑（见 tests/test_real_claude_code.py）；节能版没有
+HEAVY_CHECKS = (_claude_code, _browser)   # 助手模式的两项：要真的启动 claude.exe / Edge，平时的测试里不跑（见 tests/test_real_claude_code.py）
+FULL_ONLY_CHECKS = (*HEAVY_CHECKS, _voice)   # 节能版没有的（助手模式、语音）

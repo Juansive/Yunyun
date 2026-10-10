@@ -15,6 +15,11 @@ if __name__ == "__main__":
         worker.main(sys.argv[2:])
         sys.exit(0)
 
+    if len(sys.argv) >= 2 and sys.argv[1] == "--voice-worker":       # 语音子进程（见 yunyun/voice/worker.py）
+        from yunyun.voice import worker as voice_worker   # 也不 import Qt
+        voice_worker.main(sys.argv[2:])
+        sys.exit(0)
+
     if len(sys.argv) >= 2 and sys.argv[1] == "--watch-relay":        # 旁观模式的 hook 脚本（见 yunyun/watch/relay.py）
         from yunyun.watch import relay   # 只用标准库，不 import Qt：每次 hook 都要启动一次，要快
         sys.exit(relay.main())

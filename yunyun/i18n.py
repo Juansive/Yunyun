@@ -31,6 +31,7 @@ TEXTS = {
     "menu_settings": {"zh": "设置…", "en": "Settings…", "ja": "設定…"},
     "menu_assistant": {"zh": "✦ 助手模式", "en": "✦ Assistant mode", "ja": "✦ アシスタントモード"},
     "menu_assistant_stop": {"zh": "■ 停止助手", "en": "■ Stop the assistant", "ja": "■ アシスタントを停止"},
+    "menu_assistant_hush": {"zh": "别说了", "en": "Stop talking", "ja": "話すのをやめる"},
     "menu_assistant_hide_cards": {"zh": "隐藏卡片", "en": "Hide cards", "ja": "カードを隠す"},
     "menu_assistant_reset_place": {"zh": "卡片回到芸芸旁边", "en": "Put cards back next to Yunyun",
                                    "ja": "カードを芸芸のそばに戻す"},
@@ -103,6 +104,7 @@ TEXTS = {
     "page_ai": {"zh": "AI", "en": "AI", "ja": "AI"},
     "page_assistant": {"zh": "助手", "en": "Assistant", "ja": "アシスタント"},
     "page_notebook": {"zh": "记事本", "en": "Notebook", "ja": "メモ帳"},
+    "page_voice": {"zh": "语音", "en": "Voice", "ja": "音声"},
     "page_watch": {"zh": "旁观", "en": "Watch", "ja": "見守り"},
     # ---- 设置 → 旁观（pet/watch_page.py，阶段 8）和提醒（pet/watch_reminder.py）----
     "watch_intro": {
@@ -1116,6 +1118,58 @@ TEXTS = {
         "en": "Connect my brain first: add an API key and assistant mode is ready!",
         "ja": "まず頭脳をつないでね：API キーを入れるとアシスタントモードが使えるよ～",
     },
+
+    # ---- 语音（阶段 7：voice/、设置 → 语音 pet/voice_page.py）----
+    "voice_intro": {
+        "zh": "芸芸可以出声回答你（只在助手模式里）。以后还能按住快捷键直接说话提问。",
+        "en": "Yunyun can read replies aloud (assistant mode only). Holding a hotkey to ask by voice is coming next.",
+        "ja": "芸芸が声で返事できます（アシスタントモードのみ）。ホットキーを押しながら声で質問する機能も近日追加。",
+    },
+    "voice_reply_label": {"zh": "芸芸出声回答：", "en": "Read replies aloud:", "ja": "声で返事："},
+    "voice_reply_voice": {"zh": "你用语音问时（推荐）", "en": "When you ask by voice (recommended)",
+                          "ja": "声で聞いたとき（おすすめ）"},
+    "voice_reply_always": {"zh": "每次回答都说", "en": "Every reply", "ja": "毎回"},
+    "voice_reply_never": {"zh": "不说", "en": "Never", "ja": "話さない"},
+    "voice_voice_label": {"zh": "声音：", "en": "Voice:", "ja": "声："},
+    "voice_voice_auto": {"zh": "跟着界面语言（{}）", "en": "Match the app language ({})", "ja": "表示言語に合わせる（{}）"},
+    "voice_name_xiaoyi": {"zh": "晓伊 · 活泼的女声（中文）", "en": "Xiaoyi · lively female (Chinese)",
+                          "ja": "暁伊 · 明るい女性（中国語）"},
+    "voice_name_xiaoxiao": {"zh": "晓晓 · 温柔的女声（中文）", "en": "Xiaoxiao · warm female (Chinese)",
+                            "ja": "暁暁 · やさしい女性（中国語）"},
+    "voice_name_yunxi": {"zh": "云希 · 阳光的男声（中文）", "en": "Yunxi · sunny male (Chinese)",
+                         "ja": "雲希 · 明るい男性（中国語）"},
+    "voice_name_yunxia": {"zh": "云夏 · 可爱的童声（中文）", "en": "Yunxia · cute child (Chinese)",
+                          "ja": "雲夏 · かわいい子ども（中国語）"},
+    "voice_name_nanami": {"zh": "七海 · 女声（日语）", "en": "Nanami · female (Japanese)", "ja": "七海 · 女性（日本語）"},
+    "voice_name_keita": {"zh": "圭太 · 男声（日语）", "en": "Keita · male (Japanese)", "ja": "圭太 · 男性（日本語）"},
+    "voice_name_ava": {"zh": "Ava · 女声（英语，也能读中文）", "en": "Ava · female (English, reads Chinese too)",
+                       "ja": "Ava · 女性（英語、中国語も読める）"},
+    "voice_name_andrew": {"zh": "Andrew · 男声（英语，也能读中文）", "en": "Andrew · male (English, reads Chinese too)",
+                          "ja": "Andrew · 男性（英語、中国語も読める）"},
+    "voice_preview": {"zh": "▶ 试听", "en": "▶ Preview", "ja": "▶ 試聴"},
+    "voice_preview_text": {   # 试听时说的话：按所选声音的语言挑（不是按界面语言）
+        "zh": "你好，我是芸芸。以后我就用这个声音回答你啦。",
+        "en": "Hi, I'm Yunyun. This is how I'll sound when I answer you.",
+        "ja": "こんにちは、芸芸だよ。これからこの声で答えるね。",
+    },
+    "voice_privacy_note": {
+        "zh": "说话用的是微软的在线语音（免费）：要读出来的回答会发给微软合成声音；连不上时这一句改用 Windows 自带的声音"
+              "（不联网，机器味重一点）。只读正文：代码、表格、网址不读，文件路径只读文件名。",
+        "en": "Speech uses Microsoft's free online voices: the reply text being read is sent to Microsoft to make the "
+              "sound. If that fails, Yunyun uses the voice built into Windows for that sentence (offline, a bit robotic). "
+              "Only the prose is read: code, tables and links are skipped, and file paths become just the file name.",
+        "ja": "声には Microsoft の無料オンライン音声を使います：読み上げる返事の文字が Microsoft に送られて音声になります。"
+              "つながらないときはその文だけ Windows 標準の声（オフライン、少し機械的）を使います。"
+              "本文だけ読みます：コード・表・URL は読まず、ファイルパスはファイル名だけ読みます。",
+    },
+    "voice_code_note": {"zh": "代码在卡片里。", "en": "The code is in the card.", "ja": "コードはカードにあるよ。"},
+    "voice_error_audio": {
+        "zh": "芸芸放不出声音：没找到扬声器，或者被别的程序占着。",
+        "en": "Yunyun can't play sound: no speaker was found, or another app is using it.",
+        "ja": "音を出せません：スピーカーが見つからないか、ほかのアプリが使っています。",
+    },
+    "voice_error_preview": {"zh": "这次没合成出声音，过一会儿再试试。", "en": "Couldn't make the sound this time — try again in a moment.",
+                            "ja": "今回は音声を作れませんでした。少し待ってからもう一度どうぞ。"},
 }
 
 _current = DEFAULT_LANGUAGE  # 模块级变量：整个程序共享"当前语言"

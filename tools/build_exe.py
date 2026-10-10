@@ -51,7 +51,9 @@ BUILD = ROOT / "build"          # 中间文件，可以随时删掉
 DIST = ROOT / "dist"            # 打包结果（最新的一版）：完整版在 dist\芸芸，节能版在 dist\lite\芸芸
 EDITIONS = {"full": "完整版", "lite": "节能版"}
 # 只有助手模式用的包：节能版不打包（芸芸进程本来就不 import 它们，有测试守着；它们连带的 pydantic、httpx 等也就不会带上）
-LITE_EXCLUDES = ["claude_agent_sdk", "anthropic", "playwright", "mcp"]
+# 后面几个是语音子进程用的（阶段 7）：edge-tts（连带 aiohttp）、miniaudio、Windows 语音（pywin32 的 win32com）
+LITE_EXCLUDES = ["claude_agent_sdk", "anthropic", "playwright", "mcp",
+                 "edge_tts", "aiohttp", "miniaudio", "win32com", "pythoncom"]
 SHARE = ROOT.parent / "Yunyun"  # 发给别人的压缩包放这里（F:\cwx\yunyun\Yunyun，用户定的），只留最新的一版
 RELEASES = ROOT / "releases"    # 以前各版本的压缩包，留着溯源（太大，不提交到 Git）
 # 绝不能进压缩包的东西（压缩前再查一遍）：开发用的说明和工具设置、用户的数据和日志（防止被误拷进程序文件夹）
