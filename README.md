@@ -1,46 +1,58 @@
-# 芸芸（Yunyun）
+<h1 align="center">Yunyun 芸芸</h1>
 
-一只住在你桌面上的 AI 小助手。它会陪你打字，帮你留意新邮件，用一句话告诉你"来了什么邮件"；
-打开助手模式，还能陪你聊天、查资料、改代码、看屏幕、打开软件、用浏览器帮你看网页。
+<p align="center">A little AI companion that lives on your Windows desktop</p>
 
-> 形象还是占位图，正式画作在路上。
+<p align="center">
+  <a href="https://github.com/Juansive/Yunyun/releases/latest"><b>Download</b></a> ·
+  <a href="#features"><b>Features</b></a> ·
+  <a href="#getting-started"><b>Get started</b></a> ·
+  <a href="#assistant-mode"><b>Assistant mode</b></a> ·
+  <a href="#privacy"><b>Privacy</b></a> ·
+  <a href="README.zh-CN.md"><b>简体中文</b></a> ·
+  <a href="README.ja.md"><b>日本語</b></a>
+</p>
 
-## 它能做什么
+Yunyun keeps you company while you type, watches your inbox, and tells you in one sentence what each new email is about.
+Turn on Assistant mode and she can also chat, look things up, edit code, look at your screen, open apps, and browse the web for you.
 
-- **陪着你**：你打字时它也"敲键盘"，你停下来它就打盹，说话时嘴一张一合；可以拖到桌面任意位置。
-- **帮你看邮件**：新邮件到了，芸芸右上角会出现**小红点**：QQ 邮箱 15 秒内，Gmail 等会主动推送的邮箱几秒内；不支持实时接收的邮箱每 2 分钟检查一次（QQ 邮箱已验证；163、Gmail 支持中）。
-- **一句话提醒**：点小红点，芸芸用 AI 把每封邮件变成一句话，比如"嘿！你的加油发票来啦！"，以卡片的形式一张张展示。
-- **不打扰你**：被别的窗口挡住时自动暂停；全屏看视频、玩游戏、放 PPT 时不弹提醒；可以设置免打扰时段（比如深夜），芸芸会去睡觉。
-- **找得回来**：看过的提醒保存 7 天，随时可以翻看。
-- **不改动你的邮箱**：芸芸看过的邮件，在你的邮箱里仍然是"未读"。
-- **AI 助手**（0.6 起，完整版才有）：右键 →「✦ 助手模式」，用你自己的 DeepSeek / Claude API Key（按用量付费），见下面的"助手模式"。
-- **旁观模式**：你自己用 Claude Code 时，它做完、等你确认时芸芸提醒你。
-- 界面支持中文、English、日本語。
+> The character art is still a placeholder — the real artwork is on its way.
 
-## 下载和安装
+## Features
 
-需要 Windows 10/11（64 位），**不需要安装 Python**。
+- **Keeps you company**: she "types" along with you, dozes off when you stop, and moves her mouth when she talks. Drag her anywhere on the desktop.
+- **Watches your mail**: when new mail arrives, a **red badge** appears on her shoulder — within 15 seconds for QQ Mail, within seconds for mailboxes that push (like Gmail); mailboxes without push (like 163 Mail) are checked every 2 minutes. Supports QQ Mail, 163 Mail and Gmail.
+- **One-sentence reminders**: click the badge and Yunyun uses AI to turn each email into one sentence — e.g. "Prof. Wang says chapter 3 of your thesis needs more work; send it by Monday" — shown as a stack of cards.
+- **Stays out of your way**: pauses when covered by other windows, never pops up during full-screen videos, games or slides, and has quiet hours (she goes to sleep at night).
+- **Nothing gets lost**: reminders you've seen are kept for 7 days.
+- **Never touches your mailbox**: emails Yunyun reads stay "unread" in your mailbox.
+- **AI assistant** (since 0.6, Full edition only): right-click → "✦ Assistant mode", using your own DeepSeek / Claude API key (pay as you go). See [Assistant mode](#assistant-mode).
+- **Watch mode**: when you use Claude Code yourself, Yunyun lets you know when it finishes or needs your approval.
+- UI in English, 中文 and 日本語 (right-click → Settings… → General → Language).
 
-1. 打开本页右边的 **Releases**（或者 [点这里](https://github.com/Juansive/Yunyun/releases/latest)），在最新版本下面的 Assets 里两种选一种：
+## Download and install
 
-   | 压缩包 | 大小 | 有什么 |
+Requires Windows 10/11 (64-bit). **No Python needed.**
+
+1. Open **Releases** on the right of this page (or [click here](https://github.com/Juansive/Yunyun/releases/latest)) and pick one of the two files under Assets:
+
+   | File | Size | What's inside |
    |---|---|---|
-   | **`Yunyun-<版本>-windows-lite.zip`**（节能版） | 约 35 MB，解压后约 80 MB | 桌宠、新邮件提醒、旁观模式。**只想要邮件提醒选这个** |
-   | **`Yunyun-<版本>-windows.zip`**（完整版） | 约 200 MB，解压后约 470 MB | 上面全部，再加助手模式（多出来的是它要用的 Claude Code 和浏览器驱动） |
+   | **`Yunyun-<version>-windows-lite.zip`** (Lite) | ~35 MB, ~80 MB unzipped | Desktop pet, new-mail reminders, Watch mode. **Pick this if you only want mail reminders** |
+   | **`Yunyun-<version>-windows.zip`** (Full) | ~200 MB, ~470 MB unzipped | Everything above, plus Assistant mode (the extra size is the Claude Code and browser driver it needs) |
 
-   解压到你喜欢的位置（比如 `D:\芸芸`）。先用节能版、以后想用助手模式了，下载完整版替换文件夹就行，设置不会丢。
-   > ⚠️ 不要点页面上绿色的 **Code → Download ZIP**：那是源代码，要装 Python 才能用。
-2. 双击文件夹里的 **`芸芸.exe`**。整个文件夹要放在一起，不要只把 exe 拷出来（它要用旁边 `_internal` 里的文件）。
-3. 第一次运行时，Windows 可能提示"Windows 已保护你的电脑"（因为芸芸没有付费的数字签名）：点 **更多信息 → 仍要运行**。
-4. 芸芸出现后，**右键芸芸 → 设置… → 通用**，可以创建桌面快捷方式、设置开机时启动。
+   Unzip it anywhere you like (e.g. `D:\Yunyun`). Start with Lite; if you want Assistant mode later, download Full and replace the folder — your settings are kept.
+   > ⚠️ Don't click the green **Code → Download ZIP** button: that's the source code and needs Python to run.
+2. Double-click **`芸芸.exe`** in the folder. Keep the whole folder together — don't copy the exe out on its own (it needs the files in `_internal` next to it).
+3. On first launch Windows may say "Windows protected your PC" (Yunyun has no paid code-signing certificate): click **More info → Run anyway**.
+4. Once Yunyun appears, **right-click her → Settings… → General** to create a desktop shortcut or start her with Windows.
 
-**升级到新版本**：有新版本时芸芸会说一声，右键芸芸最上面的 **⬆ 下载新版本** 打开下载页（设置 → 关于 也能「检查更新」）。
-下载后右键芸芸 → 快速双击"退出"，用新的文件夹替换旧的即可。邮箱、AI 设置和历史记录都存在 `%APPDATA%\Yunyun`，不会丢。
-如果换了文件夹的位置，请在 设置… → 通用 里重新创建桌面快捷方式、重新勾选开机时启动（它们记的是旧位置）。
+**Upgrading**: when a new version is out, Yunyun tells you, and **⬆ Download version …** appears at the top of the right-click menu (you can also use Settings → About → "Check for Updates").
+After downloading, right-click Yunyun → quickly double-click "Quit", then replace the old folder with the new one. Your mail, AI settings and history live in `%APPDATA%\Yunyun` and are kept.
+If you moved the folder, recreate the desktop shortcut and re-tick "Start with Windows" in Settings… → General (they point to the old location).
 
-## 安装（开发版）
+## Run from source
 
-需要 Windows 10/11 和 Python 3.11 及以上。在项目文件夹里打开终端：
+Requires Windows 10/11 and Python 3.11+. Open a terminal in the project folder:
 
 ```
 python -m venv .venv
@@ -48,156 +60,157 @@ python -m venv .venv
 .\.venv\Scripts\python -m yunyun.main
 ```
 
-芸芸出现后，**右键芸芸 → 设置… → 通用 → 桌面快捷方式「创建」**。之后双击桌面上的"芸芸 Yunyun"就能启动，不用再开终端。
+Once Yunyun appears, **right-click her → Settings… → General → Desktop shortcut "Create"**. From then on, double-click "芸芸 Yunyun" on the desktop — no terminal needed.
 
-## 第一次使用
+## Getting started
 
-1. **添加邮箱**：第一次启动时芸芸会自动打开设置窗口的"邮箱"页（以后在 右键 → 设置… → 邮箱 里也能改）。
-   QQ 邮箱需要**授权码**而不是 QQ 密码：QQ 邮箱网页版 → 设置 → 账号与安全 → 开启「IMAP/SMTP 服务」→ 生成授权码。
-2. **设置 AI**（可选，推荐）：添加完邮箱后，设置窗口会自动翻到"AI"页（以后在 右键 → 设置… → AI 里也能改）。默认用智谱的免费模型，
-   去 [open.bigmodel.cn](https://open.bigmodel.cn) 注册后，在"API Keys"里创建一个 Key 填进去。
-   不设置 AI 也能用，芸芸会直接告诉你"谁发来了什么标题"。
-   **想让邮件完全不出电脑**：服务商选「本地模型（Ollama）」。先到 [ollama.com/download](https://ollama.com/download) 安装 Ollama，
-   不用注册、不用 Key。**芸芸会在处理邮件时自动启动 Ollama，用完 20 秒后关掉**，平时不占内存；处理时会临时多占约 1～2 GB 内存，
-   比 Ollama 一直开着时大约多等 1 秒。有独立显卡会快很多。
-   Ollama 装好后默认会开机自启、常驻后台（约 160 MB 内存）。只给芸芸用的话，可以在任务管理器 →「启动应用」里关掉它的开机启动。
-   **想用自己的模型**：服务商选「自定义」，填接口地址（任何兼容 OpenAI 接口的服务，一般以 `/v1` 结尾）和模型名，Key 可以不填。
-   在线的比如 DeepSeek（`https://api.deepseek.com/v1`），自己电脑上的比如 LM Studio（`http://localhost:1234/v1`）。
-   填的是本机或局域网的地址时，邮件不会发到网上。
+1. **Add a mailbox**: on first launch Yunyun opens the "Mail" page of the settings window (you can change it later in right-click → Settings… → Mail).
+   Type your email address and the provider is picked for you. QQ Mail needs an **authorization code**, not your QQ password: QQ Mail (web) → Settings → Account & Security → enable "IMAP/SMTP service" → generate a code.
+   163 Mail also uses an authorization code; Gmail uses an "app password" (turn on 2-Step Verification first). The instructions on the settings page have clickable links.
+2. **Set up AI** (optional, recommended): after you add a mailbox, the settings window switches to the "AI" page (also at right-click → Settings… → AI). The default is Zhipu's free model:
+   sign up at [open.bigmodel.cn](https://open.bigmodel.cn), create a key under "API Keys", and paste it in.
+   Without AI, Yunyun still works — she just tells you who sent what subject.
+   **Want your mail to never leave your PC?** Choose "Local model (Ollama)". Install Ollama from [ollama.com/download](https://ollama.com/download) first —
+   no sign-up, no key. **Yunyun starts Ollama when processing mail and shuts it down 20 seconds later**, so it uses no memory otherwise; while processing it temporarily uses about 1–2 GB,
+   and it's roughly 1 second slower than keeping Ollama running. A dedicated GPU makes it much faster.
+   By default Ollama starts with Windows and stays in the background (~160 MB). If it's only for Yunyun, you can disable its startup in Task Manager → "Startup apps".
+   **Want to use your own model?** Choose "Custom" and fill in the API URL (any OpenAI-compatible service, usually ending in `/v1`) and the model name; the key is optional.
+   Online examples: DeepSeek (`https://api.deepseek.com/v1`); on your own PC: LM Studio (`http://localhost:1234/v1`).
+   With a local or LAN address, your mail never goes onto the internet.
 
-## 日常使用
+## Everyday use
 
-| 你想做 | 怎么做 |
+| You want to… | Do this |
 |---|---|
-| 看新邮件 | 单击芸芸右上角的**小红点** |
-| 这批邮件不想看了 | 把小红点**拖走**松手（像 QQ 那样），或 右键芸芸 → 全部标为已看 |
-| 暂时不想看到小红点 | **右键**小红点；想找回来就**右键芸芸** |
-| 浏览卡片 | **滚轮**或 ↑↓ 键切换；**单击卡片**展开看标题、发件人、附件。添加了两个以上邮箱时，卡片底部右边的小标签写着是哪个邮箱收的 |
-| 收起卡片 | 点别处、按 Esc，或再点一下小红点 |
-| 再看一眼刚才的提醒 | 右键芸芸 → **刚才的邮件** |
-| 翻看以前的提醒 | 右键 → 设置… → **历史**（保存最近 7 天） |
-| 晚上别打扰我 | 右键 → 设置… → 通用 → **免打扰**（默认 23:00 至 08:00）。期间芸芸睡觉，新邮件只安静地计数；你打字时它会醒来陪你 |
-| 芸芸被挡住了 | 双击任务栏右下角托盘里的芸芸图标 |
-| 让芸芸一直在最上面 | 右键 → 设置… → 通用 → 始终在上 |
-| 把芸芸调大 / 调小 | 右键 → 设置… → 通用 → 芸芸大小（50%～200%，拖的时候马上变；气泡和卡片大小不变） |
-| 开机自动启动 | 右键 → 设置… → 通用 → 开机时启动 |
-| 换个位置 | 直接拖动芸芸，下次启动还在那里 |
-| 退出 | 右键 → **快速双击**"退出"（防止误点） |
+| Read new mail | Click the **red badge** on Yunyun's shoulder |
+| Skip this batch | **Drag the badge away** and let go, or right-click Yunyun → Mark All as Seen |
+| Hide the badge for now | **Right-click** the badge; **right-click Yunyun** to bring it back |
+| Browse the cards | **Scroll** or use ↑↓; **click a card** to see the subject, sender and attachments. With two or more mailboxes, a small tag in the card's bottom-right corner shows which mailbox received it |
+| Close the cards | Click elsewhere, press Esc, or click the badge again |
+| See the last batch again | Right-click Yunyun → **Recent Mail** |
+| Look through older reminders | Right-click → Settings… → **History** (last 7 days) |
+| Not be disturbed at night | Right-click → Settings… → General → **Do not disturb** (23:00–08:00 by default). Yunyun sleeps and new mail is just counted quietly; she wakes up when you type |
+| Yunyun is hidden behind windows | Double-click her icon in the system tray |
+| Keep Yunyun on top | Right-click → Settings… → General → Always on Top |
+| Make Yunyun bigger / smaller | Right-click → Settings… → General → Size (50%–200%, updates live; bubbles and cards stay the same size) |
+| Start with Windows | Right-click → Settings… → General → Start with Windows |
+| Move her | Just drag Yunyun; she'll be there next time too |
+| Quit | Right-click → **quickly double-click** "Quit" (prevents accidental clicks) |
 
-小红点只数**芸芸开始帮你看邮箱之后**新来的未读邮件，以前积攒的旧邮件不会算进去。
+The badge only counts unread mail that arrives **after Yunyun starts watching your mailbox** — old unread mail isn't counted.
 
-## 助手模式（0.6 起）
+## Assistant mode
 
-> 只有完整版有（见上面"下载和安装"）。节能版的右键菜单里没有这一项。
+> Available since 0.6, in the Full edition only (see [Download and install](#download-and-install)). The Lite edition has no such menu item.
 
-右键芸芸 → 第一项 **✦ 助手模式**，芸芸脚下会展开一个带淡蓝光晕的输入框，可以问她问题，需要时她会上网查资料。
-大脑默认是 Claude（Anthropic），也可以换成更便宜的 **DeepSeek**；**都要用你自己的 API Key，按用量付费**（Claude 的 API 和 Claude 的订阅分开计费）。
+Right-click Yunyun → the first item **✦ Assistant mode**. An input box with a soft blue glow unfolds at her feet; ask her anything, and she'll search the web when needed.
+Her "brain" is Claude (Anthropic) by default, or the cheaper **DeepSeek**. **Both need your own API key and are pay-as-you-go** (Claude's API is billed separately from a Claude subscription).
 
-1. 准备 Key：
-   - **DeepSeek**（便宜，在国内注册、付款都方便）：[platform.deepseek.com](https://platform.deepseek.com/api_keys) 手机号注册 → 充值（支付宝 / 微信）→ API keys → 创建 API key。
-   - **Claude**：[platform.claude.com](https://platform.claude.com) 注册 → Billing 充值（要能付美元的银行卡）→ API Keys → Create Key。
-2. 右键芸芸 → 设置… → **助手**：选服务商，粘贴 Key，点「测试并保存」（只检查 Key 和模型，**不花钱**）。默认用最便宜的 Claude Haiku 4.5。
-   DeepSeek 不能搜索网页（能读你给的网址），设置页会直接显示它的账户余额。
+1. Get a key:
+   - **DeepSeek** (cheap; easy to sign up and pay from China): [platform.deepseek.com](https://platform.deepseek.com/api_keys) → sign up with a phone number → top up (Alipay / WeChat Pay) → API keys → create.
+   - **Claude**: [platform.claude.com](https://platform.claude.com) → sign up → Billing (needs a card that can pay in USD) → API Keys → Create Key.
+2. Right-click Yunyun → Settings… → **Assistant**: choose the provider, paste the key, and click "Test and Save" (it only checks the key and model — **free**). The default is the cheapest model, Claude Haiku 4.5.
+   DeepSeek can't search the web (it can read URLs you give it); the settings page shows its account balance.
 
-| 你想做 | 怎么做 |
+| You want to… | Do this |
 |---|---|
-| 提问 | 在输入框里打字，Enter 发送（Shift+Enter 换行）。芸芸一边想一边在头顶的气泡里说回答的开头 |
-| 让它停下 | 回答时点输入框右边的 ■；输入框收起着的话，右键芸芸 →「■ 停止助手」。正在跑的命令也会一起结束 |
-| 看完整的回答 | 每一问一答会变成一张卡片，放在芸芸旁边；滚轮翻看，**单击卡片**在旁边打开全文，代码块右上角可以一键复制 |
-| 换个话题 | 鼠标移到卡片堆上，点右上角「+ 新对话」，或者在输入框里按 Ctrl+N。卡片堆只放当前这段对话，上一段在历史对话里 |
-| 接着昨天的聊 | 右键芸芸 →「历史对话…」（或卡片堆右上角「历史」）：按日期列出以前的每段对话，点一段看全部问答，点「接着聊」就回到那段对话（自动切回那段的工作文件夹），芸芸记得之前说过的。保留 30 天 |
-| 让她帮你改代码 | 点输入框左边的**文件夹按钮**，选一个工作文件夹（比如你的项目）。她能读里面的文件、搜索；改文件、执行命令之前会先问你 |
-| 确认 / 拒绝 | 芸芸旁边会滑出确认卡片：命令全文，或者要改的文件（红色删掉、绿色新增）。可以「允许一次」「这次对话都允许」或「拒绝」（可以写一句理由）。删文件、装软件、联网下载这类命令标红，每次都问 |
-| 看她做了什么 | 打开那一问的卡片，点「▸ 芸芸做了 N 件事」：读了哪些文件、执行了哪些命令，每一件是不用问、你允许的还是你拒绝的 |
-| 撤销她改的文件 | 打开那一问的卡片，点底部「↶ 撤销这次改动」（点两次）。只能撤销她用"改文件"改的；用命令改的（比如命令生成、删掉的文件）撤销不了，请用 git 恢复。开了新对话以后就撤销不了了 |
-| 唤出 | 第一次：右键 →「✦ 助手模式」；之后**左键点一下芸芸**就行 |
-| 收起 | 按 Esc 或点别处：只有输入框缩回去，卡片和打开的详情**留着**（方便边看文档边看回答）。输入框里打了字、带着图片时点别处不收（按 Esc 才收），去资源管理器拖文件过来时也不会收 |
-| 隐藏卡片 | 右键芸芸 →「隐藏卡片」；左键点芸芸再叫出来（刚才开着的详情也会回来） |
-| 挪开卡片 | 按住卡片堆或详情框的空白处拖到别处（不会拖出屏幕），之后芸芸走到哪，卡片保持这个相对位置跟到哪；右键「卡片回到芸芸旁边」复位 |
-| 让她看屏幕 | 说「看看我屏幕上这个报错」：她先说「我看一下屏幕哦」，截下你刚才用的窗口（需要时截整块屏幕）再回答；她自己的窗口不会被截进去。默认不用问，设置 → 助手 → 勾上「截图前先问我」就每次先问 |
-| 让她打开软件 | 说「帮我打开计算器」：她在开始菜单里按名字找到它，先问你（确认卡片上写着软件名），同意了才打开。可以选「这次对话都允许打开它」（只管这一个软件）。只能打开开始菜单里有的；她只打开，不操作软件里面 |
-| 让她用浏览器 | 说「打开 xxx 网站看看」：她打开自己的 Edge 窗口（你看得见），读完再回答。和你自己的浏览器分开，你在里面登录过的网站下次还在；密码框、卡号框里的内容不交给她看。浏览器开着时不会自动释放后台；它要占 0.4～1 GB 多内存（看网页多重），**用完把那个窗口关掉就释放了** |
-| 让她在网页上操作 | 说「在 B 站搜一下猫」「帮我把表单填好」：点击、输入、选下拉框之前都先问你（卡片上写着网站和她要点的按钮 / 要输入的字），可以选「这次对话在这个网站都允许」。提交、下单、付款、发送、删除、下载每次都问、标红；搜索不算。密码、卡号、验证码她不填，请你自己在窗口里填 |
-| 让她下载文件 | 每次都先问你，文件存到你的「下载」文件夹（重名的存成「名字 (1).zip」，不覆盖）。你自己在她的浏览器窗口里点下载也照常存到那里，下好了她说一声 |
-| 给她看图片 | 在输入框里 Ctrl+V 粘贴复制的图片，或者把图片文件拖进来：输入框上面出现缩略图（× 去掉），和文字一起发（一次最多 5 张）。拖进别的文件会插入它的路径 |
-| 让她记住你 | 说「记住……」她一定记；平时她也会把用得上的事记进**记事本**（你的偏好、项目的约定、踩过的坑），换了一段对话也记得。「关于你」的每段对话都用，项目的只在同一个工作文件夹里用。设置 →「记事本」能看、改、删、关掉 |
-| 退出 | 右键 → 退出助手模式。输入框收起 10 分钟没再用，会先释放后台（约 300 MB），卡片还在；再问时自动重新连上，接着同一段对话 |
+| Ask something | Type in the box and press Enter (Shift+Enter for a new line). Yunyun says the start of her answer in a bubble above her head as she thinks |
+| Make her stop | Click ■ on the right of the input box while she's answering; if the box is closed, right-click Yunyun → "■ Stop the assistant". Running commands are stopped too |
+| Read the full answer | Each question and answer becomes a card next to Yunyun; scroll through them and **click a card** to open the full text beside it. Code blocks have a copy button |
+| Start a new topic | Hover over the cards and click "+ New chat" in the top-right corner, or press Ctrl+N in the input box. The card stack only holds the current chat; earlier ones are in Chat history |
+| Continue yesterday's chat | Right-click Yunyun → "Chat history…" (or "History" on the card stack): chats are listed by date; click one to see all of it, then "Continue" to pick up where you left off (it switches back to that chat's working folder). Kept for 30 days |
+| Have her work on code | Click the **folder button** on the left of the input box and choose a working folder (e.g. your project). She can read and search files there; she asks before changing files or running commands |
+| Approve / deny | A confirmation card slides out next to Yunyun: the full command, or the file changes (red removed, green added). Choose "Allow once", allow it for this chat, or "Deny" (you can give a reason). Commands that delete files, install software or download from the internet are shown in red and always asked |
+| See what she did | Open that answer's card and click "▸ Yunyun did N things": which files she read, which commands she ran, and whether each one was automatic, allowed or denied by you |
+| Undo her file edits | Open that answer's card and click "↶ Undo these changes" (twice). Only edits she made with the file-editing tool can be undone; changes made by commands (e.g. files a command created or deleted) can't — use git. Not available after starting a new chat |
+| Bring her up | First time: right-click → "✦ Assistant mode"; after that, just **left-click Yunyun** |
+| Put her away | Press Esc or click elsewhere: only the input box folds away — the cards and any opened answer **stay** (handy for reading docs side by side). If you've typed something or attached images, clicking elsewhere won't close it (press Esc), nor will dragging files in from Explorer |
+| Hide the cards | Right-click Yunyun → "Hide cards"; left-click Yunyun to bring them back (along with the answer you had open) |
+| Move the cards | Drag an empty part of the card stack or the answer panel (it stays on screen); from then on the cards follow Yunyun at that offset. Right-click → "Put cards back next to Yunyun" to reset |
+| Let her see your screen | Say "look at this error on my screen": she says "Let me take a look at your screen", captures the window you were just using (the whole screen if needed) and answers. Her own windows are never captured. No confirmation by default; tick "Ask me before taking a screenshot" in Settings → Assistant to be asked each time |
+| Have her open an app | Say "open Calculator": she finds it in the Start menu by name and asks you first (the card shows the app's name). You can allow that one app for the rest of the chat. She can only open apps that are in the Start menu, and doesn't operate them |
+| Have her use a browser | Say "take a look at xxx website": she opens her own Edge window (you can see it) and answers after reading. It's separate from your own browser; sites you log into there stay logged in next time; password and card-number fields are never shown to her. While the browser is open the background isn't released; it uses 0.4–1+ GB depending on the pages, so **close that window when you're done** |
+| Have her act on a web page | Say "search for cats on Bilibili" or "fill in this form for me": she asks before every click, typing or dropdown choice (the card shows the site and the button / text), and you can allow everything on that site for this chat. Submitting, ordering, paying, sending, deleting and downloading are always asked and shown in red; searching doesn't count. She never fills in passwords, card numbers or verification codes — type those yourself in the window |
+| Have her download a file | She always asks first; files go to your Downloads folder (name clashes become "name (1).zip", nothing is overwritten). Downloads you start yourself in her browser window go there too, and she tells you when they finish |
+| Show her an image | Paste a copied image with Ctrl+V or drag image files into the box: thumbnails appear above it (× to remove) and are sent with your text (up to 5 at a time). Dragging in other files inserts their paths |
+| Have her remember you | Say "remember …" and she will; she also notes useful things in her **Notebook** on her own (your preferences, project conventions, pitfalls), so she remembers them in later chats. Notes "about you" are used in every chat; project notes only in the same working folder. View, edit, delete or turn it off in Settings → "Notebook" |
+| Exit | Right-click → Exit assistant mode. If the input box stays closed for 10 minutes, the background is released first (~300 MB) while the cards stay; asking again reconnects to the same chat automatically |
 
-- **花多少钱**：用 Haiku 4.5 一般每问一次 1 美分左右（每段对话的第一问稍贵一点）。设置页可以改"每次回答最多花"（默认 $0.1）和
-  "每段对话最多花"（默认 $0.5），也能看到芸芸今天 / 本月 / 一共花了多少。Anthropic 没有查余额的接口，账户余额请到官网看。
-  用 DeepSeek 时一般每问 1～3 分钱人民币（实测约 $0.002～0.005），花费由芸芸按 DeepSeek 的价格算（按高峰价，宁可多算一点）。
-  让她干活（读很多文件、跑命令、看网页）时一问会贵一些。
-- **聊得很长时**：一段对话超过约 4 万 token，芸芸答完会自动把前面的对话整理成一段摘要，之后只带着摘要聊（不容易变笨、更省钱，
-  个别细节可能丢）。卡片底部的「对话 2.3万/4万」是现在的长度；设置 → 助手 →「对话太长时自动整理」可以改长度或关掉。
-- **占多少内存**：只在打开助手模式时多占约 360 MB（其中 Claude Code 约 300 MB），退出后全部还回来。
-- 不选工作文件夹时只能聊天和上网查资料。工作文件夹里如果有 `CLAUDE.md`（项目说明），她会照着做；但 `.claude\` 里的设置不会加载，什么要问你只听芸芸的。
-- 能打开开始菜单里的软件，但还不会操作软件里面（点按钮、打字），以后的版本再说。
+- **Cost**: with Haiku 4.5, each question is usually around 1 US cent (the first question of a chat costs a bit more). In the settings page you can change "Max per reply" (default $0.1) and
+  "Max per chat" (default $0.5), and see how much Yunyun has spent today / this month / in total. Anthropic has no balance API, so check your balance on their website.
+  With DeepSeek a question usually costs ¥0.01–0.03 (measured about $0.002–0.005); Yunyun calculates it with DeepSeek's prices (peak-hour rates, to err on the high side).
+  Questions where she does a lot of work (reading many files, running commands, browsing) cost more.
+- **Long chats**: once a chat goes over about 40k tokens, Yunyun summarizes the earlier part after answering and continues with just the summary (she stays sharp and it's cheaper,
+  though small details may be lost). "Chat 23k/40k" at the bottom of the cards is the current length; change the length or turn it off in Settings → Assistant → "Tidy up long chats".
+- **Memory use**: only while Assistant mode is open, about 360 MB more (Claude Code is ~300 MB of that); it's all given back when you exit.
+- Without a working folder she can only chat and search the web. If the working folder has a `CLAUDE.md` (project instructions), she follows it; settings in `.claude\` are not loaded — what needs your approval is decided by Yunyun alone.
+- She can open apps from the Start menu but can't operate inside them (clicking buttons, typing) yet — maybe in a later version.
 
-## 旁观模式：你自己用 Claude Code 时让芸芸盯着
+## Watch mode: let Yunyun keep an eye on your Claude Code
 
-你自己在终端、VS Code 或 Claude 桌面版里用 Claude Code 干活时，芸芸可以帮你盯着：它**做完一轮、等你确认权限、让你选一个选项**时，
-芸芸提醒你（"Claude Code 做完了 · 项目名"，下面一行是它说的第一句）。**你正看着那个窗口时不打扰**；芸芸被别的窗口挡住时，
-任务栏右下角上方弹一个小条，点一下就切到 Claude Code。不用打开助手模式，打包版也能用。
+When you use Claude Code yourself in a terminal, VS Code or the Claude desktop app, Yunyun can watch it for you: when it **finishes a turn, waits for your permission, or asks you to pick an option**,
+Yunyun tells you ("Claude Code is done · project name", with its first sentence below). **She stays quiet if you're already looking at that window**; if Yunyun is covered by other windows,
+a small bar pops up above the taskbar — click it to switch to Claude Code. No need to open Assistant mode, and it works in both editions.
 
-- 打开：设置 →「旁观」→「连接我的 Claude Code」。会在 `C:\Users\你\.claude\settings.json` 里加两条 hook
-  （做完时、等你确认时运行芸芸的小脚本，几十毫秒就完；芸芸没开时什么都不做）。改之前先备份到同一个文件夹，你自己的 hook 和别的设置不动。
-- 已经开着的 Claude Code 要重新打开才生效。可以点「发一条测试提醒」看看样子。
-- 不想用了：「断开」，只删芸芸加的那两条。
+- Turn it on: Settings → "Watch" → "Connect my Claude Code". This adds two hooks to `C:\Users\you\.claude\settings.json`
+  (they run Yunyun's tiny script when Claude Code finishes or waits for you — it takes a few dozen milliseconds and does nothing if Yunyun isn't running). The file is backed up in the same folder first; your own hooks and other settings are left alone.
+- Claude Code windows that are already open need to be restarted. Click "Send a test reminder" to see what it looks like.
+- Don't want it any more? "Disconnect" removes only Yunyun's two hooks.
 
-## 隐私
+## Privacy
 
-| 数据 | 存在哪里 |
+| Data | Where it's stored |
 |---|---|
-| 邮箱授权码、AI 的 API Key、助手的 API Key | Windows 凭据管理器（`yunyun-mail`、`yunyun-ai`、`yunyun-assistant`），由你的 Windows 账户加密保护 |
-| 助手模式的对话记录 | `%APPDATA%\Yunyun\Yunyun\assistant\claude\`（Claude Code 自己的会话记录，**含完整对话和芸芸看屏幕时的截图**） |
-| 助手的问答卡片（历史对话） | `%APPDATA%\Yunyun\Yunyun\assistant\cards.json`（**含完整问答和她做过的操作**）；和上面的对话记录、撤销备份一样**保留 30 天**，设置 → 助手 →「清空历史对话」可以马上全部删掉 |
-| 撤销用的文件备份 | 同一个文件夹里（Claude Code 改文件前先备份一份原文件，撤销时用；保留 30 天） |
-| 芸芸的浏览器 | `%APPDATA%\Yunyun\Yunyun\assistant\browser\`（Edge 的配置：**你在里面登录过的网站、浏览记录、Cookie**；不自动清理，想清掉就关掉助手后删这个文件夹） |
-| 工作文件夹（最近 5 个） | `%APPDATA%\Yunyun\Yunyun\config.yaml` |
-| 芸芸的记事本 | `%APPDATA%\Yunyun\Yunyun\assistant\memory.json`（她记下的事；设置 → 记事本 →「全部清空」可以删掉） |
-| 助手花了多少钱 | `%APPDATA%\Yunyun\Yunyun\assistant_spending.json`（只有日期和金额） |
-| 邮箱地址、AI 服务商 | `%APPDATA%\Yunyun\Yunyun\config.yaml` |
-| 哪些邮件提醒过 | `%APPDATA%\Yunyun\Yunyun\mail_state.json`（只有邮件编号，没有内容） |
-| 提醒的历史记录 | `%APPDATA%\Yunyun\Yunyun\history.db`（AI 那句话、标题、发件人、时间、附件名，不含正文；保留 7 天） |
-| 日志 | `%APPDATA%\Yunyun\Yunyun\logs\`（不含邮件内容和密钥，邮箱地址已打码） |
-| 语言、窗口位置等设置 | 注册表 `HKEY_CURRENT_USER\Software\Yunyun` |
-| 开机启动 | "启动"文件夹里的"芸芸 Yunyun"快捷方式 |
+| Mail authorization codes, AI API key, assistant API keys | Windows Credential Manager (`yunyun-mail`, `yunyun-ai`, `yunyun-assistant`), protected by your Windows account |
+| Assistant chat logs | `%APPDATA%\Yunyun\Yunyun\assistant\claude\` (Claude Code's own session logs, **including the full conversations and the screenshots Yunyun took**) |
+| Assistant answer cards (chat history) | `%APPDATA%\Yunyun\Yunyun\assistant\cards.json` (**full questions and answers, plus what she did**); like the logs and undo backups above, **kept for 30 days**. Settings → Assistant → "Clear chat history" deletes them right away |
+| File backups for undo | Same folder (Claude Code backs up a file before changing it, for undo; kept for 30 days) |
+| Yunyun's browser | `%APPDATA%\Yunyun\Yunyun\assistant\browser\` (Edge profile: **sites you logged into, browsing history, cookies**; not cleaned automatically — exit Assistant mode and delete this folder to clear it) |
+| Working folders (last 5) | `%APPDATA%\Yunyun\Yunyun\config.yaml` |
+| Yunyun's Notebook | `%APPDATA%\Yunyun\Yunyun\assistant\memory.json` (what she noted; Settings → Notebook → "Clear all" deletes it) |
+| Assistant spending | `%APPDATA%\Yunyun\Yunyun\assistant_spending.json` (dates and amounts only) |
+| Email addresses, AI provider | `%APPDATA%\Yunyun\Yunyun\config.yaml` |
+| Which emails were reminded | `%APPDATA%\Yunyun\Yunyun\mail_state.json` (message IDs only, no content) |
+| Reminder history | `%APPDATA%\Yunyun\Yunyun\history.db` (the AI sentence, subject, sender, time, attachment names, receiving mailbox — no body; kept for 7 days) |
+| Logs | `%APPDATA%\Yunyun\Yunyun\logs\` (no email content or keys; email addresses are masked) |
+| Language, window position and other settings | Registry `HKEY_CURRENT_USER\Software\Yunyun` |
+| Start with Windows | A "芸芸 Yunyun" shortcut in your Startup folder |
 
-- **发送给 AI 的内容**：只有你**点了小红点**之后，才会把邮件的发件人、标题、附件名和正文开头（最多 1500 字）发给你选择的 AI 服务商。拖走小红点清掉的邮件不会发送。
-  选「本地模型（Ollama）」时，这些内容只交给你电脑上的 Ollama，不会发到网上；选「自定义」时，发给你填写的地址（本机或局域网的地址同样不会发到网上）。
-- **不想交给 AI 的邮件**：设置 → AI 最下面的「隐私」，可以勾选整个邮箱，或者填发件人地址 / `@域名`（比如 `@icbc.com.cn`，这个域名发来的都算）。这些邮件只显示发件人和标题（带 🔒），一个字都不发给 AI，本地模型也不给。
-- **新版本提醒**：每天最多问一次 GitHub 最新的版本号（`api.github.com`），请求里只有程序名和版本号，不发送你的任何信息；设置 → 通用 可以关掉。
-- **提醒里不会出现敏感信息**：验证码、取件码、金额、卡号、订单号、链接即使被 AI 写进去，芸芸也会自动删掉（提醒会显示在桌面上，也会存进历史记录）。
-- **助手模式**：你的提问和对话会发给你选的服务商（Claude / DeepSeek），芸芸搜索、阅读的网页内容也会经过它；选了工作文件夹的话，
-  她读的文件内容、执行命令的结果、项目的 `CLAUDE.md` 也会发过去；每段对话开始时，记事本的目录（每条一行）也会发过去；
-  她看屏幕时，截图也会发过去（芸芸自己的窗口不截）。
-  不打开助手模式就什么都不发。
-- **键盘**：芸芸只检测"你有没有在打字"，**从不记录你按了哪个键**。
+- **What's sent to the AI**: only **after you click the badge** are each email's sender, subject, attachment names and the beginning of the body (up to 1,500 characters) sent to the AI provider you chose. Emails you dismiss by dragging the badge away are never sent.
+  With "Local model (Ollama)" this only goes to Ollama on your PC, never onto the internet; with "Custom" it goes to the address you entered (a local or LAN address also stays off the internet).
+- **Emails you don't want the AI to see**: in the "Privacy" box at the bottom of Settings → AI, tick whole mailboxes or add sender addresses / `@domains` (e.g. `@icbc.com.cn` covers everything from that domain). Those emails only show the sender and subject (with 🔒) and nothing is sent to any AI — local models included.
+- **New-version check**: at most once a day Yunyun asks GitHub (`api.github.com`) for the latest version number; the request only contains the app name and version, none of your information. Turn it off in Settings → General.
+- **No sensitive info in reminders**: verification codes, pickup codes, amounts, card numbers, order numbers and links are removed automatically even if the AI writes them (reminders appear on your desktop and are saved in history).
+- **Assistant mode**: your questions and the conversation go to the provider you chose (Claude / DeepSeek), and so do the web pages she searches and reads; if you chose a working folder,
+  so do the files she reads, command output and the project's `CLAUDE.md`; at the start of each chat, the Notebook's index (one line per note) is sent too;
+  when she looks at your screen, the screenshot is sent (Yunyun's own windows are never captured).
+  Nothing is sent unless you open Assistant mode.
+- **Keyboard**: Yunyun only notices *whether* you're typing — **it never records which keys you press**.
 
-## 常见问题
+## FAQ
 
-**小红点一直没出现？** 只有新来的邮件才会提醒，可以用别的邮箱给自己发一封试试：QQ 邮箱 15 秒内、Gmail 几秒内就会出现，其他邮箱最多等 2 分钟（刚开机或刚断过网时也可能要等一两分钟）。单击芸芸，它会告诉你"现在没有新邮件"。
+**The badge never shows up?** Only new mail triggers it. Try sending yourself an email from another account: QQ Mail shows it within 15 seconds, Gmail within seconds, other mailboxes within 2 minutes (it may take a minute or two right after startup or a network drop). Click Yunyun and she'll tell you if there's no new mail.
 
-**遇到问题怎么反馈？** 右键 → 设置… → 关于 → 打开日志文件夹，把 `yunyun.log` 发给开发者。
+**How do I report a problem?** Right-click → Settings… → About → Open Log Folder, and send `yunyun.log` to the developer.
 
-**怎么彻底删除芸芸的数据？** 先在 右键 → 设置… → 通用 里取消"开机时启动"（用过旁观模式的话，设置 → 旁观 →「断开」）；删除芸芸的文件夹（或项目文件夹）、桌面快捷方式和 `%APPDATA%\Yunyun`；在"控制面板 → 凭据管理器 → Windows 凭据"里删除 `yunyun-mail`、`yunyun-ai`、`yunyun-assistant` 开头的条目；删除注册表 `HKEY_CURRENT_USER\Software\Yunyun`。
+**How do I remove all of Yunyun's data?** First untick "Start with Windows" in right-click → Settings… → General (and if you used Watch mode, Settings → Watch → "Disconnect"); delete Yunyun's folder (or the project folder), the desktop shortcut and `%APPDATA%\Yunyun`; in Control Panel → Credential Manager → Windows Credentials, delete the entries starting with `yunyun-mail`, `yunyun-ai` and `yunyun-assistant`; delete the registry key `HKEY_CURRENT_USER\Software\Yunyun`.
 
-## 开发
+## Development
 
 ```
 .\.venv\Scripts\python -m pip install -r requirements-dev.txt
-.\.venv\Scripts\python -m pytest            # 运行测试
-.\.venv\Scripts\python -m yunyun.mail       # 调试：在命令行读取未读邮件
-.\.venv\Scripts\python tools\make_placeholders.py   # 重新生成占位图
-.\.venv\Scripts\python tools\build_exe.py   # 打包成 exe（也可以双击 tools\build_exe.bat）
+.\.venv\Scripts\python -m pytest            # run the tests
+.\.venv\Scripts\python -m yunyun.mail       # debug: read unread mail from the command line
+.\.venv\Scripts\python tools\make_placeholders.py   # regenerate the placeholder art
+.\.venv\Scripts\python tools\build_exe.py   # build the exe (or double-click tools\build_exe.bat)
 ```
 
-一次打两种：完整版 `dist\芸芸\芸芸.exe`、节能版 `dist\lite\芸芸\芸芸.exe`（不带助手模式的组件，`build_exe.py lite` / `full` 可以只打一种）。
-发给别人用的压缩包在项目文件夹旁边的 `..\Yunyun\`：`Yunyun-<版本>-windows.zip` 和 `Yunyun-<版本>-windows-lite.zip`（只留最新一版，旧的挪到 `releases\`）。
-构建脚本会在"没有 Python"的环境里运行 exe 的自检（完整版看到 9 行 `OK`，其中两行会真的启动 Claude Code 和不显示窗口的 Edge，
-再以"助手子进程"的身份试一下 exe；节能版 8 行，最后一行确认没带助手组件），都过了才压缩。
-zip 里会附上 [docs/使用说明.txt](docs/使用说明.txt)（自动填上版本号）和 [更新日志](docs/更新日志.txt)；开发用的说明不会进去（脚本会检查）。
-发给别人前记得在 `yunyun/__init__.py` 里把版本号加一，再把两个 zip 都发到 GitHub 的 Releases。
+It builds both editions: Full `dist\芸芸\芸芸.exe` and Lite `dist\lite\芸芸\芸芸.exe` (without the Assistant mode components; `build_exe.py lite` / `full` builds just one).
+The zips for sharing go to `..\Yunyun\` next to the project folder: `Yunyun-<version>-windows.zip` and `Yunyun-<version>-windows-lite.zip` (only the latest is kept there; older ones move to `releases\`).
+The build script runs the exe's self-check in an environment "without Python" (Full: 9 lines of `OK`, two of which really start Claude Code and a hidden Edge,
+then it tries the exe as the "assistant subprocess"; Lite: 8 lines, the last confirming the assistant components are left out), and only zips if everything passes.
+The zip includes [docs/使用说明.txt](docs/使用说明.txt) (the user guide, in Chinese, with the version filled in) and the [changelog](docs/更新日志.txt) (Chinese); developer notes are never included (the script checks).
+Before sharing, bump the version in `yunyun/__init__.py`, then upload both zips to GitHub Releases.
 
-- 开发用的说明（CLAUDE.md、设计细节、开发计划、交接）只在开发者自己的电脑上，不在这个仓库里。
-- 给画师的形象素材要求见 [assets/pet/README.md](assets/pet/README.md)。
+- Developer notes (CLAUDE.md, design notes, plans, handoff) live only on the developer's own machine, not in this repository.
+- Requirements for the character artwork: [assets/pet/README.md](assets/pet/README.md) (Chinese).
