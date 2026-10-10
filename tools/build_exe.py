@@ -43,7 +43,10 @@ BUILD = ROOT / "build"          # 中间文件，可以随时删掉
 DIST = ROOT / "dist"            # 打包结果（最新的一版）
 SHARE = ROOT.parent / "Yunyun"  # 发给别人的压缩包放这里（F:\cwx\yunyun\Yunyun，用户定的），只留最新的一版
 RELEASES = ROOT / "releases"    # 以前各版本的压缩包，留着溯源（太大，不提交到 Git）
-NOT_FOR_SHARING = {"CLAUDE.md", "开发交接.md"}   # 开发用的说明，绝不能进压缩包（打包前再查一遍）
+# 绝不能进压缩包的东西（压缩前再查一遍）：开发用的说明和工具设置、用户的数据和日志（防止被误拷进程序文件夹）
+NOT_FOR_SHARING = {"CLAUDE.md", "开发交接.md", "设计细节.md", "助手模式计划.md", ".mcp.json", ".claude",
+                   "config.yaml", "mail_state.json", "cards.json", "memory.json", "assistant_spending.json"}
+NOT_FOR_SHARING_SUFFIXES = {".log", ".db"}
 
 # 运行时才决定加载的模块：PyInstaller 分析 import 语句时看不到，要明确告诉它
 HIDDEN_IMPORTS = [
@@ -105,7 +108,8 @@ def main():
         write_doc(doc, app_dir / doc.name)
     if "还没打包" in CHANGELOG.read_text(encoding="utf-8"):
         print("提醒：更新日志里还有\"下一版（还没打包）\"，记得改成这一版的版本号和日期。")
-    leaked = [str(f.relative_to(DIST)) for f in app_dir.rglob("*") if f.name in NOT_FOR_SHARING]
+    leaked = [str(f.relative_to(DIST)) for f in app_dir.rglob("*")
+              if f.name in NOT_FOR_SHARING or f.suffix.lower() in NOT_FOR_SHARING_SUFFIXES]
     if leaked:
         sys.exit(f"程序文件夹里有不该发出去的文件，先不压缩：{leaked}")
     SHARE.mkdir(exist_ok=True)
