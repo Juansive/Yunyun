@@ -192,8 +192,8 @@ python -m venv .venv
 
 一次打两种：完整版 `dist\芸芸\芸芸.exe`、节能版 `dist\lite\芸芸\芸芸.exe`（不带助手模式的组件，`build_exe.py lite` / `full` 可以只打一种）。
 发给别人用的压缩包在项目文件夹旁边的 `..\Yunyun\`：`Yunyun-<版本>-windows.zip` 和 `Yunyun-<版本>-windows-lite.zip`（只留最新一版，旧的挪到 `releases\`）。
-构建脚本会在"没有 Python"的环境里运行 exe 的自检（完整版看到 8 行 `OK`，其中两行会真的启动 Claude Code 和不显示窗口的 Edge，
-再以"助手子进程"的身份试一下 exe；节能版 7 行，最后一行确认没带助手组件），都过了才压缩。
+构建脚本会在"没有 Python"的环境里运行 exe 的自检（完整版看到 9 行 `OK`，其中两行会真的启动 Claude Code 和不显示窗口的 Edge，
+再以"助手子进程"的身份试一下 exe；节能版 8 行，最后一行确认没带助手组件），都过了才压缩。
 zip 里会附上 [docs/使用说明.txt](docs/使用说明.txt)（自动填上版本号）和 [更新日志](docs/更新日志.txt)；开发用的说明不会进去（脚本会检查）。
 发给别人前记得在 `yunyun/__init__.py` 里把版本号加一，再把两个 zip 都发到 GitHub 的 Releases。
 

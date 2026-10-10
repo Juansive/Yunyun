@@ -24,6 +24,25 @@ def test_every_assistant_error_kind_has_a_message():
     assert [kind for kind in ERROR_KINDS if f"assistant_error_{kind}" not in i18n.TEXTS] == []
 
 
+def test_qt_dialog_buttons_follow_language(qapp):
+    """确认框的 Yes / No 跟着芸芸的语言（Qt 自己的翻译文件）；切回英文就卸掉。"""
+    from PySide6.QtWidgets import QMessageBox
+
+    def buttons():
+        box = QMessageBox(QMessageBox.Icon.Question, "", "", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        return [b.text() for b in box.buttons()]
+
+    try:
+        i18n.set_language("zh")
+        assert buttons() == ["是(&Y)", "否(&N)"]
+        i18n.set_language("ja")
+        assert buttons() == ["はい(&Y)", "いいえ(&N)"]
+        i18n.set_language("en")
+        assert buttons() == ["&Yes", "&No"]
+    finally:
+        i18n.set_language(i18n.DEFAULT_LANGUAGE)
+
+
 def test_no_ampersand_in_menu_and_button_texts():
     """菜单 / 按钮文字里的 & 会被 Qt 当成快捷键标记吃掉。"""
     bad = [key for key, texts in i18n.TEXTS.items()

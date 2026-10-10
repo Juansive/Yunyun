@@ -6,12 +6,22 @@
 
 选择的语言保存在 QSettings 里（Windows 上存在注册表
 HKEY_CURRENT_USER\\Software\\Yunyun\\Yunyun），下次启动自动恢复。
+
+Qt 自带的文字（确认框的 Yes / No 按钮等）用 Qt 的翻译文件跟着切换（qt_translation_dir）。
 """
-from PySide6.QtCore import QSettings
+import logging
+from pathlib import Path
+
+import PySide6
+from PySide6.QtCore import QCoreApplication, QSettings, QTranslator
 
 LANGUAGES = {"zh": "中文", "en": "English", "ja": "日本語"}  # 代码 → 菜单里显示的名字
 DEFAULT_LANGUAGE = "zh"
 _SETTINGS_KEY = "bubble/language"
+# Qt 自带文字的翻译文件（打包时 build_exe 只留这两种）；英文是 Qt 本来的样子，不用装
+QT_TRANSLATIONS = {"zh": "qtbase_zh_CN", "ja": "qtbase_ja"}
+
+log = logging.getLogger(__name__)
 
 # 每条文字一个 key，下面是各语言的版本。以后加新文字就在这里加一项。
 TEXTS = {
@@ -1081,6 +1091,7 @@ TEXTS = {
 }
 
 _current = DEFAULT_LANGUAGE  # 模块级变量：整个程序共享"当前语言"
+_qt_translator = None        # 现在装着的 Qt 翻译（切换语言时先卸掉）
 
 
 def load_language():
@@ -1088,6 +1099,32 @@ def load_language():
     global _current  # 要在函数里修改模块级变量，必须先声明 global
     value = QSettings().value(_SETTINGS_KEY, DEFAULT_LANGUAGE)
     _current = value if value in LANGUAGES else DEFAULT_LANGUAGE
+    _apply_qt_translation()
+
+
+def qt_translation_dir():
+    """Qt 翻译文件所在的文件夹（开发版在 PySide6 包里，打包后在 _internal\\PySide6 里，都是同一个相对位置）。"""
+    return Path(PySide6.__file__).parent / "translations"
+
+
+def _apply_qt_translation():
+    """让 Qt 自带的文字跟着当前语言。没有 QApplication 时（比如只用到文字的小进程）什么都不做。"""
+    global _qt_translator
+    app = QCoreApplication.instance()
+    if app is None:
+        return
+    if _qt_translator is not None:
+        app.removeTranslator(_qt_translator)
+        _qt_translator = None
+    name = QT_TRANSLATIONS.get(_current)
+    if name is None:
+        return
+    translator = QTranslator(app)
+    if translator.load(name, str(qt_translation_dir())):
+        app.installTranslator(translator)
+        _qt_translator = translator
+    else:   # 找不到文件也不影响使用，只是按钮还是英文
+        log.warning("没找到 Qt 的翻译文件 %s（在 %s）", name, qt_translation_dir())
 
 
 def current_language():
@@ -1101,6 +1138,7 @@ def set_language(code):
     global _current
     _current = code
     QSettings().setValue(_SETTINGS_KEY, code)
+    _apply_qt_translation()
 
 
 def tr(key, *args):

@@ -75,6 +75,16 @@ def _sprites():
     return f"{ASSET_DIR}（{frames}+ 张图；助手模式自己的 {own} 张），界面风格 {app.style().name()}"
 
 
+def _qt_translation():
+    """确认框的 Yes / No 按钮要显示成中文 / 日文：Qt 的翻译文件在（build_exe 删翻译时留下了这两种）。"""
+    from PySide6.QtCore import QTranslator
+    from yunyun import i18n
+    for name in i18n.QT_TRANSLATIONS.values():
+        if not QTranslator().load(name, str(i18n.qt_translation_dir())):
+            raise RuntimeError(f"读不到 {name}.qm（在 {i18n.qt_translation_dir()}）")
+    return "、".join(i18n.QT_TRANSLATIONS.values())
+
+
 def _claude_code():
     """助手模式的入口会出现；助手子进程（Agent SDK、芸芸的工具）和"测试连接"小进程（官方 SDK）要用的模块都在；
     SDK 找得到它自带的 claude.exe，而且能启动。"""
@@ -130,6 +140,7 @@ CHECKS = [
     ("SSL", _ssl),
     ("SQLite", _sqlite),
     ("图片和界面", _sprites),
+    ("对话框按钮的翻译", _qt_translation),
     ("助手的大脑（Claude Code）", _claude_code),
     ("芸芸的浏览器（Playwright + Edge）", _browser),
 ]

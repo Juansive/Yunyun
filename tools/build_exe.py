@@ -91,7 +91,7 @@ UNUSED_QT_FILES = [
     "plugins/imageformats/qpdf.dll", "Qt6Pdf.dll",                 # 把 PDF 当图片打开的插件，以及它用的 PDF 库
     "plugins/platforms/qdirect2d.dll",                             # 另一种显示方式（1 MB），Windows 上用的是 qwindows.dll
 ]
-# Qt 自带界面文字的翻译（96 个文件、约 6 MB）芸芸没有加载，只留中文、日文（以后让对话框的 Yes / No 显示成中文时用）
+# Qt 自带界面文字的翻译（96 个文件、约 6 MB）：芸芸只用中文、日文的 qtbase（i18n.QT_TRANSLATIONS，让确认框的 Yes / No 跟着芸芸的语言），其余删掉
 QT_TRANSLATIONS_KEPT = {"qt_zh_CN.qm", "qtbase_zh_CN.qm", "qt_ja.qm", "qtbase_ja.qm"}
 
 
