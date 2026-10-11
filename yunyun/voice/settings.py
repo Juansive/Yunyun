@@ -1,4 +1,5 @@
-"""语音的设置（config.yaml 的 voice 部分）：芸芸什么时候出声回答、用哪个声音。芸芸和语音子进程都 import，不碰 Qt。"""
+"""语音的设置（config.yaml 的 voice 部分）：芸芸什么时候出声回答、用哪个声音、按住说话的快捷键。
+芸芸和语音子进程都 import，不碰 Qt。"""
 from dataclasses import dataclass
 
 from yunyun import config as cfg
@@ -23,6 +24,7 @@ DEFAULT_VOICES = {"zh": "zh-CN-XiaoyiNeural", "en": "en-US-AvaMultilingualNeural
 class VoiceSettings:
     reply: str = "voice"   # REPLY_MODES 里的一个
     voice: str = ""        # VOICES 里的一个；空 = 跟着界面语言（DEFAULT_VOICES）
+    hotkey: str = ""       # 按住说话的快捷键（Qt 的写法，比如 "Ctrl+Shift+Space"，见 pet/hotkey.py）；空 = 没设（用户自己设）
 
     def voice_for(self, language):
         return self.voice if self.voice in VOICES else DEFAULT_VOICES.get(language, DEFAULT_VOICES["zh"])
@@ -36,9 +38,9 @@ def load_settings():
         saved = {}
     if not isinstance(saved, dict):
         saved = {}
-    reply = saved.get("reply")
-    voice = saved.get("voice")
-    return VoiceSettings(reply if reply in REPLY_MODES else "voice", voice if voice in VOICES else "")
+    reply, voice, hotkey = saved.get("reply"), saved.get("voice"), saved.get("hotkey")
+    return VoiceSettings(reply if reply in REPLY_MODES else "voice", voice if voice in VOICES else "",
+                         hotkey if isinstance(hotkey, str) else "")
 
 
 def save_settings(settings):
@@ -46,5 +48,5 @@ def save_settings(settings):
     config = cfg.load_config_or_empty()
     section = config.get("voice")
     config["voice"] = {**(section if isinstance(section, dict) else {}),
-                       "reply": settings.reply, "voice": settings.voice}
+                       "reply": settings.reply, "voice": settings.voice, "hotkey": settings.hotkey}
     cfg.save_config(config)

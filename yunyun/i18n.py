@@ -1121,9 +1121,80 @@ TEXTS = {
 
     # ---- 语音（阶段 7：voice/、设置 → 语音 pet/voice_page.py）----
     "voice_intro": {
-        "zh": "芸芸可以出声回答你（只在助手模式里）。以后还能按住快捷键直接说话提问。",
-        "en": "Yunyun can read replies aloud (assistant mode only). Holding a hotkey to ask by voice is coming next.",
-        "ja": "芸芸が声で返事できます（アシスタントモードのみ）。ホットキーを押しながら声で質問する機能も近日追加。",
+        "zh": "在助手模式里，可以按住快捷键直接对芸芸说话，芸芸也可以出声回答你。",
+        "en": "In assistant mode you can hold a hotkey and just talk to Yunyun, and Yunyun can read replies aloud.",
+        "ja": "アシスタントモードでは、ホットキーを押しながら芸芸に話しかけられます。芸芸も声で返事できます。",
+    },
+    "voice_hotkey_label": {"zh": "说话快捷键：", "en": "Push-to-talk key:", "ja": "話すキー："},
+    "voice_hotkey_clear": {"zh": "清除", "en": "Clear", "ja": "クリア"},
+    "voice_hotkey_none": {
+        "zh": "还没设：点左边的框，按下想用的组合键（比如 Ctrl+Shift+Space 或 F9）",
+        "en": "Not set: click the box on the left and press the keys you want (e.g. Ctrl+Shift+Space or F9)",
+        "ja": "未設定：左の欄をクリックして、使いたいキーを押してください（例：Ctrl+Shift+Space や F9）",
+    },
+    "voice_hotkey_ok": {"zh": "✓ 按住 {} 说话，松开就发送", "en": "✓ Hold {} to talk, release to send",
+                        "ja": "✓ {} を押しながら話して、離すと送信"},
+    "voice_hotkey_ready": {"zh": "✓ 可以用：打开助手模式后，按住 {} 说话", "en": "✓ Ready: open assistant mode, then hold {} to talk",
+                           "ja": "✓ 使えます：アシスタントモードを開いてから {} を押しながら話してね"},
+    "voice_hotkey_quiet": {"zh": "现在是免打扰时段，{} 暂时不管用", "en": "It's quiet hours now, so {} is off for the moment",
+                           "ja": "いまはおやすみ時間なので、{} は一時的に使えません"},
+    "voice_hotkey_taken": {"zh": "{} 被别的程序占着了，换一个吧", "en": "{} is already used by another app — pick another",
+                           "ja": "{} はほかのアプリが使っています。別のキーにしてね"},
+    "voice_hotkey_invalid": {
+        "zh": "这个键不能用：单独的字母、数字、空格要配上 Ctrl、Alt 或 Win（F1～F24 可以单独用）",
+        "en": "That key can't be used: letters, digits and Space need Ctrl, Alt or Win (F1–F24 work alone)",
+        "ja": "このキーは使えません：文字・数字・スペースには Ctrl、Alt か Win を付けてください（F1～F24 は単独で OK）",
+    },
+    "voice_hotkey_note": {
+        "zh": "快捷键只在助手模式开着时有用，免打扰时段里不管用；那时候别的程序收不到这个组合键，选一个平时不用的。",
+        "en": "The hotkey only works while assistant mode is open, and not during quiet hours. While it works, other apps "
+              "don't receive that key combination, so pick one you don't normally use.",
+        "ja": "ホットキーはアシスタントモードを開いているときだけ有効で、おやすみ時間は無効です。有効なあいだは"
+              "ほかのアプリにそのキーが届かないので、普段使わない組み合わせにしてね。",
+    },
+    "voice_model_label": {"zh": "识别模型：", "en": "Speech model:", "ja": "音声認識モデル："},
+    "voice_model_missing": {"zh": "还没下载（约 {} MB，只下一次）", "en": "Not downloaded (about {} MB, one time)",
+                            "ja": "未ダウンロード（約 {} MB、1 回だけ）"},
+    "voice_model_ready": {"zh": "✓ 已下载", "en": "✓ Downloaded", "ja": "✓ ダウンロード済み"},
+    "voice_model_progress": {"zh": "正在下载… {} / {} MB", "en": "Downloading… {} / {} MB", "ja": "ダウンロード中… {} / {} MB"},
+    "voice_model_download": {"zh": "下载", "en": "Download", "ja": "ダウンロード"},
+    "voice_model_cancel": {"zh": "取消", "en": "Cancel", "ja": "キャンセル"},
+    "voice_model_remove": {"zh": "删除", "en": "Delete", "ja": "削除"},
+    "voice_model_done": {"zh": "✓ 下载好了，可以按住快捷键说话了", "en": "✓ Done — you can hold the hotkey and talk now",
+                         "ja": "✓ ダウンロード完了。ホットキーを押しながら話せます"},
+    "voice_model_failed_network": {
+        "zh": "下载失败：连不上（Hugging Face 和国内镜像都试过了），过一会儿再试试",
+        "en": "Download failed: couldn't connect (tried Hugging Face and a mirror). Try again later.",
+        "ja": "ダウンロード失敗：つながりませんでした（Hugging Face とミラーの両方を試しました）。少ししてからもう一度どうぞ",
+    },
+    "voice_model_failed_corrupt": {"zh": "下载的文件不对，已经删掉了，再试一次", "en": "The downloaded file was wrong and has been removed — try again",
+                                   "ja": "ダウンロードしたファイルが正しくないので削除しました。もう一度どうぞ"},
+    "voice_model_failed_disk": {"zh": "写不进硬盘（空间不够？）", "en": "Couldn't write to disk (out of space?)",
+                                "ja": "ディスクに書き込めません（空き容量は？）"},
+    "voice_model_failed_cancelled": {"zh": "已取消", "en": "Cancelled", "ja": "キャンセルしました"},
+    "voice_listening": {"zh": "在听…松开就发送", "en": "Listening… release to send", "ja": "聞いてるよ…離すと送信"},
+    "voice_recognizing": {"zh": "听到了，我看看你说的是…", "en": "Got it, working out what you said…", "ja": "聞こえたよ、いま文字にしてる…"},
+    "voice_not_heard": {"zh": "没听清，再说一次？", "en": "I didn't catch that — try again?", "ja": "聞き取れなかった、もう一回？"},
+    "voice_hold_hint": {"zh": "要按住快捷键说话，说完再松开哦", "en": "Hold the hotkey while you talk, then let go",
+                        "ja": "ホットキーを押したまま話して、終わったら離してね"},
+    "voice_busy": {"zh": "我还在忙这个，做完再听你说（急的话先点停止）", "en": "I'm still on this one — I'll listen when I'm done (or press Stop)",
+                   "ja": "いまこれをやってるから、終わったら聞くね（急ぎなら停止を押して）"},
+    "voice_need_model": {
+        "zh": "要先下载语音识别模型（约 240 MB），我把设置打开了",
+        "en": "The speech model needs to be downloaded first (about 240 MB) — I've opened the settings",
+        "ja": "まず音声認識モデル（約 240 MB）をダウンロードしてね。設定を開いたよ",
+    },
+    "voice_error_mic": {
+        "zh": "打不开麦克风：看看插好没有，或者在 Windows 设置 → 隐私和安全性 → 麦克风 里允许桌面应用使用",
+        "en": "Can't open the microphone: check it's plugged in, or allow desktop apps in Windows Settings → Privacy & security → Microphone",
+        "ja": "マイクを開けません：つながっているか確認するか、Windows の設定 → プライバシーとセキュリティ → マイク でデスクトップアプリを許可してね",
+    },
+    "voice_error_listen": {"zh": "这句没识别出来，再说一次？", "en": "Couldn't make out that one — try again?",
+                           "ja": "うまく認識できなかった、もう一回？"},
+    "voice_hotkey_taken_said": {
+        "zh": "说话快捷键 {} 被别的程序占着，去 设置 → 语音 换一个吧",
+        "en": "The push-to-talk key {} is used by another app — change it in Settings → Voice",
+        "ja": "話すキー {} はほかのアプリが使っています。設定 → 音声 で変えてね",
     },
     "voice_reply_label": {"zh": "芸芸出声回答：", "en": "Read replies aloud:", "ja": "声で返事："},
     "voice_reply_voice": {"zh": "你用语音问时（推荐）", "en": "When you ask by voice (recommended)",
@@ -1154,13 +1225,16 @@ TEXTS = {
     },
     "voice_privacy_note": {
         "zh": "说话用的是微软的在线语音（免费）：要读出来的回答会发给微软合成声音；连不上时这一句改用 Windows 自带的声音"
-              "（不联网，机器味重一点）。只读正文：代码、表格、网址不读，文件路径只读文件名。",
+              "（不联网，机器味重一点）。只读正文：代码、表格、网址不读，文件路径只读文件名。"
+              "你说的话只在这台电脑里识别成文字，录音不上传、不保存。",
         "en": "Speech uses Microsoft's free online voices: the reply text being read is sent to Microsoft to make the "
               "sound. If that fails, Yunyun uses the voice built into Windows for that sentence (offline, a bit robotic). "
-              "Only the prose is read: code, tables and links are skipped, and file paths become just the file name.",
+              "Only the prose is read: code, tables and links are skipped, and file paths become just the file name. "
+              "What you say is turned into text on this computer only; recordings are never uploaded or saved.",
         "ja": "声には Microsoft の無料オンライン音声を使います：読み上げる返事の文字が Microsoft に送られて音声になります。"
               "つながらないときはその文だけ Windows 標準の声（オフライン、少し機械的）を使います。"
-              "本文だけ読みます：コード・表・URL は読まず、ファイルパスはファイル名だけ読みます。",
+              "本文だけ読みます：コード・表・URL は読まず、ファイルパスはファイル名だけ読みます。"
+              "あなたの声はこのパソコンの中だけで文字にし、録音はアップロードも保存もしません。",
     },
     "voice_code_note": {"zh": "代码在卡片里。", "en": "The code is in the card.", "ja": "コードはカードにあるよ。"},
     "voice_error_audio": {

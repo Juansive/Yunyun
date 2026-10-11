@@ -29,6 +29,9 @@
 - 退出（菜单"退出助手模式" / 芸芸退出）：关掉子进程和所有窗口，发 closed。当前这段的卡片留在 cards 里（芸芸保管）。
 - 出声回答（阶段 7，voice/speaker.py）：设置 → 语音"芸芸出声回答"是"每次都说"、或者是"你用语音问时"而这一问是说出来的，
   回答就边生成边读（只读正文）。新的提问、停止、新对话、右键"别说了"都会让它停下；退出 / 闲置释放大脑时语音子进程也关掉。
+- 按住快捷键说话（阶段 7.2，pet/hotkey.py）：设置 → 语音设了快捷键，助手模式开着、又不在免打扰时段，就注册它。按下：芸芸停嘴、
+  换成"在听"的样子，头顶气泡"在听…松开就发送"带音量条；松开：识别（本机），听到的话直接发给大脑（这一问的回答会读出来）。
+  识别模型还没下载：说一句并打开设置的语音页。在回答 / 等确认时按：说一句"我还在忙"，不听。
 
 pet 只需要提供：body_rect()、say(text, ms)、say_live(text, max_width)、end_live(ms)。
 """
@@ -36,7 +39,7 @@ import logging
 import os
 from datetime import datetime
 
-from PySide6.QtCore import QObject, QPoint, QRect, QTimer, Signal
+from PySide6.QtCore import QElapsedTimer, QObject, QPoint, QRect, QTimer, Signal
 from PySide6.QtGui import QGuiApplication
 
 from yunyun import i18n
@@ -52,7 +55,11 @@ from yunyun.pet.assistant_input import AssistantInput, folder_name
 from yunyun.pet.assistant_notice import AssistantNotice
 from yunyun.pet.assistant_reader import AssistantReader
 from yunyun.pet.bubble import bubble_font, elide_lines
+from yunyun.pet.hotkey import PushToTalk
+from yunyun.pet.hotkey import display as hotkey_display
+from yunyun.voice import models as voice_models
 from yunyun.voice import settings as voice_settings
+from yunyun.voice.download import downloader
 from yunyun.voice.speaker import Speaker
 
 log = logging.getLogger(__name__)
@@ -91,6 +98,7 @@ class AssistantMode(QObject):
     busy_changed = Signal(bool)   # 开始 / 结束回答
     activity_changed = Signal(str)   # 助手在做什么（session.activity）：芸芸的样子跟着变
     speaking_changed = Signal(bool)  # 开始 / 停止出声回答：芸芸的嘴跟着动
+    listening_changed = Signal(bool) # 开始 / 结束听你说话（按住快捷键）：芸芸是"在听"的样子
     closed = Signal()             # 助手模式退出了（子进程在关）
 
     IDLE_EXIT_MS = 10 * 60_000    # 收起后多久没用就释放大脑（卡片还在）
@@ -103,6 +111,9 @@ class AssistantMode(QObject):
     SCREENSHOT_SAY_MS = 2500      # "我看一下屏幕哦"说多久
     OPEN_APP_SAY_MS = 3000        # "帮你打开「计算器」啦"说多久
     DOWNLOADED_SAY_MS = 5000      # "下载好了：xxx（在"下载"文件夹里）"说多久
+    LISTEN_MAX_MS = 60_000        # 按着快捷键最多听多久（再长就当松开了）
+    MIN_HOLD_MS = 300             # 按得比这短：当作手滑，不听（提醒一句要按住）
+    LEVEL_CELLS = 10              # 气泡里音量条有几格
 
     def __init__(self, pet, cards, make_process=None, state=None, make_voice=None):
         """cards：当前这段对话的卡片（从旧到新）；state：要记着的东西（"offset"：卡片组相对芸芸的偏移）。
@@ -136,7 +147,24 @@ class AssistantMode(QObject):
         self._audio_warned = False    # "放不出声音"只说一次
         self.speaker.speaking_changed.connect(self.speaking_changed)
         self.speaker.error_occurred.connect(self._on_voice_error)
+        self.speaker.level.connect(self._on_level)
+        self.speaker.heard.connect(self._on_heard)
         self.session.turn_started.connect(self._on_turn_started)
+        self.hotkey = PushToTalk(self)   # 按住说话（7.2）
+        self.hotkey.pressed.connect(self._on_talk_pressed)
+        self.hotkey.released.connect(self._on_talk_released)
+        self._listening = False          # 正按着快捷键在听
+        self._recognizing = False        # 松开了，等识别结果
+        self._hotkey_suspended = False   # 设置页正在录新的快捷键
+        self._held = QElapsedTimer()
+        self._listen_timer = QTimer(self, singleShot=True, interval=self.LISTEN_MAX_MS, timeout=self._on_talk_released)
+        quiet = getattr(pet, "quiet_hours", None)
+        if quiet is not None:
+            quiet.changed.connect(self.apply_hotkey)   # 免打扰开始就放开快捷键，结束再注册回来
+        downloader().finished.connect(self.apply_hotkey)   # 模型刚下好：先把语音子进程开起来
+        if self.apply_hotkey() == "taken":
+            pet.say(i18n.tr("voice_hotkey_taken_said", hotkey_display(voice_settings.load_settings().hotkey)),
+                    self.DONE_SAY_MS)
 
         self.input.submitted.connect(self._on_submitted)
         self.input.image_refused.connect(self._on_image_refused)
@@ -193,6 +221,27 @@ class AssistantMode(QObject):
         """右键"别说了"：正在读的回答不读了（回答照常写完，在卡片里）。"""
         self._speak_turn = False
         self.speaker.hush()
+
+    def apply_hotkey(self, *_):
+        """按设置注册 / 放开按住说话的快捷键（打开助手模式、设置页改了、免打扰开始 / 结束时）。
+        返回 "ok" / "taken"（被别的程序占着）/ "invalid" / "quiet"（免打扰时段）/ "none"（没设）。"""
+        text = voice_settings.load_settings().hotkey
+        quiet = getattr(self._pet, "quiet_hours", None)
+        if not text or self._hotkey_suspended or self._closed:
+            self.hotkey.unregister()
+            return "ok" if text else "none"
+        if quiet is not None and quiet.active:
+            self.hotkey.unregister()
+            return "quiet"
+        status = self.hotkey.register(text)
+        if status == "ok" and voice_models.installed():
+            self.speaker.warm_up()   # 先把语音子进程开起来：第一次按下时开头那一下才录得到
+        return status
+
+    def suspend_hotkey(self, suspend):
+        """设置页在录新的快捷键：先放开（不然按下去被 Windows 拦走了，框里收不到），录完再注册回来。"""
+        self._hotkey_suspended = suspend
+        self.apply_hotkey()
 
     @property
     def cards_shown(self):
@@ -308,6 +357,8 @@ class AssistantMode(QObject):
         widgets = (self.input, self.deck, self.reader, self.confirm, self.history)
         for widget in widgets:
             widget.close_now()
+        self.hotkey.close()
+        self._stop_listening_look()
         self.session.close(wait)
         self.speaker.close(wait)
         self._pet.end_live(0)
@@ -588,6 +639,73 @@ class AssistantMode(QObject):
         if kind == "audio" and not self._audio_warned:   # 没有扬声器 / 被独占：说一次就够了
             self._audio_warned = True
             self._pet.say(i18n.tr("voice_error_audio"), self.DONE_SAY_MS)
+        elif kind in ("mic", "no_model", "listen", "worker") and (self._listening or self._recognizing):
+            self._stop_listening_look()
+            self._recognizing = False
+            self._pet.end_live(0)
+            key = {"mic": "voice_error_mic", "no_model": "voice_need_model"}.get(kind, "voice_error_listen")
+            self._pet.say(i18n.tr(key), self.DONE_SAY_MS)
+            if kind == "no_model":
+                self._pet.open_settings("voice")
+
+    # ---------- 按住说话（7.2） ----------
+
+    def _on_talk_pressed(self):
+        if not voice_models.installed():   # 还没下载识别模型：提醒一句，打开设置的语音页（2026-10-11 用户定）
+            self._pet.say(i18n.tr("voice_need_model"), self.DONE_SAY_MS)
+            self._pet.open_settings("voice")
+            return
+        if self.busy or self.session.pending_permissions or self.session.rewinding or self._recognizing:
+            self._pet.say(i18n.tr("voice_busy"), self.SCREENSHOT_SAY_MS)
+            return
+        self.hush()   # 你一开口就停
+        self.speaker.listen()
+        self._listening = True
+        self._held.start()
+        self._listen_timer.start()
+        self.listening_changed.emit(True)
+        self._on_level(0.0)
+
+    def _on_talk_released(self):
+        if not self._listening:
+            return
+        self._stop_listening_look()
+        if self._held.elapsed() < self.MIN_HOLD_MS:   # 手滑碰了一下：不听，提醒要按住
+            self.speaker.cancel_listening()
+            self._pet.end_live(0)
+            self._pet.say(i18n.tr("voice_hold_hint"), self.SCREENSHOT_SAY_MS)
+            return
+        self._recognizing = True
+        self.speaker.stop_listening()
+        self._pet.say_live(i18n.tr("voice_recognizing"), self.ANSWER_WIDTH)
+
+    def _stop_listening_look(self):
+        self._listen_timer.stop()
+        if self._listening:
+            self._listening = False
+            self.listening_changed.emit(False)
+
+    def _on_level(self, level):
+        """在听：气泡"在听…松开就发送"，下面一条音量条（2026-10-11 用户选的）。"""
+        if self._listening:
+            filled = round(min(max(level, 0.0), 1.0) * self.LEVEL_CELLS)
+            bar = "■" * filled + "□" * (self.LEVEL_CELLS - filled)   # 中文字体都有这两个（▮▯ 很多字体里没有）
+            self._pet.say_live(f"{i18n.tr('voice_listening')}\n{bar}", self.ANSWER_WIDTH)
+
+    def _on_heard(self, text):
+        """识别好了：听到的话直接发给大脑（2026-10-10 用户定），这一问的回答会读出来；没听清就说一声。"""
+        if not self._recognizing:
+            return
+        self._recognizing = False
+        self._pet.end_live(0)
+        if not text:
+            self._pet.say(i18n.tr("voice_not_heard"), self.SCREENSHOT_SAY_MS)
+            return
+        self._start_brain()
+        self.asked_by_voice = True
+        if not self.session.ask(text):
+            self.asked_by_voice = False
+            self._pet.say(i18n.tr("voice_busy"), self.SCREENSHOT_SAY_MS)
 
     def _snippet(self, markdown, lines=None):
         return elide_lines(markdown_to_plain(markdown), bubble_font(), self.ANSWER_WIDTH, lines or self.ANSWER_LINES)

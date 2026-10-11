@@ -324,6 +324,24 @@ def talking(frame):
     return img
 
 
+def listening(frame):
+    """在听（按住快捷键说话时，阶段 7）：一只手拢在耳边，睁大眼睛看着你，耳边有声波（frame = 1 两道 / 2 三道）。"""
+    img, p = new_canvas()
+    draw_body(p)
+    draw_hand(p, 120, 360)
+    draw_hand(p, 408, 196)                      # 手拢在耳边
+    draw_open_eyes(p, -6)
+    draw_small_mouth(p)
+    draw_blush(p)
+    p.setPen(pen(8, QColor("#7CB3E8")))
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    for i in range(2 if frame == 1 else 3):     # 声波：一圈圈往外
+        r = 50 + 20 * i
+        p.drawArc(QRectF(408 - r, 196 - r, 2 * r, 2 * r), 30 * 16, -60 * 16)
+    p.end()
+    return img
+
+
 def lifted(frame):
     """被拎起来：后颈的皮被捏住，身体垂下来变长，手垂着、脚悬空乱蹬，一脸懵（frame = 1/2 脚的位置不同）。
 
@@ -379,6 +397,8 @@ def main():
         "waiting_2.png": waiting(2),
         "talking_1.png": talking(1),
         "talking_2.png": talking(2),
+        "listening_1.png": listening(1),
+        "listening_2.png": listening(2),
     }
     args = [a for a in sys.argv[1:] if a != "--force"]
     force = "--force" in sys.argv[1:]

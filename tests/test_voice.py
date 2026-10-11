@@ -238,6 +238,30 @@ class FakePlayer:
         self.closed = True
 
 
+class FakeRecorder:
+    """假的录音：start 时"录"进 pcm（测试可以改），按 levels 报音量；fail=True 时像打不开麦克风。"""
+    pcm = b"\x01\x00" * 16000   # 1 秒
+    fail = False
+
+    def __init__(self, on_level):
+        self.on_level = on_level
+        self.starts = self.stops = 0
+
+    def start(self):
+        if self.fail:
+            raise OSError("没有麦克风")
+        self.starts += 1
+        self.on_level(0.5)
+
+    def stop(self):
+        self.stops += 1
+        return self.pcm
+
+
+def no_recognizer():
+    raise RuntimeError("没有模型")
+
+
 async def until(condition, timeout=3.0):
     for _ in range(int(timeout / 0.01)):
         if condition():
@@ -260,7 +284,7 @@ def test_worker_says_each_sentence_and_hush_drops_the_rest():
             players.append(FakePlayer(on_start, on_idle))
             return players[-1]
         task = asyncio.create_task(worker.serve(lines, lambda data: out.append(protocol.decode(data)),
-                                                synthesize, make_player))
+                                                synthesize, make_player, FakeRecorder, no_recognizer))
         await until(lambda: protocol.Ready() in out)
         for i, text in enumerate(("快", "慢", "不说"), 1):
             lines.send(protocol.Say(i, text, "v"))
@@ -286,7 +310,8 @@ def test_worker_reports_what_went_wrong():
         async def synthesize(text, voice):
             return (None, False) if text == "坏" else (b"x", False)
         task = asyncio.create_task(worker.serve(lines, lambda data: out.append(protocol.decode(data)), synthesize,
-                                                lambda on_start, on_idle: FakePlayer(on_start, on_idle, fail=True)))
+                                                lambda on_start, on_idle: FakePlayer(on_start, on_idle, fail=True),
+                                                FakeRecorder, no_recognizer))
         lines.send(protocol.Say(1, "坏", "v"))
         lines.send(protocol.Say(2, "好", "v"))
         await until(lambda: len(out) == 3)
@@ -489,7 +514,7 @@ def test_voice_page_saves_right_away_and_previews(qapp, monkeypatch):
 # ---------- import 规矩 ----------
 
 def test_voice_import_rules():
-    heavy = {"edge_tts", "miniaudio", "win32com", "aiohttp"}
+    heavy = {"edge_tts", "miniaudio", "win32com", "aiohttp", "sherpa_onnx"}
     shared = top_level(modules_after("import yunyun.voice.protocol, yunyun.voice.settings, yunyun.voice.speech_text"))
     assert not shared & (heavy | {"PySide6"})
     ui = top_level(modules_after("import yunyun.voice.speaker, yunyun.pet.voice_page, yunyun.pet.assistant_mode"))

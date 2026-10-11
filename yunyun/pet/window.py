@@ -88,6 +88,7 @@ class PetWindow(QWidget):
     dismiss_mail_requested = Signal() # 用户拖走了小红点 / 点了"全部标为已看"：这批邮件不处理
     assistant_activity_changed = Signal(str)  # 助手在做什么（"" / thinking / busy / waiting；main 里接到状态机）
     assistant_speaking_changed = Signal(bool)  # 芸芸开始 / 停止出声回答（语音，阶段 7；main 里接到状态机）
+    assistant_listening_changed = Signal(bool)  # 开始 / 结束听你说话（按住快捷键，阶段 7；main 里接到状态机）
     cover_checked = Signal()   # 刚检查完有没有被挡住（约每 0.5 秒）：助手据此决定角落小条显不显示
     speaking_changed = Signal(bool)   # 头顶有气泡了 / 气泡都消失了（main 里接到状态机：换成说话的样子）
     _task_done = Signal(object, object, object)  # 后台线程 → 主线程：(成功时说的话, 失败时的文字 key, 错误信息或 None)
@@ -291,6 +292,7 @@ class PetWindow(QWidget):
             PetState.BUSY: self._sprites.busy,
             PetState.WAITING: self._sprites.waiting,
             PetState.TALKING: self._sprites.talking,
+            PetState.LISTENING: self._sprites.listening,
         }[state], self.TALK_MS if state is PetState.TALKING else None)
 
     def tap(self):
@@ -821,6 +823,7 @@ class PetWindow(QWidget):
             mode = AssistantMode(self, self._assistant_cards, state=self._assistant_state)
             mode.activity_changed.connect(self.assistant_activity_changed)
             mode.speaking_changed.connect(self.assistant_speaking_changed)
+            mode.listening_changed.connect(self.assistant_listening_changed)
             mode.closed.connect(self._on_assistant_closed)
             self.language_changed.connect(mode.retranslate)
             self._assistant = mode
@@ -831,6 +834,15 @@ class PetWindow(QWidget):
     def assistant(self):
         """助手模式（没开就是 None）。"""
         return self._assistant
+
+    def apply_voice_hotkey(self):
+        """设置 → 语音改了按住说话的快捷键：助手模式开着就马上换上（结果见 AssistantMode.apply_hotkey），没开是 "closed"。"""
+        return self._assistant.apply_hotkey() if self._assistant is not None else "closed"
+
+    def suspend_voice_hotkey(self, suspend):
+        """设置 → 语音正在录新的快捷键：先放开芸芸注册着的那个。"""
+        if self._assistant is not None:
+            self._assistant.suspend_hotkey(suspend)
 
     def open_assistant_history(self):
         """右键"历史对话…"：打开助手模式（还没开的话），再打开历史对话面板。"""

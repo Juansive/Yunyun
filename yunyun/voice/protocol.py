@@ -30,6 +30,24 @@ class Hush:
 
 
 @_message
+class Listen:
+    """开始听（你按下了快捷键）：正在说的马上停（你一开口就停），开始录音；识别模型还没加载就同时加载。"""
+    TYPE: ClassVar[str] = "listen"
+
+
+@_message
+class StopListening:
+    """松开了：停止录音、识别，回 Heard（或者 Error）。"""
+    TYPE: ClassVar[str] = "stop_listening"
+
+
+@_message
+class CancelListening:
+    """不要了（手滑碰了一下、助手模式关了）：录的扔掉，不识别。"""
+    TYPE: ClassVar[str] = "cancel_listening"
+
+
+@_message
 class Quit:
     TYPE: ClassVar[str] = "quit"
 
@@ -56,6 +74,20 @@ class Idle:
 
 
 @_message
+class Level:
+    """在听时麦克风的音量（0～1，大约每 0.08 秒一次）：气泡里的音量条。"""
+    TYPE: ClassVar[str] = "level"
+    level: float
+
+
+@_message
+class Heard:
+    """听到的话（识别好了）；空的 = 没听清（太短、没声音）。"""
+    TYPE: ClassVar[str] = "heard"
+    text: str
+
+
+@_message
 class Error:
     """出错了。kind：ERROR_KINDS 里的一个；detail 只进日志。"""
     TYPE: ClassVar[str] = "error"
@@ -66,5 +98,8 @@ class Error:
 ERROR_KINDS = (
     "speak",    # 这一句在线语音、Windows 语音都没合成出来（跳过这一句）
     "audio",    # 打不开扬声器（没有声音设备、被别的程序独占）
+    "mic",      # 打不开麦克风（没有、被独占、Windows 隐私设置不让用）
+    "no_model", # 识别模型没下载 / 坏了，加载不了
+    "listen",   # 识别时出错
     "worker",   # 语音子进程没启动起来、或者意外退出了（LineProcess 发的）
 )

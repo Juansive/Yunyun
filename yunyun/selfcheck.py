@@ -124,7 +124,8 @@ def _browser():
 
 
 def _voice():
-    """语音（阶段 7）：语音子进程要用的库都在；放音那一套能跑（用 miniaudio 不出声的空设备放 0.1 秒）；
+    """语音（阶段 7）：语音子进程要用的库都在（识别用的 sherpa-onnx 也能 import；模型是第一次用时才下载的，不在包里）；
+    放音、录音那一套能跑（用 miniaudio 不出声、不碰麦克风的空设备各试 0.1 秒）；
     Windows 自带语音（在线语音连不上时用）找得到声音（不出声，不联网）。"""
     import time
 
@@ -132,8 +133,11 @@ def _voice():
     import miniaudio
     import pythoncom
     import win32com.client
+    import sherpa_onnx
     import yunyun.voice.worker  # noqa: F401
-    from yunyun.voice import tts
+    from yunyun.voice import asr, tts
+    if not hasattr(sherpa_onnx.OfflineRecognizer, "from_sense_voice"):
+        raise RuntimeError("sherpa-onnx 里没有 SenseVoice 识别")
     played = []
 
     def silence():
@@ -151,19 +155,38 @@ def _voice():
     device.close()
     if not played:
         raise RuntimeError("放音设备没有来要声音")
+    heard = []
+
+    def keep():
+        while True:
+            heard.append((yield))
+
+    generator = keep()
+    next(generator)
+    device = miniaudio.CaptureDevice(input_format=miniaudio.SampleFormat.SIGNED16, nchannels=1,
+                                     sample_rate=asr.SAMPLE_RATE, buffersize_msec=20, backends=[miniaudio.Backend.NULL])
+    device.start(generator)
+    for _ in range(50):   # 空设备第一块声音要等一个缓冲区那么久：最多等 1 秒
+        if heard:
+            break
+        time.sleep(0.02)
+    device.close()
+    if not heard:
+        raise RuntimeError("录音设备没有送来声音")
     pythoncom.CoInitialize()
     try:
         count = win32com.client.Dispatch("SAPI.SpVoice").GetVoices().Count
     finally:
         pythoncom.CoUninitialize()
-    return f"edge-tts {edge_tts.__version__}，miniaudio {miniaudio.__version__}，Windows 语音 {count} 种"
+    return (f"edge-tts {edge_tts.__version__}，miniaudio {miniaudio.__version__}，"
+            f"sherpa-onnx {sherpa_onnx.__version__}，Windows 语音 {count} 种")
 
 
 def _no_assistant():
     """节能版：助手组件确实没带（不然白白大了 170 MB），右键菜单和设置窗口里也就不会出现助手的入口。"""
     import importlib.util
     from yunyun import features
-    bundled = [name for name in ("claude_agent_sdk", "anthropic", "playwright", "edge_tts", "miniaudio")
+    bundled = [name for name in ("claude_agent_sdk", "anthropic", "playwright", "edge_tts", "miniaudio", "sherpa_onnx")
                if importlib.util.find_spec(name)]
     if bundled or features.assistant_available():
         raise RuntimeError(f"节能版里带了助手模式的组件：{bundled}")
@@ -180,7 +203,7 @@ CHECKS = [
     ("对话框按钮的翻译", _qt_translation),
     ("助手的大脑（Claude Code）", _claude_code),
     ("芸芸的浏览器（Playwright + Edge）", _browser),
-    ("语音（edge-tts、放音、Windows 语音）", _voice),
+    ("语音（edge-tts、放音、录音、识别、Windows 语音）", _voice),
 ]
 HEAVY_CHECKS = (_claude_code, _browser)   # 助手模式的两项：要真的启动 claude.exe / Edge，平时的测试里不跑（见 tests/test_real_claude_code.py）
 FULL_ONLY_CHECKS = (*HEAVY_CHECKS, _voice)   # 节能版没有的（助手模式、语音）

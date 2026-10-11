@@ -11,6 +11,7 @@
     [busy_1.png    busy_2.png ...]                助手在干活（读文件、跑命令；没有就用思考的图）
     [waiting_1.png waiting_2.png ...]             助手等你确认（没有就用思考的图）
     [talking_1.png talking_2.png ...]             说话（头顶有气泡时，嘴一张一合；没有就用激动的图）
+    [listening_1.png listening_2.png ...]         在听（按住快捷键说话时，阶段 7；没有就用思考的图）
     [lifted_1.png  lifted_2.png ...]              被拎起来（拖动时；没有就保持原来的画面）
     [tray.png]                                    托盘图标（没有就用 idle_1.png）
 
@@ -44,11 +45,13 @@ class Sprites:
     busy: list[QPixmap]     # 可选：没有就是思考的图
     waiting: list[QPixmap]  # 可选：没有就是思考的图
     talking: list[QPixmap]  # 可选：没有就是激动的图
+    listening: list[QPixmap]  # 可选：没有就是思考的图
 
 
 _REQUIRED = ("idle", "working_down", "excited", "thinking", "sleeping")
-# 可选的组：没有就用哪一组的图（None = 空着）。busy / waiting 是助手模式（阶段 4）加的，talking 是 2026-10-09 加的
-_STAND_INS = {"busy": "thinking", "waiting": "thinking", "talking": "excited", "lifted": None}
+# 可选的组：没有就用哪一组的图（None = 空着）。busy / waiting 是助手模式（阶段 4）加的，talking 是 2026-10-09 加的，
+# listening 是语音（阶段 7）加的
+_STAND_INS = {"busy": "thinking", "waiting": "thinking", "talking": "excited", "listening": "thinking", "lifted": None}
 
 
 def load_sprites(folder=ASSET_DIR, max_size=None, base=None):

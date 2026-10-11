@@ -13,5 +13,7 @@ playwright>=1.63,<2
 # 语音（阶段 7）：只在语音子进程里 import。edge-tts = 微软的在线语音（免费）；miniaudio = 放音、解 mp3（一个库全包）；
 # pywin32 = 在线语音连不上时用 Windows 自带语音（SAPI）。
 edge-tts>=7.2,<8
+# sherpa-onnx = 本地语音识别（SenseVoice 模型第一次用时下载，见 yunyun/voice/models.py）；不需要 numpy。
+sherpa-onnx>=1.13,<2
 miniaudio>=1.61
 pywin32>=310

@@ -18,6 +18,7 @@
     说话（set_talking，2026-10-09 用户定的）：头顶有气泡时，待机 / 睡觉 / 打字 / 激动都换成说话的样子
     （睡着时说话会醒来，说完再睡）；助手在想 / 干活 / 等确认时不变。说话时来了新邮件不激动、打字也不打断。
     出声说话（阶段 7，reason="voice"）：比"助手在想 / 写回答"优先（边写边说时嘴要动），但不盖过 在干活 / 等你确认。
+    在听 LISTENING（阶段 7，set_listening）：你按着快捷键说话时，什么都比不过它（这时芸芸只在听你说）。
 
     免打扰时段里，"休息"的样子从 待机 IDLE 换成 睡觉 SLEEPING：
     睡觉 SLEEPING ── 敲键盘 ──▶ 工作（醒来陪你打字）── 一段时间没敲 ──▶ 又睡着
@@ -40,11 +41,12 @@ class PetState(Enum):
     BUSY = "busy"          # 在干活：助手在用工具（读文件、跑命令、读网页）
     WAITING = "waiting"    # 等你确认：助手有确认卡片在等你
     TALKING = "talking"    # 说话：头顶有气泡
+    LISTENING = "listening"  # 在听：你按着快捷键说话（阶段 7）
 
 
 _ASSISTANT_STATES = {"thinking": PetState.THINKING, "busy": PetState.BUSY, "waiting": PetState.WAITING}
 _FOREGROUND = (PetState.THINKING, PetState.BUSY, PetState.WAITING)   # 占着芸芸的样子、结束了才回到平时
-_TEMPORARY = (*_FOREGROUND, PetState.TALKING)   # 结束时要回到平时的样子（工作 / 待机 / 睡觉）
+_TEMPORARY = (*_FOREGROUND, PetState.TALKING, PetState.LISTENING)   # 结束时要回到平时的样子（工作 / 待机 / 睡觉）
 
 
 class StateMachine(QObject):
@@ -62,6 +64,7 @@ class StateMachine(QObject):
         self._thinking = set()  # 芸芸在想哪些事（"mail" / "assistant"）
         self._assistant = ""    # 助手在做什么（"" / "thinking" / "busy" / "waiting"，见 set_assistant）
         self._talking = set()   # 为什么在说话："bubble" 头顶有气泡、"voice" 在出声（见 set_talking）
+        self._listening = False  # 在听你说话（见 set_listening）
 
         # 这个定时器在"运行中"就代表：用户最近 IDLE_AFTER_MS 内敲过键盘
         self._idle_timer = QTimer(self, singleShot=True, interval=self.IDLE_AFTER_MS, timeout=self._on_idle_timeout)
@@ -134,8 +137,15 @@ class StateMachine(QObject):
             self._talking.discard(reason)
         self._refresh()
 
+    def set_listening(self, listening):
+        """你按着快捷键说话（AssistantMode.listening_changed）。"""
+        self._listening = bool(listening)
+        self._refresh()
+
     def _foreground(self):
-        """助手和邮件处理占着的样子（等你确认 > 在干活 > 出声说话 > 思考）；都没有就是 None。"""
+        """助手和邮件处理占着的样子（在听 > 等你确认 > 在干活 > 出声说话 > 思考）；都没有就是 None。"""
+        if self._listening:
+            return PetState.LISTENING
         if self._assistant in ("waiting", "busy"):
             return _ASSISTANT_STATES[self._assistant]
         if "voice" in self._talking:

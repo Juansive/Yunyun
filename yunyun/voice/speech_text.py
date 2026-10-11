@@ -47,6 +47,11 @@ def sentences(markdown, code_note="", final=False):
     return out
 
 
+def heard_text(text):
+    """识别出的话 → 发给助手的问题：去掉首尾空白；"芸芸"常被听成同音的"云云"（7.1 实测几个模型都这样），换回来。"""
+    return text.strip().replace("云云", "芸芸")
+
+
 def clean(line):
     """一行 Markdown → 要读的文字。"""
     for _ in range(3):   # "> - **要点**" 这种叠着的记号

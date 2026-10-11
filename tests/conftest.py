@@ -110,6 +110,21 @@ def no_real_assistant(monkeypatch, tmp_path):
         raise RuntimeError("测试里不许真的合成 / 放出声音")
     for name in ("edge_synthesize", "sapi_synthesize", "open_device"):
         monkeypatch.setattr(tts, name, no_voice)
+    # 按住说话（7.2）：绝不打开麦克风、不加载识别模型、不下载模型（模型文件夹在临时目录），
+    # 也绝不真的注册全局快捷键（会把你键盘上的组合键占走）——注册过的记在 winapi.hotkeys 里，key_down 一律"没按着"
+    from yunyun.voice import asr, models
+    monkeypatch.setattr(asr, "open_capture", no_voice)
+    monkeypatch.setattr(asr, "load_recognizer", no_voice)
+    monkeypatch.setattr(models, "model_dir", lambda: tmp_path / "voice_model")
+
+    def no_download(*args, **kwargs):
+        raise OSError("测试里不许真的下载模型")
+    monkeypatch.setattr(models, "_urlopen", no_download)
+    hotkeys = {}
+    monkeypatch.setattr(winapi, "register_hotkey", lambda hotkey_id, mods, vk: hotkeys.setdefault(hotkey_id, (mods, vk)) == (mods, vk))
+    monkeypatch.setattr(winapi, "unregister_hotkey", lambda hotkey_id: hotkeys.pop(hotkey_id, None))
+    monkeypatch.setattr(winapi, "key_down", lambda vk: False)
+    monkeypatch.setattr(winapi, "hotkeys", hotkeys, raising=False)
     yield
     apps.clear_cache()
 

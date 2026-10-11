@@ -1,4 +1,5 @@
-"""芸芸这一头：一段回答要说出来时，切成句子（speech_text）交给语音子进程，并告诉界面芸芸是不是正在说话。
+"""芸芸这一头：一段回答要说出来时，切成句子（speech_text）交给语音子进程，并告诉界面芸芸是不是正在说话；
+按住快捷键时让它听（7.2）。
 
     speaker = Speaker(parent)
     speaker.speaking_changed.connect(...)   # 开始 / 停止出声（芸芸的嘴跟着动）
@@ -7,6 +8,9 @@
     speaker.update(markdown, final=True)    # 回答结束：最后半句也说
     speaker.hush()                          # 别说了
     speaker.close()                         # 关掉语音子进程（退出助手模式 / 闲置释放大脑时）
+    speaker.listen() / stop_listening() / cancel_listening()   # 按下 / 松开快捷键 / 不要了
+    speaker.level.connect(...)              # 在听时的音量（0～1）
+    speaker.heard.connect(...)              # 听到的话（空的 = 没听清）
 
 只 import Qt 和 voice 里的纯模块，不碰 edge_tts / miniaudio。语音子进程用到时才启动（第一句要说的时候），
 准备好之前的句子先排着；它意外退出了也没关系，下一句再启动一个。
@@ -30,6 +34,8 @@ def make_voice_process(parent):
 class Speaker(QObject):
     speaking_changed = Signal(bool)
     error_occurred = Signal(str)   # protocol.ERROR_KINDS 里的一个
+    level = Signal(float)
+    heard = Signal(str)
 
     def __init__(self, parent=None, make_process=None):
         """make_process(parent)：造语音子进程（测试时换成假的）。"""
@@ -40,7 +46,7 @@ class Speaker(QObject):
         self._live_from = 1    # 这个编号以前的句子都被 hush 掉了（迟到的 Speaking 不算）
         self._sent = 0         # 这段回答已经送出去几句（speech_text.sentences 的前几个）
         self._voice = ""
-        self._waiting = []     # 子进程还没准备好时排着的 Say
+        self._waiting = []     # 子进程还没准备好时排着的命令
         self.speaking = False
 
     def begin(self, voice=None):
@@ -53,6 +59,22 @@ class Speaker(QObject):
         new, self._sent = items[self._sent:], len(items)
         for text in new:
             self._say(text)
+
+    def warm_up(self):
+        """先把语音子进程开起来（约 0.6 秒）：不然第一次按快捷键时，开头那一下说的话就录不到了。"""
+        self._process_ready()
+
+    def listen(self):
+        """开始听：正在说的马上停（子进程那边也会停）。"""
+        self.hush()
+        self._send(protocol.Listen())
+
+    def stop_listening(self):
+        self._send(protocol.StopListening())
+
+    def cancel_listening(self):
+        if self._process is not None:
+            self._send(protocol.CancelListening())
 
     def hush(self):
         self._live_from = self._next_id
@@ -76,29 +98,40 @@ class Speaker(QObject):
     # ---------- 内部 ----------
 
     def _say(self, text):
-        say = protocol.Say(self._next_id, text, self._voice)
+        self._send(protocol.Say(self._next_id, text, self._voice))
         self._next_id += 1
+
+    def _process_ready(self):
+        """语音子进程（没在运行就启动）；返回它准备好了没有。"""
         if self._process is None:
             self._process = self._make_process(self)
             self._process.event.connect(self._on_event)
             self._process.finished.connect(self._on_finished)
             self._process.finished.connect(self._process.deleteLater)
             self._process.start()
-        if self._process.ready:
-            self._process.send(say)
+        return self._process.ready
+
+    def _send(self, command):
+        """发给语音子进程；还没准备好就先排着。"""
+        if self._process_ready():
+            self._process.send(command)
         else:
-            self._waiting.append(say)
+            self._waiting.append(command)
 
     def _on_event(self, event):
         if isinstance(event, protocol.Ready):
             waiting, self._waiting = self._waiting, []
-            for say in waiting:
-                self._process.send(say)
+            for command in waiting:
+                self._process.send(command)
         elif isinstance(event, protocol.Speaking):
             if event.sentence_id >= self._live_from:
                 self._set_speaking(True)
         elif isinstance(event, protocol.Idle):
             self._set_speaking(False)
+        elif isinstance(event, protocol.Level):
+            self.level.emit(event.level)
+        elif isinstance(event, protocol.Heard):
+            self.heard.emit(event.text)
         elif isinstance(event, protocol.Error):
             log.warning("语音出错（%s）：%s", event.kind, event.detail)
             self.error_occurred.emit(event.kind)

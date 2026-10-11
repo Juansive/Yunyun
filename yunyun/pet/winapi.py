@@ -64,6 +64,8 @@ if IS_WINDOWS:
         (user32.SetForegroundWindow, BOOL, [HWND]),
         (user32.ShowWindow, BOOL, [HWND, INT]),
         (user32.GetWindowTextLengthW, INT, [HWND]),
+        (user32.RegisterHotKey, BOOL, [HWND, INT, wintypes.UINT, wintypes.UINT]),   # 按住说话的快捷键（阶段 7）
+        (user32.UnregisterHotKey, BOOL, [HWND, INT]),
     ):
         func.restype, func.argtypes = restype, argtypes
 
@@ -118,6 +120,23 @@ def left_button_down():
         return False
     button = VK_RBUTTON if user32.GetSystemMetrics(SM_SWAPBUTTON) else VK_LBUTTON
     return bool(user32.GetAsyncKeyState(button) & 0x8000)
+
+
+# ---------- 全局快捷键（按住说话，阶段 7；pet/hotkey.py）----------
+
+def register_hotkey(hotkey_id, modifiers, vk):
+    """注册一个全局快捷键（按下时 Windows 往这个线程发 WM_HOTKEY）；被别的程序占着返回 False。"""
+    return bool(IS_WINDOWS and user32.RegisterHotKey(None, hotkey_id, modifiers, vk))
+
+
+def unregister_hotkey(hotkey_id):
+    if IS_WINDOWS:
+        user32.UnregisterHotKey(None, hotkey_id)
+
+
+def key_down(vk):
+    """这一个键现在是不是按着。只用来看用户自己设的快捷键松开了没有（不认别的键）。"""
+    return bool(IS_WINDOWS and user32.GetAsyncKeyState(vk) & 0x8000)
 
 
 # ---------- 置顶 ----------

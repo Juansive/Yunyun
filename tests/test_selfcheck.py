@@ -26,7 +26,7 @@ def test_lite_edition_checks_assistant_is_left_out(qapp, tmp_path, monkeypatch):
     real = importlib.util.find_spec
     monkeypatch.setattr(importlib.util, "find_spec",                      # 假装是打包好的节能版：这几个包都找不到
                         lambda name, *a: None if name in ("claude_agent_sdk", "anthropic", "playwright", "edge_tts",
-                                                                  "miniaudio") else real(name, *a))
+                                                                  "miniaudio", "sherpa_onnx") else real(name, *a))
     features.assistant_available.cache_clear()
     try:
         assert selfcheck.run(report, "lite") == 0, report.read_text(encoding="utf-8")
