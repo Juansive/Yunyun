@@ -5,6 +5,7 @@
     声音：        [跟着界面语言（晓伊）▾] [▶ 试听]
     说话快捷键：  [Ctrl+Shift+Space] [清除]
                   ✓ 助手模式里按住 Ctrl+Shift+Space 说话（被占用 / 不能用时红字）
+                  [✓] 始终在听：叫一声"芸芸"就能说话，不用按键（7.3）
     识别模型：    还没下载（约 240 MB） [下载]   /   ▓▓▓░░ [取消]   /   ✓ 已下载 [删除]
     试听的结果（放不出声音时红字）
     说明（灰色）：快捷键的注意事项；在线语音会把要读的话发给微软；录音只在本机识别
@@ -17,7 +18,7 @@ suspend_hotkey(bool)（录快捷键的时候先放开芸芸注册着的那个，
 from PySide6.QtCore import QEvent
 from PySide6.QtGui import QKeySequence
 from PySide6.QtWidgets import (
-    QComboBox, QFormLayout, QHBoxLayout, QKeySequenceEdit, QLabel, QProgressBar, QPushButton, QVBoxLayout, QWidget,
+    QCheckBox, QComboBox, QFormLayout, QHBoxLayout, QKeySequenceEdit, QLabel, QProgressBar, QPushButton, QVBoxLayout, QWidget,
 )
 
 from yunyun import i18n
@@ -71,6 +72,10 @@ class VoicePage(QWidget):
         self._key_status = StatusLabel()
         form.addRow(tr("voice_hotkey_label"), _row(self._key, self._clear_key))
         form.addRow("", self._key_status)
+        self._watch = QCheckBox(tr("voice_watch"))   # 始终在听（7.3）
+        self._watch.setChecked(saved.always)
+        self._watch.toggled.connect(self._watch_toggled)
+        form.addRow("", self._watch)
 
         self._model_status = QLabel()
         self._model_bar = QProgressBar()
@@ -86,6 +91,7 @@ class VoicePage(QWidget):
         self._result = StatusLabel()
         layout.addWidget(self._result)
         layout.addWidget(note(tr("voice_hotkey_note")))
+        layout.addWidget(note(tr("voice_watch_note")))
         layout.addWidget(note(tr("voice_privacy_note")))
         layout.addStretch()
 
@@ -139,10 +145,15 @@ class VoicePage(QWidget):
     # ---------- 内部 ----------
 
     def _settings(self):
-        return voice_settings.VoiceSettings(self._reply.currentData(), self._voice.currentData(), self._hotkey_text)
+        return voice_settings.VoiceSettings(self._reply.currentData(), self._voice.currentData(), self._hotkey_text,
+                                            self._watch.isChecked())
 
     def _save(self):
         voice_settings.save_settings(self._settings())
+
+    def _watch_toggled(self):
+        self._save()
+        self.apply_hotkey()   # 助手模式开着就马上开始 / 停止听（apply_hotkey 是设置窗口接上的 pet.apply_voice_settings）
 
     def _hotkey_edited(self):
         self.set_hotkey(self._key.keySequence().toString(_PORTABLE))

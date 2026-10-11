@@ -165,7 +165,7 @@ def test_menu_puts_assistant_first_and_fancy(world, monkeypatch):
     has_key(monkeypatch)
     pet.open_assistant()
     texts = menu_texts(pet)
-    assert texts[1:4] == ["历史对话…", "隐藏卡片", "退出助手模式"]   # 后两项开着时才有
+    assert texts[1:5] == ["历史对话…", i18n.tr("menu_assistant_watch"), "隐藏卡片", "退出助手模式"]   # 后三项开着时才有
 
 
 def test_without_key_opens_settings_and_says_so(world, monkeypatch):
@@ -1001,7 +1001,7 @@ def test_emergency_stop_from_the_menu_even_when_collapsed(qapp, working):
     mode.input.collapse()                                          # 收起着也能停
     assert wait_until(qapp, lambda: not mode.input.isVisible())
     texts = menu_texts(pet)
-    assert texts[1:5] == ["历史对话…", "■ 停止助手", "隐藏卡片", "退出助手模式"]   # 停止：干活时才有
+    assert texts[1:6] == ["历史对话…", "■ 停止助手", i18n.tr("menu_assistant_watch"), "隐藏卡片", "退出助手模式"]   # 停止：干活时才有
     stop = next(a for a in pet._build_menu().actions() if a.text() == "■ 停止助手")
     stop.trigger()
     assert process.interrupts == 1 and mode.session.pending_permissions == []

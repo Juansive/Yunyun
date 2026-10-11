@@ -11,6 +11,7 @@
     speaker.listen() / stop_listening() / cancel_listening()   # 按下 / 松开快捷键 / 不要了
     speaker.level.connect(...)              # 在听时的音量（0～1）
     speaker.heard.connect(...)              # 听到的话（空的 = 没听清）
+    speaker.watch(True / False)             # 始终在听（7.3）；speaker.called.connect(...)：叫了芸芸（后面的话，只叫名字是空的）
 
 只 import Qt 和 voice 里的纯模块，不碰 edge_tts / miniaudio。语音子进程用到时才启动（第一句要说的时候），
 准备好之前的句子先排着；它意外退出了也没关系，下一句再启动一个。
@@ -36,6 +37,7 @@ class Speaker(QObject):
     error_occurred = Signal(str)   # protocol.ERROR_KINDS 里的一个
     level = Signal(float)
     heard = Signal(str)
+    called = Signal(str)
 
     def __init__(self, parent=None, make_process=None):
         """make_process(parent)：造语音子进程（测试时换成假的）。"""
@@ -47,6 +49,7 @@ class Speaker(QObject):
         self._sent = 0         # 这段回答已经送出去几句（speech_text.sentences 的前几个）
         self._voice = ""
         self._waiting = []     # 子进程还没准备好时排着的命令
+        self._watching = False   # 始终在听：子进程重新开起来时也要接着听
         self.speaking = False
 
     def begin(self, voice=None):
@@ -68,6 +71,16 @@ class Speaker(QObject):
         """开始听：正在说的马上停（子进程那边也会停）。"""
         self.hush()
         self._send(protocol.Listen())
+
+    def watch(self, on):
+        """始终在听开 / 关。子进程没开着时：开 = 开一个（它一开起来先收到 Watch），关 = 不用管。"""
+        if on == self._watching:
+            return
+        self._watching = on
+        if self._process is not None:
+            self._send(protocol.Watch(on))
+        elif on:
+            self._process_ready()
 
     def stop_listening(self):
         self._send(protocol.StopListening())
@@ -109,6 +122,8 @@ class Speaker(QObject):
             self._process.finished.connect(self._on_finished)
             self._process.finished.connect(self._process.deleteLater)
             self._process.start()
+            if self._watching:
+                self._waiting.append(protocol.Watch(True))
         return self._process.ready
 
     def _send(self, command):
@@ -132,6 +147,8 @@ class Speaker(QObject):
             self.level.emit(event.level)
         elif isinstance(event, protocol.Heard):
             self.heard.emit(event.text)
+        elif isinstance(event, protocol.Called):
+            self.called.emit(event.text)
         elif isinstance(event, protocol.Error):
             log.warning("语音出错（%s）：%s", event.kind, event.detail)
             self.error_occurred.emit(event.kind)

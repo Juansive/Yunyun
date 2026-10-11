@@ -1,4 +1,5 @@
-"""语音子进程这边：录音（miniaudio，系统默认的麦克风）和识别（sherpa-onnx + SenseVoice）。只在语音子进程里 import。
+"""语音子进程这边：录音（miniaudio，系统默认的麦克风）、识别（sherpa-onnx + SenseVoice）、
+"始终在听"时把一句句话切出来（Silero VAD，7.3）。只在语音子进程里 import。
 
 录音只放在内存里，松开快捷键就交给识别，**不存文件、不上传**（7.4）。识别在本机做（7.1 实测：4.6 秒的话 0.17 秒，
 模型加载约 1 秒、占约 300 MB）。模型第一次按快捷键时才加载（和录音同时进行），之后一直留到语音子进程关掉。
@@ -43,10 +44,11 @@ def level_of(pcm):
 
 
 class Recorder:
-    """按着快捷键时录音。on_level(0～1)：音量（在事件循环的线程里调用）。open_capture：换成假的（测试）。"""
+    """按着快捷键时录音。on_level(0～1)：音量（在事件循环的线程里调用）。open_capture：换成假的（测试）。
+    on_chunk(PCM)：给了就是"始终在听"用的——录到的一块块直接交出去（在事件循环的线程里），自己不攒。"""
 
-    def __init__(self, on_level, open_capture=None):
-        self._on_level, self._open = on_level, open_capture
+    def __init__(self, on_level, open_capture=None, on_chunk=None):
+        self._on_level, self._open, self._on_chunk = on_level, open_capture, on_chunk
         self._loop = asyncio.get_running_loop()
         self._lock = threading.Lock()
         self._pcm = bytearray()
@@ -81,6 +83,9 @@ class Recorder:
 
     def take(self, data):
         """麦克风送来一块声音（在麦克风的线程里调用）。"""
+        if self._on_chunk is not None:
+            self._loop.call_soon_threadsafe(self._on_chunk, bytes(data))
+            return
         with self._lock:
             if len(self._pcm) < MAX_SECONDS * SAMPLE_RATE * 2:
                 self._pcm += data
@@ -97,11 +102,43 @@ def load_recognizer(model_dir):
         model=str(model_dir / "model.int8.onnx"), tokens=str(model_dir / "tokens.txt"),
         num_threads=2, use_itn=True, language="auto")   # use_itn：带标点、数字写成阿拉伯数字
 
-    def recognize(pcm):
-        samples = array("h", pcm)
+    def recognize(audio):
+        """audio：16 位 PCM（bytes），或者 -1～1 的小数（VAD 切出来的）。"""
+        samples = [s / 32768 for s in array("h", audio)] if isinstance(audio, bytes) else audio
         stream = recognizer.create_stream()
-        stream.accept_waveform(SAMPLE_RATE, [s / 32768 for s in samples])
+        stream.accept_waveform(SAMPLE_RATE, samples)
         recognizer.decode_stream(stream)
         return stream.result.text
 
     return recognize
+
+
+class Segmenter:
+    """"始终在听"：一块块声音喂进来，说完一句（停顿 SILENCE_S 秒）就吐出那一句（-1～1 的小数）。"""
+    SILENCE_S = 0.6       # 停这么久算一句说完了
+    MIN_SPEECH_S = 0.3    # 比这短的不算（咳嗽、敲桌子）
+    MAX_SPEECH_S = 20     # 一句最长（再长就切开）
+
+    def __init__(self, model_path):
+        import sherpa_onnx
+        config = sherpa_onnx.VadModelConfig()
+        config.silero_vad.model = str(model_path)
+        config.silero_vad.threshold = 0.5
+        config.silero_vad.min_silence_duration = self.SILENCE_S
+        config.silero_vad.min_speech_duration = self.MIN_SPEECH_S
+        config.silero_vad.max_speech_duration = self.MAX_SPEECH_S
+        config.sample_rate = SAMPLE_RATE
+        self._vad = sherpa_onnx.VoiceActivityDetector(config, buffer_size_in_seconds=self.MAX_SPEECH_S + 10)
+
+    def feed(self, pcm):
+        """喂一块 16 位 PCM，返回这期间说完的句子（每句是一串小数）。"""
+        self._vad.accept_waveform([s / 32768 for s in array("h", pcm)])
+        sentences = []
+        while not self._vad.empty():
+            sentences.append(list(self._vad.front.samples))
+            self._vad.pop()
+        return sentences
+
+    def reset(self):
+        """芸芸在说话：前面听了一半的扔掉（别把她自己的声音接到你的话上）。"""
+        self._vad.reset()

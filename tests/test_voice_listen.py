@@ -95,7 +95,8 @@ def test_wm_hotkey_message_reaches_push_to_talk(qapp):
 def tiny_model(monkeypatch):
     """两个小小的假模型文件（大小、SHA-256 跟着换）。"""
     files = {"model.int8.onnx": b"model" * 1000, "tokens.txt": b"tokens"}
-    monkeypatch.setattr(models, "FILES", {name: (len(data), hashlib.sha256(data).hexdigest()) for name, data in files.items()})
+    monkeypatch.setattr(models, "FILES", {name: (len(data), hashlib.sha256(data).hexdigest(), "someone/repo")
+                                         for name, data in files.items()})
     monkeypatch.setattr(models, "TOTAL_BYTES", sum(len(data) for data in files.values()))
     return files
 
@@ -282,7 +283,7 @@ def talk_world(voice_world, monkeypatch):
     monkeypatch.setattr(models, "installed", lambda: True)
     monkeypatch.setattr(AssistantMode, "MIN_HOLD_MS", 0)
     voice_settings.save_settings(VoiceSettings(hotkey="Ctrl+Shift+Space"))
-    assert pet.apply_voice_hotkey() == "ok"
+    assert pet.apply_voice_settings() == "ok"
     return voice_world
 
 
@@ -350,7 +351,7 @@ def test_hotkey_follows_quiet_hours_settings_and_exit(talk_world, qapp, monkeypa
     assert hotkey.HOTKEY_ID in winapi.hotkeys
     quiet.active = True
     quiet.changed.emit(True)   # 免打扰开始
-    assert hotkey.HOTKEY_ID not in winapi.hotkeys and pet.apply_voice_hotkey() == "quiet"
+    assert hotkey.HOTKEY_ID not in winapi.hotkeys and pet.apply_voice_settings() == "quiet"
     quiet.active = False
     quiet.changed.emit(False)
     assert hotkey.HOTKEY_ID in winapi.hotkeys

@@ -1191,6 +1191,26 @@ TEXTS = {
     },
     "voice_error_listen": {"zh": "这句没识别出来，再说一次？", "en": "Couldn't make out that one — try again?",
                            "ja": "うまく認識できなかった、もう一回？"},
+    "voice_watch": {"zh": "始终在听：叫一声\"芸芸\"就能说话，不用按键", "en": "Always listening: just say \"Yunyun\", no key needed",
+                    "ja": "いつも聞く：「芸芸」と呼べば話せる（キー不要）"},
+    "voice_watch_note": {
+        "zh": "始终在听：只在助手模式开着时听；芸芸自己说话时、全屏时、免打扰时段不听。开头没叫\"芸芸\"的话在本机识别后马上扔掉，"
+              "不会发出去。开着时芸芸左上角有个绿色的小麦克风。",
+        "en": "Always listening: only while assistant mode is open; not while Yunyun is talking, in full screen or during quiet "
+              "hours. Anything that doesn't start with \"Yunyun\" is recognized on this computer and thrown away at once — "
+              "never sent. While it's on, a small green microphone sits at Yunyun's top-left.",
+        "ja": "いつも聞く：アシスタントモードを開いているときだけ。芸芸が話しているとき・全画面のとき・おやすみ時間は聞きません。"
+              "「芸芸」で始まらない言葉はこのパソコンで認識してすぐ捨て、送りません。オンのあいだは芸芸の左上に緑の小さなマイクが出ます。",
+    },
+    "menu_assistant_watch": {"zh": "始终在听（叫\"芸芸\"）", "en": "Always listening (say \"Yunyun\")",
+                             "ja": "いつも聞く（「芸芸」と呼ぶ）"},
+    "voice_called": {"zh": "嗯？我在听，说吧", "en": "Yes? I'm listening.", "ja": "うん？聞いてるよ"},
+    "voice_watch_on_said": {"zh": "开始听啦：叫一声\"芸芸\"就行", "en": "I'm listening now — just say \"Yunyun\"",
+                            "ja": "聞いてるね：「芸芸」って呼んでね"},
+    "voice_watch_off_said": {"zh": "好，不一直听了", "en": "OK, I'll stop listening", "ja": "わかった、聞くのをやめるね"},
+    "voice_watch_failed": {"zh": "始终在听出了问题，先停下了；右键菜单里可以再打开",
+                           "en": "Always listening ran into a problem and stopped; you can turn it back on from the right-click menu",
+                           "ja": "「いつも聞く」で問題が起きたので止めました。右クリックメニューからまたオンにできます"},
     "voice_hotkey_taken_said": {
         "zh": "说话快捷键 {} 被别的程序占着，去 设置 → 语音 换一个吧",
         "en": "The push-to-talk key {} is used by another app — change it in Settings → Voice",

@@ -25,6 +25,7 @@ class VoiceSettings:
     reply: str = "voice"   # REPLY_MODES 里的一个
     voice: str = ""        # VOICES 里的一个；空 = 跟着界面语言（DEFAULT_VOICES）
     hotkey: str = ""       # 按住说话的快捷键（Qt 的写法，比如 "Ctrl+Shift+Space"，见 pet/hotkey.py）；空 = 没设（用户自己设）
+    always: bool = False   # 始终在听（7.3）：叫一声"芸芸"就能说话
 
     def voice_for(self, language):
         return self.voice if self.voice in VOICES else DEFAULT_VOICES.get(language, DEFAULT_VOICES["zh"])
@@ -40,7 +41,7 @@ def load_settings():
         saved = {}
     reply, voice, hotkey = saved.get("reply"), saved.get("voice"), saved.get("hotkey")
     return VoiceSettings(reply if reply in REPLY_MODES else "voice", voice if voice in VOICES else "",
-                         hotkey if isinstance(hotkey, str) else "")
+                         hotkey if isinstance(hotkey, str) else "", saved.get("always") is True)
 
 
 def save_settings(settings):
@@ -48,5 +49,6 @@ def save_settings(settings):
     config = cfg.load_config_or_empty()
     section = config.get("voice")
     config["voice"] = {**(section if isinstance(section, dict) else {}),
-                       "reply": settings.reply, "voice": settings.voice, "hotkey": settings.hotkey}
+                       "reply": settings.reply, "voice": settings.voice, "hotkey": settings.hotkey,
+                       "always": bool(settings.always)}
     cfg.save_config(config)

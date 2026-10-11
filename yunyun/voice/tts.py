@@ -137,6 +137,11 @@ class Player:
                 self._playing = False
                 raise
 
+    @property
+    def playing(self):
+        """在放（或者刚放完、扬声器还没关）："始终在听"这时候不听，免得把芸芸自己的声音当成你的。"""
+        return self._playing
+
     def clear(self):
         """马上停：正在放的、排着的都不要了。"""
         with self._lock:

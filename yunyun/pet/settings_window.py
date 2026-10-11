@@ -92,7 +92,7 @@ class SettingsWindow(QDialog):
         self.assistant_page.history_cleared.connect(self._pet.clear_assistant_history)
         self.notebook_page = NotebookPage()
         self.voice_page = VoicePage()   # 语音（阶段 7）
-        self.voice_page.apply_hotkey = self._pet.apply_voice_hotkey
+        self.voice_page.apply_hotkey = self._pet.apply_voice_settings
         self.voice_page.suspend_hotkey = self._pet.suspend_voice_hotkey
         self.watch_page = WatchPage()
         self.watch_page.test_requested.connect(self._test_watch)

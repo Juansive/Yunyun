@@ -135,6 +135,7 @@ Her "brain" is Claude (Anthropic) by default, or the cheaper **DeepSeek**. **Bot
 | Show her an image | Paste a copied image with Ctrl+V or drag image files into the box: thumbnails appear above it (× to remove) and are sent with your text (up to 5 at a time). Dragging in other files inserts their paths |
 | Have her remember you | Say "remember …" and she will; she also notes useful things in her **Notebook** on her own (your preferences, project conventions, pitfalls), so she remembers them in later chats. Notes "about you" are used in every chat; project notes only in the same working folder. View, edit, delete or turn it off in Settings → "Notebook" |
 | Talk to her | Settings → "Voice": set a push-to-talk key (e.g. Ctrl+Shift+Space or F9) and click "Download" for the speech model (about 240 MB, once). Then, in assistant mode, hold the key, speak, and let go to send — she answers out loud too. While you hold it she shows a listening look with a bouncing volume bar; if she's talking, she stops to listen. The key only works while assistant mode is open and not during quiet hours |
+| Just call her | Right-click → "Always listening" (or Settings → "Voice"): no key needed — say "Yunyun, …" and she takes it as a question; say just "Yunyun" and she answers, then listens to your next sentence. A small green microphone sits at her top-left while it's on. Anything that doesn't start with her name is recognized on your computer and thrown away at once; she doesn't listen while she's talking, in full screen or during quiet hours |
 | Have her read replies aloud | By default she reads her reply when you asked by voice; set "Read replies aloud" to "Every reply" in Settings → "Voice" to hear typed questions answered too. Only the prose is read (code, tables and links are skipped; file paths become just the file name). 8 voices (Chinese / Japanese / English) with a preview button. Right-click → "Stop talking" stops her; a new question, Stop or the push-to-talk key does too |
 | Exit | Right-click → Exit assistant mode. If the input box stays closed for 10 minutes, the background is released first (~300 MB) while the cards stay; asking again reconnects to the same chat automatically |
 
@@ -187,7 +188,7 @@ a small bar pops up above the taskbar — click it to switch to Claude Code. No 
   so do the files she reads, command output and the project's `CLAUDE.md`; at the start of each chat, the Notebook's index (one line per note) is sent too;
   when she looks at your screen, the screenshot is sent (Yunyun's own windows are never captured).
   When she reads a reply aloud, the text being read goes to Microsoft's free online voice service (if it can't be reached, the voice built into Windows is used, offline).
-  What you say with the push-to-talk key is turned into text on your computer only — recordings are never uploaded or saved (the text is sent like a typed question).
+  What you say with the push-to-talk key (or to "Always listening") is turned into text on your computer only — recordings are never uploaded or saved (the text is sent like a typed question).
   Nothing is sent unless you open Assistant mode.
 - **Keyboard**: Yunyun only notices *whether* you're typing — **it never records which keys you press**.
 

@@ -32,6 +32,8 @@
 - 按住快捷键说话（阶段 7.2，pet/hotkey.py）：设置 → 语音设了快捷键，助手模式开着、又不在免打扰时段，就注册它。按下：芸芸停嘴、
   换成"在听"的样子，头顶气泡"在听…松开就发送"带音量条；松开：识别（本机），听到的话直接发给大脑（这一问的回答会读出来）。
   识别模型还没下载：说一句并打开设置的语音页。在回答 / 等确认时按：说一句"我还在忙"，不听。
+- 始终在听（7.3）：设置 → 语音 / 右键菜单打开后，助手模式开着、不在免打扰时段、没在全屏时一直听（芸芸左上角有小麦克风标记）。
+  开头叫了"芸芸"的话才发给大脑（别的在本机识别后马上扔掉）；只叫了名字就应一声，下一句不用再叫；芸芸自己说话时不听。
 
 pet 只需要提供：body_rect()、say(text, ms)、say_live(text, max_width)、end_live(ms)。
 """
@@ -114,6 +116,7 @@ class AssistantMode(QObject):
     LISTEN_MAX_MS = 60_000        # 按着快捷键最多听多久（再长就当松开了）
     MIN_HOLD_MS = 300             # 按得比这短：当作手滑，不听（提醒一句要按住）
     LEVEL_CELLS = 10              # 气泡里音量条有几格
+    CALLED_SAY_MS = 8000          # 只叫了"芸芸"：应的那一声留多久（语音子进程那边 8 秒内的下一句不用再叫名字）
 
     def __init__(self, pet, cards, make_process=None, state=None, make_voice=None):
         """cards：当前这段对话的卡片（从旧到新）；state：要记着的东西（"offset"：卡片组相对芸芸的偏移）。
@@ -158,11 +161,15 @@ class AssistantMode(QObject):
         self._hotkey_suspended = False   # 设置页正在录新的快捷键
         self._held = QElapsedTimer()
         self._listen_timer = QTimer(self, singleShot=True, interval=self.LISTEN_MAX_MS, timeout=self._on_talk_released)
+        self.speaker.called.connect(self._on_called)   # 始终在听（7.3）
+        self._always = False         # 设置里开着"始终在听"
+        self._watch_on = False       # 现在真的在听（开着、不在免打扰 / 全屏、模型下好了）
         quiet = getattr(pet, "quiet_hours", None)
         if quiet is not None:
-            quiet.changed.connect(self.apply_hotkey)   # 免打扰开始就放开快捷键，结束再注册回来
-        downloader().finished.connect(self.apply_hotkey)   # 模型刚下好：先把语音子进程开起来
-        if self.apply_hotkey() == "taken":
+            quiet.changed.connect(self.apply_voice_settings)   # 免打扰开始就放开快捷键、不听了，结束再回来
+        downloader().finished.connect(self.apply_voice_settings)   # 模型刚下好：先把语音子进程开起来
+        pet.cover_checked.connect(self._update_watch)   # 约每 0.5 秒：进出全屏时暂停 / 接着听
+        if self.apply_voice_settings() == "taken":
             pet.say(i18n.tr("voice_hotkey_taken_said", hotkey_display(voice_settings.load_settings().hotkey)),
                     self.DONE_SAY_MS)
 
@@ -222,21 +229,58 @@ class AssistantMode(QObject):
         self._speak_turn = False
         self.speaker.hush()
 
+    def apply_voice_settings(self, *_):
+        """按设置换上快捷键、开 / 关始终在听（打开助手模式、设置页改了、免打扰开始 / 结束、模型刚下好时）。返回快捷键的结果。"""
+        self._always = voice_settings.load_settings().always
+        status = self.apply_hotkey()
+        self._update_watch()
+        return status
+
     def apply_hotkey(self, *_):
-        """按设置注册 / 放开按住说话的快捷键（打开助手模式、设置页改了、免打扰开始 / 结束时）。
+        """按设置注册 / 放开按住说话的快捷键。
         返回 "ok" / "taken"（被别的程序占着）/ "invalid" / "quiet"（免打扰时段）/ "none"（没设）。"""
         text = voice_settings.load_settings().hotkey
-        quiet = getattr(self._pet, "quiet_hours", None)
         if not text or self._hotkey_suspended or self._closed:
             self.hotkey.unregister()
             return "ok" if text else "none"
-        if quiet is not None and quiet.active:
+        if self._quiet():
             self.hotkey.unregister()
             return "quiet"
         status = self.hotkey.register(text)
         if status == "ok" and voice_models.installed():
             self.speaker.warm_up()   # 先把语音子进程开起来：第一次按下时开头那一下才录得到
         return status
+
+    @property
+    def always_listening(self):
+        """设置里开着"始终在听"（右键菜单的勾）。"""
+        return self._always
+
+    def toggle_watch(self):
+        """右键"始终在听"：开 / 关（存进设置）。还没下载模型：照样记下，提醒去下载（下好了自动开始听）。"""
+        settings = voice_settings.load_settings()
+        settings.always = not settings.always
+        voice_settings.save_settings(settings)
+        self.apply_voice_settings()
+        if settings.always and not voice_models.installed():
+            self._pet.say(i18n.tr("voice_need_model"), self.DONE_SAY_MS)
+            self._pet.open_settings("voice")
+        else:
+            self._pet.say(i18n.tr("voice_watch_on_said" if settings.always else "voice_watch_off_said"),
+                          self.SCREENSHOT_SAY_MS)
+
+    def _quiet(self):
+        quiet = getattr(self._pet, "quiet_hours", None)
+        return quiet is not None and quiet.active
+
+    def _update_watch(self):
+        """真的在听 = 设置里开着、没出错、模型下好了、助手模式开着、不在免打扰时段、没在全屏（2026-10-11 用户定）。"""
+        want = (self._always and not self._closed and not self._quiet()
+                and not winapi.is_user_busy() and voice_models.installed())
+        if want != self._watch_on:
+            self._watch_on = want
+            self.speaker.watch(want)
+            self._pet.show_mic_mark(want)
 
     def suspend_hotkey(self, suspend):
         """设置页在录新的快捷键：先放开（不然按下去被 Windows 拦走了，框里收不到），录完再注册回来。"""
@@ -359,6 +403,7 @@ class AssistantMode(QObject):
             widget.close_now()
         self.hotkey.close()
         self._stop_listening_look()
+        self._update_watch()   # _closed 了：不听了，麦克风标记收起
         self.session.close(wait)
         self.speaker.close(wait)
         self._pet.end_live(0)
@@ -647,6 +692,14 @@ class AssistantMode(QObject):
             self._pet.say(i18n.tr(key), self.DONE_SAY_MS)
             if kind == "no_model":
                 self._pet.open_settings("voice")
+        elif kind in ("mic", "no_model", "worker") and self._watch_on:
+            # 始终在听出了错：设置里关掉（不然每 0.5 秒又开一次；右键菜单的勾也对得上），你在菜单 / 设置里重新打开
+            settings = voice_settings.load_settings()
+            settings.always = False
+            voice_settings.save_settings(settings)
+            self.apply_voice_settings()
+            key = {"mic": "voice_error_mic", "no_model": "voice_need_model"}.get(kind, "voice_watch_failed")
+            self._pet.say(i18n.tr(key), self.DONE_SAY_MS)
 
     # ---------- 按住说话（7.2） ----------
 
@@ -700,6 +753,22 @@ class AssistantMode(QObject):
         self._pet.end_live(0)
         if not text:
             self._pet.say(i18n.tr("voice_not_heard"), self.SCREENSHOT_SAY_MS)
+            return
+        self._ask_by_voice(text)
+
+    def _on_called(self, text):
+        """始终在听时你叫了芸芸（7.3）：后面有话就当成说出来的一问；只叫了名字就应一声（下一句不用再叫名字）。"""
+        if self._listening or self._recognizing:   # 正按着快捷键说：以那边为准
+            return
+        if not text:
+            self._pet.say(i18n.tr("voice_called"), self.CALLED_SAY_MS)
+            return
+        self._ask_by_voice(text)
+
+    def _ask_by_voice(self, text):
+        """说出来的一问：直接发给大脑，回答会读出来。还在忙就说一声。"""
+        if self.busy or self.session.pending_permissions or self.session.rewinding:
+            self._pet.say(i18n.tr("voice_busy"), self.SCREENSHOT_SAY_MS)
             return
         self._start_brain()
         self.asked_by_voice = True
@@ -799,5 +868,6 @@ class AssistantMode(QObject):
             # 只释放大脑（约 300 MB），卡片照常显示；再唤出时接着这段对话聊（resume）
             self._resume_next = self.session.session_id
             self.session.close()
-            self.speaker.close()   # 语音子进程也释放（以后有识别模型，约 300 MB）；要说话时再启动
+            if not self._watch_on:   # 始终在听开着：语音子进程得留着（不然就听不见了）
+                self.speaker.close()   # 语音子进程也释放（识别模型约 300 MB）；要说话时再启动
             self.reader.refresh_undo()   # 换了大脑：以前的改动撤销不了了

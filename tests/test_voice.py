@@ -222,6 +222,8 @@ class Lines:
 
 
 class FakePlayer:
+    playing = False
+
     def __init__(self, on_start, on_idle, fail=False):
         self.on_start, self.on_idle, self.fail = on_start, on_idle, fail
         self.added, self.cleared, self.closed = [], 0, False
@@ -243,18 +245,21 @@ class FakeRecorder:
     pcm = b"\x01\x00" * 16000   # 1 秒
     fail = False
 
-    def __init__(self, on_level):
-        self.on_level = on_level
+    def __init__(self, on_level, on_chunk=None):
+        self.on_level, self.on_chunk = on_level, on_chunk
         self.starts = self.stops = 0
+        self.recording = False
 
     def start(self):
         if self.fail:
             raise OSError("没有麦克风")
         self.starts += 1
+        self.recording = True
         self.on_level(0.5)
 
     def stop(self):
         self.stops += 1
+        self.recording = False
         return self.pcm
 
 

@@ -135,6 +135,7 @@ class PetWindow(QWidget):
         self._mail_processing = False     # 正在处理邮件：小红点变成转圈
         self._badge_hidden = False  # 用户右键隐藏了小红点（只在本次运行有效，重启后恢复）
         self._badge_wants_corner = False  # 芸芸被挡住时来了新邮件：小红点该去任务栏时钟上方
+        self._mic_mark = None   # 始终在听的小麦克风标记（用到时才有）
         self._badge = Badge(self)                            # 跟随用：芸芸的从属窗口
         self._corner_badge = Badge(None, topmost=True)       # 角落用：独立的置顶窗口
         for badge in (self._badge, self._corner_badge):
@@ -475,6 +476,8 @@ class PetWindow(QWidget):
     def _follow_body(self):
         self._bubbles.follow(self.body_rect())
         self._badge.follow(self.body_rect())
+        if self._mic_mark is not None:
+            self._mic_mark.follow(self.body_rect())
         self._deck.follow(self.body_rect())
         if self._assistant is not None:
             self._assistant.follow(self.body_rect())
@@ -771,6 +774,9 @@ class PetWindow(QWidget):
                     menu.addAction(tr("menu_assistant_stop"), self.stop_assistant)
                 if self._assistant.speaking:   # 正在出声回答（阶段 7）：叫它别说了
                     menu.addAction(tr("menu_assistant_hush"), self._assistant.hush)
+                watch = menu.addAction(tr("menu_assistant_watch"), self._assistant.toggle_watch)   # 始终在听（7.3）
+                watch.setCheckable(True)
+                watch.setChecked(self._assistant.always_listening)
                 if self._assistant.cards_shown:   # 卡片常亮：要收起就在这里（左键芸芸再唤出）
                     menu.addAction(tr("menu_assistant_hide_cards"), self._assistant.hide_cards)
                 if self._assistant.has_custom_place:
@@ -835,9 +841,23 @@ class PetWindow(QWidget):
         """助手模式（没开就是 None）。"""
         return self._assistant
 
-    def apply_voice_hotkey(self):
-        """设置 → 语音改了按住说话的快捷键：助手模式开着就马上换上（结果见 AssistantMode.apply_hotkey），没开是 "closed"。"""
-        return self._assistant.apply_hotkey() if self._assistant is not None else "closed"
+    def apply_voice_settings(self):
+        """设置 → 语音改了（快捷键、始终在听）：助手模式开着就马上换上。返回快捷键的结果（见 AssistantMode.apply_hotkey），没开是 "closed"。"""
+        return self._assistant.apply_voice_settings() if self._assistant is not None else "closed"
+
+    def show_mic_mark(self, on):
+        """始终在听（7.3）开着时，芸芸身体左上角的小麦克风标记。"""
+        if self._mic_mark is None:
+            if not on:
+                return
+            from yunyun.pet.mic_mark import MicMark
+            self._mic_mark = MicMark(self)
+        if on:
+            self._mic_mark.follow(self.body_rect())
+            with winapi.keep_z_order(int(self.winId())):   # 从属窗口：显示时别把芸芸拉到最前面
+                self._mic_mark.show()
+        else:
+            self._mic_mark.hide()
 
     def suspend_voice_hotkey(self, suspend):
         """设置 → 语音正在录新的快捷键：先放开芸芸注册着的那个。"""

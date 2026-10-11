@@ -47,6 +47,22 @@ def sentences(markdown, code_note="", final=False):
     return out
 
 
+WAKE_WORDS = ("芸芸", "云云", "yunyun", "yun yun", "ユンユン")   # SenseVoice 常把"芸芸"听成"云云"（7.1 实测）
+CALLS = ("", "嘿", "嗨", "喂", "哎", "诶", "hey", "hi", "ねえ", "ねぇ")   # 名字前面只能是这些（"嘿，芸芸……"）
+_PUNCTUATION = " ，,。.、!！?？~～…:："
+
+
+def after_wake_word(text):
+    """"始终在听"听到的一句：开头叫了芸芸的话，返回后面的问题（只叫了名字是 ""）；没叫（或者只是提到她）返回 None。"""
+    text = text.strip()
+    lowered = text.lower()
+    for word in WAKE_WORDS:
+        at = lowered.find(word)
+        if at >= 0 and lowered[:at].strip(_PUNCTUATION) in CALLS:   # "我和芸芸说"不算
+            return heard_text(text[at + len(word):].lstrip(_PUNCTUATION))
+    return None
+
+
 def heard_text(text):
     """识别出的话 → 发给助手的问题：去掉首尾空白；"芸芸"常被听成同音的"云云"（7.1 实测几个模型都这样），换回来。"""
     return text.strip().replace("云云", "芸芸")

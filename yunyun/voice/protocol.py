@@ -48,6 +48,14 @@ class CancelListening:
 
 
 @_message
+class Watch:
+    """"始终在听"开 / 关（7.3）。开着时一直录音，说完一句就在本机识别：开头叫了"芸芸"才发 Called，别的扔掉；
+    芸芸自己在说话时不听。暂停（全屏、免打扰）由芸芸那边发 Watch(False)。"""
+    TYPE: ClassVar[str] = "watch"
+    on: bool
+
+
+@_message
 class Quit:
     TYPE: ClassVar[str] = "quit"
 
@@ -84,6 +92,13 @@ class Level:
 class Heard:
     """听到的话（识别好了）；空的 = 没听清（太短、没声音）。"""
     TYPE: ClassVar[str] = "heard"
+    text: str
+
+
+@_message
+class Called:
+    """"始终在听"时你叫了芸芸：text 是名字后面的话（问题）；只叫了名字是空的——那之后 FOLLOW_S 秒内说的下一句不用再叫名字。"""
+    TYPE: ClassVar[str] = "called"
     text: str
 
 
