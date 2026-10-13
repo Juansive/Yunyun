@@ -38,7 +38,7 @@ Requires Windows 10/11 (64-bit). **No Python needed.**
    | File | Size | What's inside |
    |---|---|---|
    | **`Yunyun-<version>-windows-lite.zip`** (Lite) | ~35 MB, ~80 MB unzipped | Desktop pet, new-mail reminders, Watch mode. **Pick this if you only want mail reminders** |
-   | **`Yunyun-<version>-windows.zip`** (Full) | ~200 MB, ~470 MB unzipped | Everything above, plus Assistant mode (the extra size is the Claude Code and browser driver it needs) |
+   | **`Yunyun-<version>-windows.zip`** (Full) | ~210 MB, ~490 MB unzipped | Everything above, plus Assistant mode (the extra size is the Claude Code, browser driver and voice it needs) |
 
    Unzip it anywhere you like (e.g. `D:\Yunyun`). Start with Lite; if you want Assistant mode later, download Full and replace the folder — your settings are kept.
    > ⚠️ Don't click the green **Code → Download ZIP** button: that's the source code and needs Python to run.
