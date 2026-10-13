@@ -769,6 +769,8 @@ class PetWindow(QWidget):
             assistant.triggered.connect(self.open_assistant)
             menu.addAction(assistant)
             menu.addAction(tr("menu_assistant_history"), self.open_assistant_history)   # 以前的对话，可以接着聊
+            if self._assistant is not None and self._assistant.last_answer:   # 语音：再读一遍（2026-10-13 用户要的）
+                menu.addAction(tr("menu_assistant_read_again"), self._assistant.read_again)
             if self._assistant is not None:
                 if self._assistant.busy:
                     menu.addAction(tr("menu_assistant_stop"), self.stop_assistant)

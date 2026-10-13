@@ -23,6 +23,7 @@ log = logging.getLogger("yunyun.voice.worker")
 MIN_PCM_BYTES = 9600   # 0.3 秒（16 kHz、16 位）：比这短的不识别（手滑碰了一下快捷键）
 FOLLOW_S = 8.0         # "始终在听"时只叫了"芸芸"：这么久之内说的下一句不用再叫名字
 ECHO_TAIL_S = 0.5      # 芸芸说完以后再等这么久才接着听（房间里的回声）
+MERGE_CHARS = 150      # 已经在说了：排着的几句合在一起合成，最多这么多字（太长的话第一个字要等更久）
 
 
 class Listener:
@@ -224,12 +225,25 @@ async def serve(stdin, write, synthesize, make_player, make_recorder, load_recog
                          lambda: emit(protocol.Idle()))
 
     async def synthesize_all():
-        """一句句合成，合成好就交给 Player 排着放（一边放这一句，一边已经在合成下一句了）。"""
+        """合成好就交给 Player 排着放（一边放这一句，一边已经在合成下一段了）。
+        第一句单独合成（好快点出声）；已经在说了，排着的几句合在一起合成（MERGE_CHARS 以内）——
+        一句句分开合成，每句的语调都从头起，听着僵硬（2026-10-13 用户说的）。"""
+        carry = None   # 合不进上一段的那一句：下一段从它开始
         while True:
-            born, say = await sayings.get()
+            born, say = carry or await sayings.get()
+            carry = None
             if born != generation:
                 continue
-            pcm, fallback = await synthesize(say.text, say.voice)
+            text = say.text
+            while player.playing and len(text) < MERGE_CHARS and not sayings.empty():
+                next_born, following = sayings.get_nowait()
+                if next_born != generation:
+                    continue
+                if following.voice != say.voice or len(text) + len(following.text) > MERGE_CHARS:
+                    carry = (next_born, following)
+                    break
+                text = speech_text.join(text, following.text)
+            pcm, fallback = await synthesize(text, say.voice)
             if born != generation:   # 合成的时候被 Hush 了
                 continue
             if pcm is None:

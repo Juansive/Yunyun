@@ -63,6 +63,13 @@ def after_wake_word(text):
     return None
 
 
+def join(first, second):
+    """两句接成一段（合在一起合成）：中文直接接，英文中间加个空格。"""
+    if first and second and first[-1].isascii() and second[0].isascii():
+        return f"{first} {second}"
+    return first + second
+
+
 def heard_text(text):
     """识别出的话 → 发给助手的问题：去掉首尾空白；"芸芸"常被听成同音的"云云"（7.1 实测几个模型都这样），换回来。"""
     return text.strip().replace("云云", "芸芸")

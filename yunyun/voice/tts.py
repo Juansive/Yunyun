@@ -4,11 +4,13 @@
 7.1 实测（docs/设计细节.md"语音"一节）：edge-tts 第一段声音 0.3～0.6 秒，但 10 次里有 4 次 403（上游的老问题），
 隔一会儿重试就好；所以先重试，还不行这一句用 Windows 自带语音（SAPI，0.15 秒，不联网，机器味重一点）。
 连着失败就先别连微软了（EDGE_REST_S），不然没网时每一句都要白等几次重试。
+合成出来的头尾静音剪短（trim_silence）：edge-tts 每段开头约 0.2 秒、结尾约 0.85 秒静音，一段段拼起来中间停 1 秒多，听着僵硬。
 """
 import asyncio
 import logging
 import threading
 import time
+from array import array
 from collections import deque
 
 import edge_tts
@@ -24,6 +26,21 @@ EDGE_REST_S = 60      # 一句试满 EDGE_TRIES 次都不行：这么久之内�
 CLOSE_AFTER_S = 0.4   # 放完以后多久关扬声器（设备里还有约 0.1 秒的声音没放完；开着会让电脑不进睡眠）
 SAPI_24K_16BIT_MONO = 26   # SAPI 的 SpeechAudioFormatType
 SAPI_LANGUAGES = {"zh": "804", "en": "409", "ja": "411"}   # SAPI 按语言挑声音用的代号（LCID，十六进制）
+HEAD_KEEP_S = 0.03    # 开头的静音留这么点（全剪掉的话第一个字的气声会被切掉）
+TAIL_KEEP_S = 0.3     # 结尾留这么长的停顿：一段和下一段之间自然地换口气
+SILENCE_LEVEL = 300   # 16 位声音里比这小的算静音
+
+
+def trim_silence(pcm):
+    """剪短头尾的静音（全是静音就原样返回）。"""
+    samples = array("h", pcm)
+    head = next((i for i, s in enumerate(samples) if abs(s) > SILENCE_LEVEL), None)   # 第一个响的
+    if head is None:
+        return pcm
+    tail = next(i for i in range(len(samples) - 1, -1, -1) if abs(samples[i]) > SILENCE_LEVEL)   # 最后一个响的
+    start = max(0, head - int(HEAD_KEEP_S * RATE))
+    end = min(len(samples), tail + 1 + int(TAIL_KEEP_S * RATE))
+    return samples[start:end].tobytes()
 
 
 class AudioError(Exception):
@@ -77,17 +94,20 @@ class Synthesizer:
         if self._clock() >= self._rest_until:
             for attempt in range(EDGE_TRIES):
                 try:
-                    return await asyncio.wait_for(edge(text, voice), EDGE_TIMEOUT_S), False
+                    pcm = await asyncio.wait_for(edge(text, voice), EDGE_TIMEOUT_S)
                 except Exception as e:   # 403、没网、超时……都只记种类（不记要说的话）
                     log.info("在线语音第 %d 次没成功：%s", attempt + 1, type(e).__name__)
                     if attempt + 1 < EDGE_TRIES:
                         await asyncio.sleep(EDGE_RETRY_S)
+                    continue
+                return trim_silence(pcm), False
             self._rest_until = self._clock() + EDGE_REST_S
         try:
-            return await asyncio.to_thread(sapi, text, voice), True
+            pcm = await asyncio.to_thread(sapi, text, voice)
         except Exception as e:
             log.warning("Windows 语音也没合成出来：%s %s", type(e).__name__, e)
             return None, False
+        return trim_silence(pcm), True
 
 
 def open_device(generator):

@@ -5,6 +5,7 @@
 """
 import asyncio
 import queue
+from array import array
 
 import pytest
 
@@ -101,9 +102,22 @@ def test_voice_messages_round_trip():
 
 # ---------- 合成 ----------
 
+SPEECH = array("h", [8000, -8000] * 50).tobytes()    # 假的"合成出来的声音"：从头响到尾（剪静音不会剪掉）
+WINDOWS = array("h", [6000, -6000] * 30).tobytes()
+
+
 @pytest.fixture
 def no_wait(monkeypatch):
     monkeypatch.setattr(tts, "EDGE_RETRY_S", 0)
+
+
+def test_trims_long_silence_at_both_ends():
+    """edge-tts 每段开头约 0.2 秒、结尾约 0.85 秒静音：一段段拼起来中间停 1 秒多，听着僵硬（2026-10-13）。"""
+    rate = tts.RATE
+    pcm = array("h", [0] * int(0.2 * rate) + [9000] * rate + [0] * int(0.85 * rate)).tobytes()
+    trimmed = array("h", tts.trim_silence(pcm))
+    assert len(trimmed) / rate == pytest.approx(1 + tts.HEAD_KEEP_S + tts.TAIL_KEEP_S, abs=0.01)
+    assert tts.trim_silence(bytes(400)) == bytes(400)   # 全是静音：原样
 
 
 def test_retries_microsoft_then_succeeds(no_wait):
@@ -113,9 +127,9 @@ def test_retries_microsoft_then_succeeds(no_wait):
         calls.append(voice)
         if len(calls) < 3:
             raise OSError("403")
-        return b"pcm"
-    synth = tts.Synthesizer(edge=edge, sapi=lambda text, voice: b"windows")
-    assert asyncio.run(synth("你好", "zh-CN-XiaoyiNeural")) == (b"pcm", False)
+        return SPEECH
+    synth = tts.Synthesizer(edge=edge, sapi=lambda text, voice: WINDOWS)
+    assert asyncio.run(synth("你好", "zh-CN-XiaoyiNeural")) == (SPEECH, False)
     assert len(calls) == 3
 
 
@@ -128,9 +142,9 @@ def test_falls_back_to_windows_voice_and_rests_a_while(no_wait):
 
     def sapi(text, voice):
         sapi_calls.append(voice)
-        return b"windows"
+        return WINDOWS
     synth = tts.Synthesizer(edge, sapi, clock=lambda: clock[0])
-    assert asyncio.run(synth("一", "ja-JP-NanamiNeural")) == (b"windows", True)
+    assert asyncio.run(synth("一", "ja-JP-NanamiNeural")) == (WINDOWS, True)
     assert len(edge_calls) == tts.EDGE_TRIES and sapi_calls == ["ja-JP-NanamiNeural"]
     asyncio.run(synth("二", "v"))   # 歇着：不再白等微软
     assert len(edge_calls) == tts.EDGE_TRIES
@@ -308,6 +322,40 @@ def test_worker_says_each_sentence_and_hush_drops_the_rest():
     asyncio.run(scenario())
 
 
+def test_worker_merges_waiting_sentences_once_it_is_talking():
+    """第一句单独合成（快点出声）；已经在说了，排着的几句合在一起合成（语调连贯，不一句一顿）。"""
+    async def scenario():
+        lines, out, players, asked = Lines(), [], [], []
+        gate = asyncio.Event()
+
+        async def synthesize(text, voice):
+            asked.append(text)
+            if len(asked) == 1:
+                await gate.wait()   # 第一句合成的时候，后面几句陆续到了
+            return text.encode(), False
+
+        def make_player(on_start, on_idle):
+            players.append(FakePlayer(on_start, on_idle))
+            return players[-1]
+        task = asyncio.create_task(worker.serve(lines, lambda data: out.append(protocol.decode(data)), synthesize,
+                                                make_player, FakeRecorder, no_recognizer))
+        await until(lambda: protocol.Ready() in out)
+        lines.send(protocol.Say(1, "第一句。", "v"))
+        await until(lambda: asked == ["第一句。"])
+        for i, text in enumerate(("第二句。", "第三句。", "Third.", "Fourth."), 2):
+            lines.send(protocol.Say(i, text, "v"))
+        await asyncio.sleep(0.1)    # 读线程把它们都放进队列
+        players[0].playing = True   # 第一句开始放了
+        gate.set()
+        await until(lambda: len(asked) == 2)
+        assert asked == ["第一句。", "第二句。第三句。Third. Fourth."]   # 中文直接接，英文中间加空格
+        await until(lambda: len(players[0].added) == 2)
+        assert players[0].added[1][0] == 2   # 合起来的那段按它第一句的编号报 Speaking
+        lines.end()
+        await asyncio.wait_for(task, 3)
+    asyncio.run(scenario())
+
+
 def test_worker_reports_what_went_wrong():
     async def scenario():
         lines, out = Lines(), []
@@ -475,6 +523,22 @@ def test_stop_and_new_questions_hush_and_a_missing_speaker_is_said_once(voice_wo
     voices[0].say(protocol.Error("audio"), protocol.Error("audio"))
     texts = [b.text for b in pet._bubbles._bubbles]
     assert texts.count(i18n.tr("voice_error_audio")) == 1
+
+
+def test_read_the_answer_again_from_the_reader_or_the_menu(voice_world, qapp):
+    """阅读框"🔊 读一遍"、右键"再读一遍刚才的回答"（2026-10-13 用户要的）：打字问的也能读，从头读。"""
+    pet, _, brain, voices = voice_world
+    assert i18n.tr("menu_assistant_read_again") not in menu_texts(pet)   # 还没有回答
+    pet.assistant.session.ask("打字问的")
+    brain.say(assistant_protocol.TextDelta("第一句。第二句。"), assistant_protocol.TurnFinished())
+    assert voices == []   # 默认"你用语音问时才说"：打字问的不读
+    pet.assistant.reader.show_card(pet.assistant.cards[-1], pet.assistant._reader_anchor())
+    pet.assistant.reader._read.click()
+    voices[0].say(protocol.Ready(), protocol.Speaking(1))
+    assert voices[0].said == ["第一句。", "第二句。"]
+    menu = next(a for a in pet._build_menu().actions() if a.text() == i18n.tr("menu_assistant_read_again"))
+    menu.trigger()   # 正在读：先停下，从头再读
+    assert voices[0].sent[2] == protocol.Hush() and voices[0].said == ["第一句。", "第二句。"] * 2
 
 
 def test_voice_talking_beats_thinking_but_not_busy_or_waiting(qapp):

@@ -196,6 +196,7 @@ class AssistantMode(QObject):
         self.session.permissions_changed.connect(self._on_permissions_changed)
         self.reader.undo_state_for = self._undo_state_for
         self.reader.undo_requested.connect(self._undo)
+        self.reader.read_requested.connect(lambda card: self.read_aloud(card.answer))
         self.session.rewind_finished.connect(self._on_rewound)
         self.session.busy_changed.connect(self._on_busy)
         self.session.activity_changed.connect(self.activity_changed)
@@ -228,6 +229,23 @@ class AssistantMode(QObject):
         """右键"别说了"：正在读的回答不读了（回答照常写完，在卡片里）。"""
         self._speak_turn = False
         self.speaker.hush()
+
+    @property
+    def last_answer(self):
+        """最新一张有回答的卡片的回答（右键"再读一遍刚才的回答"读它；没有是空的）。"""
+        return next((c.answer for c in reversed(self.cards) if c.kind == "turn" and c.answer), "")
+
+    def read_aloud(self, markdown):
+        """阅读框"🔊 读一遍"、右键"再读一遍刚才的回答"（2026-10-13 用户要的）：从头读这段回答（正在读的先停下）。"""
+        if not markdown:
+            return
+        self._speak_turn = False   # 正在回答的那一轮不接着往下读了
+        self.speaker.hush()
+        self.speaker.begin()
+        self.speaker.update(markdown, final=True)
+
+    def read_again(self):
+        self.read_aloud(self.last_answer)
 
     def apply_voice_settings(self, *_):
         """按设置换上快捷键、开 / 关始终在听（打开助手模式、设置页改了、免打扰开始 / 结束、模型刚下好时）。返回快捷键的结果。"""

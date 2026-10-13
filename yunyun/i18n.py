@@ -1107,6 +1107,8 @@ TEXTS = {
     "assistant_reader_copy": {"zh": "复制", "en": "Copy", "ja": "コピー"},
     "assistant_reader_copied": {"zh": "已复制 ✓", "en": "Copied ✓", "ja": "コピーしました ✓"},
     "assistant_reader_copy_all": {"zh": "复制回答", "en": "Copy answer", "ja": "回答をコピー"},
+    "assistant_reader_read": {"zh": "🔊 读一遍", "en": "🔊 Read aloud", "ja": "🔊 読み上げる"},
+    "menu_assistant_read_again": {"zh": "再读一遍刚才的回答", "en": "Read the last answer again", "ja": "さっきの回答をもう一度読む"},
     "assistant_reader_close": {"zh": "关闭（Esc）", "en": "Close (Esc)", "ja": "閉じる（Esc）"},
     "assistant_fix_in_settings": {
         "zh": "可以在这里改：右键芸芸 → 设置… → 助手。",

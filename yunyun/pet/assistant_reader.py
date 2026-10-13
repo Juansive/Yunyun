@@ -9,7 +9,7 @@
     │ ┌────────────────────── [复制] ┐ │   ← 代码块灰底，右上角浮着"复制"
     │ │ nums[::-1]                   │ │
     │ └──────────────────────────────┘ │
-    │ ↶ 撤销这次改动           复制回答   │   ← 这一问改了文件才有"撤销"
+    │ ↶ 撤销这次改动   🔊 读一遍  复制回答 │   ← 这一问改了文件才有"撤销"；"读一遍"：芸芸从头读这段回答
     └──────────────────────────────────┘
 
 - 放在"芸芸 + 输入框 + 卡片堆"旁边（哪边空间大放哪边），从卡片堆那边滑出、淡入；高度跟着内容，短回答不会空一大块。
@@ -141,6 +141,7 @@ QPushButton:disabled { background: #F4F6FA; color: #9AA3B2; border: 1px solid #E
 
 class AssistantReader(SidePanel):
     undo_requested = Signal(object)   # 卡片：要撤销这一问的改动（已经点了两次确认）
+    read_requested = Signal(object)   # 卡片：要芸芸把这段回答读一遍（2026-10-13 用户要的）
 
     READER_W = 470
     MIN_H = 200
@@ -191,6 +192,8 @@ class AssistantReader(SidePanel):
         self._undo_timer = QTimer(self, singleShot=True, interval=self.UNDO_ARM_MS, timeout=self._disarm_undo)
         bottom.addWidget(self._undo)
         bottom.addStretch(1)
+        self._read = make_button(BUTTON_STYLE, lambda: self.card and self.read_requested.emit(self.card))
+        bottom.addWidget(self._read)
         self._copy_all = make_button(BUTTON_STYLE, lambda: self._copy(self.card.answer if self.card else "",
                                                                        self._copy_all, "assistant_reader_copy_all"))
         bottom.addWidget(self._copy_all)
@@ -233,6 +236,7 @@ class AssistantReader(SidePanel):
 
     def retranslate(self):
         self._copy_all.setText(i18n.tr("assistant_reader_copy_all"))
+        self._read.setText(i18n.tr("assistant_reader_read"))
         self._close.setToolTip(i18n.tr("assistant_reader_close"))
         if self.card is not None:
             self._fill(self.card)
@@ -315,6 +319,7 @@ class AssistantReader(SidePanel):
         else:
             self._body.setHtml(f'<p style="color:#9AA3B2;">{_escape(i18n.tr("assistant_card_empty"))}</p>')
         self._copy_all.setVisible(bool(card.answer))
+        self._read.setVisible(bool(card.answer))
         self._make_copy_buttons()
         self._fit_height()
         self._body.verticalScrollBar().setValue(0)
