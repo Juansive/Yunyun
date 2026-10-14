@@ -15,7 +15,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from yunyun.assistant import claude_brain, memory  # noqa: E402
+from yunyun.assistant import claude_brain, memory, rapport, recollections  # noqa: E402
 from yunyun.assistant.providers import PROVIDERS, Provider  # noqa: E402
 from yunyun.assistant.settings import AssistantSettings  # noqa: E402
 
@@ -170,6 +170,8 @@ def make_brain(server, tmp, workspace, emit, resume="", provider=None, model="",
     claude_brain.CONFIG_DIR = Path(tmp) / "claude"
     claude_brain.WORKSPACE = Path(tmp) / "empty"
     memory.memory_path = lambda: Path(tmp) / "memory.json"   # 记事本也在临时文件夹里（不碰你真的记事本）
+    rapport.rapport_path = lambda: Path(tmp) / "rapport.json"                 # 相处笔记、回忆也一样（11.3、11.4）
+    recollections.recollections_path = lambda: Path(tmp) / "recollections.json"
     base = provider or Provider(code="fake", models=("claude-haiku-4-5",), prices={"claude-haiku-4-5": (1, 5)})
     PROVIDERS["fake"] = replace(base, code="fake", base_url=f"http://127.0.0.1:{server.server_address[1]}")
     settings = AssistantSettings(provider="fake", model=model, workspace=str(workspace) if workspace else "",

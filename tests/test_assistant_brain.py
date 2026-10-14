@@ -412,7 +412,9 @@ def test_notebook_goes_into_the_options():
     assert list(options.mcp_servers) == ["yunyun"]                          # 芸芸自己的工具（进程内 MCP）
     assert "[m1] 用户喜欢简短的回复" in options.system_prompt["append"]       # 目录接在人设后面
     off = claude_brain.build_options(AssistantSettings(notebook=False), "sk-ant-test", "zh")
-    assert off.mcp_servers == {} and "m1" not in off.system_prompt["append"]
+    assert list(off.mcp_servers) == ["yunyun"] and "m1" not in off.system_prompt["append"]   # 还有翻回忆（11.4）
+    none = claude_brain.build_options(AssistantSettings(notebook=False, rapport=False), "sk-ant-test", "zh")
+    assert none.mcp_servers == {}                                            # 一个工具都没有：不开服务器
 
 
 def test_screenshot_tool_only_when_the_provider_can_read_images(monkeypatch):

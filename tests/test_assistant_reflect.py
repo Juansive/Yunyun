@@ -55,12 +55,16 @@ def test_picks_recent_unreflected_talks_but_not_the_current_one(monkeypatch):
 
 def test_reflect_adds_notes_records_cost_and_marks_talks(monkeypatch):
     fake_list(monkeypatch, talk("a", 1, LONG), talk("b", 2, LONG))
-    model = FakeModel(json.dumps({"add": [{"text": "累的时候先安慰", "explicit": False}]}),
+    model = FakeModel(json.dumps({"add": [{"text": "累的时候先安慰", "explicit": False}],
+                                  "summary": "帮用户看报错，用户很累", "keywords": ["报错", "累"]}),
                       '```json\n{"seen": ["r1"]}\n```')                          # 第二段又出现了（包着代码块也认）
     events = run(AssistantSettings(), model)
     data = rapport.load()
     assert rapport.active_lines(data) == ["累的时候先安慰"]
     assert set(data.reflected) == {"a", "b"}
+    from yunyun.assistant import recollections
+    assert [(r.session, r.summary, r.keywords) for r in recollections.load()] == [("a", "帮用户看报错，用户很累", ["报错", "累"])]
+    assert "summary" in model.calls[0][3] and "keywords" in model.calls[0][3]      # b 没给摘要：不记
     assert [(e.added, e.activated) for e in events] == [(1, 0), (0, 1)]           # 先回想 a（最近的）：加一条；b：生效
     assert all(isinstance(e, protocol.Reflected) and abs(e.cost_usd - 0.006) < 1e-9 for e in events)   # Haiku：5000 进 200 出
     provider, key, model_name, system, user = model.calls[0]

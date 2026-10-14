@@ -10,9 +10,11 @@
     ▾ 相处笔记（1 条在用，1 条观察中）
         累的时候先安慰，不要调侃      10-14
         偶尔开实验室的玩笑会笑        观察中（灰色）
+    ▾ 回忆（2 段）（阶段 11.4）
+        帮用户修好 pytest 的报错      10-14
     [编辑…] [删除]            [全部清空]
 
-记忆本身在 assistant/memory.py、相处笔记在 assistant/rapport.py（芸芸进程和助手子进程都写）：
+记忆本身在 assistant/memory.py、相处笔记在 assistant/rapport.py、回忆在 assistant/recollections.py（芸芸进程和助手子进程都写）：
 每次显示这一页都重新读一遍（芸芸聊天时可能刚记了新的）。开关只写 config 的那一项，下一段对话开始生效。
 """
 import logging
@@ -28,15 +30,16 @@ from PySide6.QtWidgets import (
 )
 
 from yunyun import i18n
-from yunyun.assistant import memory, rapport
+from yunyun.assistant import memory, rapport, recollections
 from yunyun.assistant import settings as assistant_settings
 from yunyun.pet.theme import Toggle
 from yunyun.pet.widgets import note
 
 log = logging.getLogger(__name__)
 ID_ROLE = Qt.ItemDataRole.UserRole
-RAPPORT_ROLE = Qt.ItemDataRole.UserRole + 1   # 这一行是相处笔记（不是记事本的一条）
-WAITING_COLOR = QColor("#9CA3AF")             # 观察中的相处笔记：灰色
+KIND_ROLE = Qt.ItemDataRole.UserRole + 1   # 这一行是哪一种（没设 = 记事本的一条）
+MEMORY, RAPPORT, CHAT = "memory", "rapport", "chat"   # 记事本 / 相处笔记（11.3）/ 回忆（11.4）
+WAITING_COLOR = QColor("#9CA3AF")          # 观察中的相处笔记：灰色
 
 
 def _date(text):
@@ -105,42 +108,47 @@ class NotebookPage(QWidget):
             workspace, items = groups[key]
             name = (i18n.tr("notebook_about_you", len(items)) if not key
                     else i18n.tr("notebook_project", os.path.basename(workspace) or workspace, len(items)))
-            group = QTreeWidgetItem(self._tree, [name, ""])
-            group.setFlags(Qt.ItemFlag.ItemIsEnabled)   # 分组标题不能选
+            group = self._group(name)
             group.setToolTip(0, workspace)
             for m in items:
-                child = QTreeWidgetItem(group, [m.title, _date(m.updated or m.created)])
-                child.setData(0, ID_ROLE, m.id)
-                child.setToolTip(0, m.content or m.title)
-            group.setFirstColumnSpanned(True)   # 分组标题（项目文件夹名）占整行
-            group.setExpanded(True)
-        self._add_rapport_group()
-        anything = bool(memories or self._notes)
+                self._row(group, m.title, _date(m.updated or m.created), m.id, MEMORY, m.content or m.title)
+        data = rapport.load()
+        active, waiting = rapport.active_notes(data), rapport.candidates(data)
+        self._notes = {n.id: n for n in active + waiting}
+        chats = recollections.recent(recollections.load(), recollections.MAX_ITEMS)
+        self._chats = {r.session: r for r in chats}
+        if self._notes:   # 相处笔记（11.3）：在用的在前，观察中的灰色、右边写"观察中"；你说过的提示一下
+            group = self._group(i18n.tr("rapport_group", len(active), len(waiting)))
+            for n in active + waiting:
+                when = _date(n.updated or n.created) if n.active else i18n.tr("rapport_waiting")
+                tip = i18n.tr("rapport_explicit") if n.explicit else i18n.tr("rapport_seen", len(n.sessions))
+                child = self._row(group, n.text, when, n.id, RAPPORT, tip)
+                if not n.active:
+                    for column in (0, 1):
+                        child.setForeground(column, WAITING_COLOR)
+        if chats:         # 回忆（11.4）：每段对话一句话，新的在前；鼠标停上去看关键词
+            group = self._group(i18n.tr("recollections_group", len(chats)))
+            for r in chats:
+                self._row(group, r.summary, _date(r.date), r.session, CHAT, ", ".join(r.keywords) or r.summary)
+        anything = bool(memories or self._notes or self._chats)
         self._tree.setVisible(anything)
         self._empty.setVisible(not anything)
         self._update_buttons()
 
-    def _add_rapport_group(self):
-        """相处笔记一组（放最后）：在用的在前，观察中的灰色、右边写"观察中"；你说过的提示一下。"""
-        data = rapport.load()
-        active, waiting = rapport.active_notes(data), rapport.candidates(data)
-        self._notes = {n.id: n for n in active + waiting}
-        if not self._notes:
-            return
-        group = QTreeWidgetItem(self._tree, [i18n.tr("rapport_group", len(active), len(waiting)), ""])
-        group.setFlags(Qt.ItemFlag.ItemIsEnabled)
-        for n in active + waiting:
-            when = _date(n.updated or n.created) if n.active else i18n.tr("rapport_waiting")
-            child = QTreeWidgetItem(group, [n.text, when])
-            child.setData(0, ID_ROLE, n.id)
-            child.setData(0, RAPPORT_ROLE, True)
-            child.setToolTip(0, i18n.tr("rapport_explicit") if n.explicit else
-                             i18n.tr("rapport_seen", len(n.sessions)))
-            if not n.active:
-                for column in (0, 1):
-                    child.setForeground(column, WAITING_COLOR)
-        group.setFirstColumnSpanned(True)
+    def _group(self, name):
+        group = QTreeWidgetItem(self._tree, [name, ""])
+        group.setFlags(Qt.ItemFlag.ItemIsEnabled)   # 分组标题不能选
+        group.setFirstColumnSpanned(True)           # 占整行（项目文件夹名可能很长）
         group.setExpanded(True)
+        return group
+
+    @staticmethod
+    def _row(group, text, when, item_id, kind, tip):
+        child = QTreeWidgetItem(group, [text, when])
+        child.setData(0, ID_ROLE, item_id)
+        child.setData(0, KIND_ROLE, kind)
+        child.setToolTip(0, tip)
+        return child
 
     @property
     def selected_id(self):
@@ -148,9 +156,10 @@ class NotebookPage(QWidget):
         return item.data(0, ID_ROLE) if item is not None and item.isSelected() else None
 
     @property
-    def selected_is_rapport(self):
+    def selected_kind(self):
+        """选中的是哪一种：MEMORY（记事本）/ RAPPORT（相处笔记）/ CHAT（回忆）；没选中是 None。"""
         item = self._tree.currentItem()
-        return bool(item is not None and item.isSelected() and item.data(0, RAPPORT_ROLE))
+        return (item.data(0, KIND_ROLE) or MEMORY) if item is not None and item.isSelected() else None
 
     # ---------- 内部 ----------
 
@@ -162,16 +171,22 @@ class NotebookPage(QWidget):
         chosen = self.selected_id is not None
         self._edit_button.setEnabled(chosen)
         self._delete_button.setEnabled(chosen)
-        self._clear_button.setEnabled(bool(self._memories or self._notes))
+        self._clear_button.setEnabled(bool(self._memories or self._notes or self._chats))
 
     def _edit(self):
-        if self.selected_is_rapport:
-            n = self._notes.get(self.selected_id)
-            if n is None:
+        kind, item_id = self.selected_kind, self.selected_id
+        if kind in (RAPPORT, CHAT):   # 只有一句话
+            item = (self._notes if kind == RAPPORT else self._chats).get(item_id)
+            if item is None:
                 return
-            dialog = NotebookEditDialog(SimpleNamespace(title=n.text, content=""), self, details=False)
-            if dialog.exec() == QDialog.DialogCode.Accepted and not rapport.edit(n.id, dialog.values()[0]):
-                log.info("相处笔记：没改成 %s（芸芸刚删了？）", n.id)
+            text, heading, limit, save = ((item.text, "rapport_edit_title", rapport.MAX_TEXT, rapport.edit)
+                                          if kind == RAPPORT else
+                                          (item.summary, "recollections_edit_title", recollections.MAX_SUMMARY,
+                                           recollections.edit))
+            dialog = NotebookEditDialog(SimpleNamespace(title=text, content=""), self, details=False, heading=heading,
+                                        max_title=limit)
+            if dialog.exec() == QDialog.DialogCode.Accepted and not save(item_id, dialog.values()[0]):
+                log.info("记事本：没改成一条（%s，芸芸刚删了？）", kind)
             self.refresh()
             return
         m = self._memories.get(self.selected_id)
@@ -187,31 +202,32 @@ class NotebookPage(QWidget):
             self.refresh()
 
     def _delete(self):
-        memory_id = self.selected_id
-        if memory_id:
-            (rapport.delete if self.selected_is_rapport else memory.forget)(memory_id)
+        item_id = self.selected_id
+        if item_id:
+            {MEMORY: memory.forget, RAPPORT: rapport.delete, CHAT: recollections.delete}[self.selected_kind](item_id)
             self.refresh()
 
     def _clear(self):
-        """记事本和相处笔记全部清空（先问一句）。"""
-        count = len(self._memories) + len(self._notes)
+        """记事本、相处笔记、回忆全部清空（先问一句）。"""
+        count = len(self._memories) + len(self._notes) + len(self._chats)
         answer = QMessageBox.question(self, i18n.tr("notebook_clear"), i18n.tr("notebook_clear_confirm", count))
         if answer == QMessageBox.StandardButton.Yes:
             memory.clear()
             rapport.clear()
+            recollections.clear()
             self.refresh()
 
 
 class NotebookEditDialog(QDialog):
-    """改一条：标题（一句话）+ 细节。details=False：只有一句话（相处笔记）。"""
+    """改一条：标题（一句话）+ 细节。details=False：只有一句话（相处笔记、回忆）。"""
 
-    def __init__(self, entry, parent=None, details=True):
+    def __init__(self, entry, parent=None, details=True, heading="notebook_edit_title", max_title=memory.MAX_TITLE):
         super().__init__(parent)
-        self.setWindowTitle(i18n.tr("notebook_edit_title" if details else "rapport_edit_title"))
+        self.setWindowTitle(i18n.tr(heading))
         layout = QVBoxLayout(self)
         layout.addWidget(QLabel(i18n.tr("notebook_title_label")))
         self._title = QLineEdit(entry.title)
-        self._title.setMaxLength(memory.MAX_TITLE if details else rapport.MAX_TEXT)
+        self._title.setMaxLength(max_title)
         layout.addWidget(self._title)
         self._content = QPlainTextEdit(entry.content, self)
         if details:

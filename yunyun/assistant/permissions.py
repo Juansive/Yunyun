@@ -11,6 +11,7 @@
 - 执行命令：每次问，可以选"这次对话里这类命令都允许"（按命令开头记，比如 pytest、git status）；
   删文件、装包、联网下载这类**危险命令**，和看不清在干什么的命令（$(...)、写文件的重定向、bash -c ……）永远每次问；
 - 芸芸的记事本（记一条、查、删一条，阶段 10）：不用问——只动芸芸自己的记事本，你在设置 → 记事本里随时能看、改、删；
+  翻回忆（阶段 11.4）：不用问——只读芸芸自己存的对话摘要和这台电脑上的对话记录；
 - 截图（阶段 5）：不用问（2026-10-06 用户定的；截之前芸芸会在气泡里说一声，芸芸自己的窗口不截）；
   设置里选了"截图前先问我"（ask_screenshot）就每次问，可以选"这次对话都允许截图"；
 - 打开软件（阶段 6，2026-10-09 用户定的）：按名字找不用问；打开每次问，可以选"这次对话都允许打开它"（按软件记）；
@@ -34,6 +35,7 @@ from dataclasses import dataclass
 from urllib.parse import urlsplit
 
 from yunyun.assistant.memory import NOTEBOOK_TOOLS
+from yunyun.assistant.recollections import RECALL_CHATS_TOOL
 from yunyun.assistant.protocol import (
     BROWSER_ACTION_TOOLS, BROWSER_BACK_TOOL, BROWSER_CLICK_TOOL, BROWSER_DOWNLOAD_TOOL, BROWSER_OPEN_TOOL,
     BROWSER_READ_TOOL, BROWSER_SELECT_TOOL, BROWSER_TYPE_TOOL, FIND_APP_TOOL, OPEN_APP_TOOL, SCREENSHOT_TOOL,
@@ -124,7 +126,8 @@ def decide(tool, tool_input, workspace, grants=frozenset(), ask_screenshot=False
     saved_outputs：Claude Code 的对话记录文件夹（CLAUDE_CONFIG_DIR/projects），它把太长的工具输出存在里面。
     """
     tool_input = tool_input if isinstance(tool_input, dict) else {}
-    if tool in WEB_TOOLS or tool in NOTEBOOK_TOOLS or tool in (FIND_APP_TOOL, BROWSER_READ_TOOL, BROWSER_BACK_TOOL):
+    if tool in WEB_TOOLS or tool in NOTEBOOK_TOOLS or tool in (FIND_APP_TOOL, BROWSER_READ_TOOL, BROWSER_BACK_TOOL,
+                                                                RECALL_CHATS_TOOL):
         return Decision(ALLOW)
     if tool == BROWSER_OPEN_TOOL:
         if browser_url(tool_input.get("url")):

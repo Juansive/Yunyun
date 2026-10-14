@@ -3,8 +3,8 @@
     .\\.venv\\Scripts\\python tools\\eval_rapport.py
 
 两段编出来的对话（不是你真实的对话）依次回想：看模型给的 JSON 对不对、记的是不是"怎么相处"、
-同样的事出现在两段对话里会不会生效、"你明确说过的"会不会马上生效。
-用设置里存的 Claude Key（不显示）；相处笔记写在临时文件夹里，不碰你真实的笔记。
+同样的事出现在两段对话里会不会生效、"你明确说过的"会不会马上生效、摘要和关键词（回忆，11.4）写得怎么样。
+用设置里存的 Claude Key（不显示）；相处笔记和回忆写在临时文件夹里，不碰你真实的。
 """
 import asyncio
 import shutil
@@ -15,7 +15,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from yunyun.assistant import rapport, reflect, transcripts  # noqa: E402
+from yunyun.assistant import rapport, recollections, reflect, transcripts  # noqa: E402
 from yunyun.assistant.settings import AssistantSettings, get_api_key  # noqa: E402
 from yunyun.assistant.transcripts import Transcript, TranscriptTurn  # noqa: E402
 
@@ -52,6 +52,7 @@ async def main():
         sys.exit("设置 → 助手里还没有存 Claude 的 Key")
     tmp = Path(tempfile.mkdtemp(prefix="yunyun-rapport-"))
     rapport.rapport_path = lambda: tmp / "rapport.json"
+    recollections.recollections_path = lambda: tmp / "recollections.json"
     talks = make_talks()
     replies, events = [], []
 
@@ -69,6 +70,7 @@ async def main():
         data = rapport.load()
         print("\n生效的：", rapport.active_lines(data))
         print("观察中：", [n.text for n in rapport.candidates(data)])
+        print("回忆：", [(r.summary, r.keywords) for r in recollections.load()])
         print(f"一共花了 ${sum(e.cost_usd for e in events):.4f}（{len(events)} 次）")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

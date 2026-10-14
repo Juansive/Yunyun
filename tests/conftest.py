@@ -63,7 +63,7 @@ def no_real_assistant(monkeypatch, tmp_path):
     要测子进程的收发，用 tests/fake_assistant_worker.py、tests/fake_assistant_check.py（传 command=...）。
     """
     import keyring
-    from yunyun.assistant import ledger, memory, process, rapport, settings as assistant_settings
+    from yunyun.assistant import ledger, memory, process, rapport, recollections, settings as assistant_settings
     from yunyun.pet import assistant_history
 
     def refuse(role, *args, package="assistant"):
@@ -76,6 +76,7 @@ def no_real_assistant(monkeypatch, tmp_path):
     monkeypatch.setattr(assistant_history, "claude_data_dir", lambda: tmp_path / "assistant_claude")
     monkeypatch.setattr(memory, "memory_path", lambda: tmp_path / "assistant_memory.json")   # 记事本也一样
     monkeypatch.setattr(rapport, "rapport_path", lambda: tmp_path / "assistant_rapport.json")   # 相处笔记（11.3）
+    monkeypatch.setattr(recollections, "recollections_path", lambda: tmp_path / "assistant_recollections.json")   # 回忆
     # 截图（阶段 5）：GDI 截图在 offscreen 平台下也会真的截到你的屏幕——测试里一律换成假截图（一张 4x2 的灰图）
     from yunyun.pet import screen_capture, winapi
     monkeypatch.setattr(screen_capture, "take", lambda target, near: (target, FAKE_SCREENSHOT, 4, 2))

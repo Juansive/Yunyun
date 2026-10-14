@@ -191,24 +191,31 @@ TEXTS = {
               "作業フォルダーでだけ使われます。メモ帳はパソコンだけに保存され、会話の始めに目次が選んだプロバイダーに送られます。"
               "変更は次の会話から有効です。",
     },
-    "rapport_enabled": {"zh": "让芸芸从相处中学习（每段新对话开始时回想一下上一段，一般不到 1 美分）",
-                        "en": "Let Yunyun learn from your chats (she looks back at the last chat when a new one starts; "
-                              "usually under 1¢)",
-                        "ja": "芸芸に付き合いの中から学ばせる（新しい会話のたびに前の会話を振り返る。ふつう 1 セント未満）"},
+    "rapport_enabled": {"zh": "让芸芸回想以前的对话（相处笔记 + 回忆；每段新对话开始时回想一下上一段，一般不到 1 美分）",
+                        "en": "Let Yunyun look back at earlier chats (rapport notes + recollections; she looks back at "
+                              "the last chat when a new one starts, usually under 1¢)",
+                        "ja": "芸芸に前の会話を振り返らせる（付き合いメモ＋思い出。新しい会話のたびに前の会話を振り返る。ふつう 1 セント未満）"},
     "rapport_hint": {
         "zh": "相处笔记：芸芸只记\"怎么跟你相处\"（称呼、语气、玩笑尺度、你累的时候希望她怎么做），接在她的性格后面。"
-              "她自己观察到的要在两段对话里都出现才会用上，只出现一次的是\"观察中\"（30 天没再出现就扔掉）；"
-              "你明确说过的马上用上。回想时你和她的问答会发给你选的服务商（用最便宜的模型），笔记只存在你的电脑上。",
+              "她自己观察到的要在两段对话里都出现才会用上，只出现一次的是\"观察中\"（30 天没再出现就扔掉）；你明确说过的马上用上。"
+              "回忆：每段对话记一句话的摘要（留一年），最近 5 段每段对话都带着，她能接上话；更早的她会自己翻。"
+              "回想时你和她的问答会发给你选的服务商（用最便宜的模型），笔记和回忆只存在你的电脑上。",
         "en": "Rapport notes: Yunyun only notes how to get along with you (how to address you, tone, humor, what helps "
               "when you're tired), added after her personality. What she notices herself is used only after it shows "
               "up in two chats; seen once, it stays \"observing\" (dropped after 30 days). Things you ask for directly "
-              "apply right away. When she looks back, your questions and her answers are sent to your provider (its "
-              "cheapest model); the notes stay on this PC.",
+              "apply right away. Recollections: a one-line summary of each chat (kept for a year); the latest 5 come "
+              "with every chat so she can pick up where you left off, and she looks up older ones herself. When she "
+              "looks back, your questions and her answers are sent to your provider (its cheapest model); notes and "
+              "recollections stay on this PC.",
         "ja": "付き合いメモ：芸芸は「あなたとの付き合い方」（呼び方・口調・冗談の加減・疲れたときにどうしてほしいか）だけを記録し、"
               "性格のあとに付け加えます。自分で気づいたことは 2 つの会話で出てきてから使い、1 回だけのものは「観察中」"
-              "（30 日出てこなければ消します）。あなたがはっきり頼んだことはすぐ使います。振り返るときは、あなたの質問と芸芸の回答を"
-              "選んだプロバイダー（いちばん安いモデル）に送ります。メモはこの PC にだけ保存されます。",
+              "（30 日出てこなければ消します）。あなたがはっきり頼んだことはすぐ使います。"
+              "思い出：会話ごとに一行の要約を残します（1 年間）。最新の 5 件は毎回の会話に付けるので話をつなげられ、"
+              "それより前は芸芸が自分で調べます。振り返るときは、あなたの質問と芸芸の回答を選んだプロバイダー（いちばん安いモデル）に"
+              "送ります。メモと思い出はこの PC にだけ保存されます。",
     },
+    "recollections_group": {"zh": "回忆（{} 段）", "en": "Recollections ({})", "ja": "思い出（{} 件）"},
+    "recollections_edit_title": {"zh": "编辑回忆", "en": "Edit recollection", "ja": "思い出を編集"},
     "rapport_group": {"zh": "相处笔记（{} 条在用，{} 条观察中）", "en": "Rapport notes ({} in use, {} observing)",
                       "ja": "付き合いメモ（使用中 {} 件、観察中 {} 件）"},
     "rapport_waiting": {"zh": "观察中", "en": "observing", "ja": "観察中"},
@@ -845,6 +852,8 @@ TEXTS = {
     "assistant_tool_command": {"zh": "正在执行命令……", "en": "Running a command…", "ja": "コマンドを実行中…"},
     "assistant_tool_remember": {"zh": "正在记到记事本……", "en": "Noting it down…", "ja": "メモ帳に記録中…"},
     "assistant_tool_recall": {"zh": "正在翻记事本……", "en": "Checking the notebook…", "ja": "メモ帳を見ています…"},
+    "assistant_tool_recall_chats": {"zh": "正在翻回忆……", "en": "Looking back at earlier chats…",
+                                    "ja": "前の会話を思い出しています…"},
     "assistant_tool_forget": {"zh": "正在从记事本里划掉……", "en": "Crossing it out of the notebook…",
                               "ja": "メモ帳から消しています…"},
     "assistant_tool_screenshot": {"zh": "正在看屏幕……", "en": "Looking at the screen…", "ja": "画面を見ています…"},
@@ -1068,11 +1077,13 @@ TEXTS = {
     },
     "assistant_history_clear": {"zh": "清空历史对话", "en": "Clear chat history", "ja": "履歴を消去"},
     "assistant_history_confirm": {
-        "zh": "要清空助手的历史对话吗？\n问答卡片、Claude Code 的对话记录、撤销用的文件备份都会删掉，清空后就不能撤销以前的改动了。",
-        "en": "Clear the assistant's chat history?\nChat cards, Claude Code's conversation records and the file backups "
-              "used for undo will be deleted; earlier changes can no longer be undone.",
-        "ja": "アシスタントの履歴を消去しますか？\nやり取りのカード、Claude Code の会話記録、取り消し用のファイルのバックアップが"
-              "削除され、以前の変更は取り消せなくなります。",
+        "zh": "要清空助手的历史对话吗？\n问答卡片、Claude Code 的对话记录、撤销用的文件备份、芸芸的回忆（每段对话的摘要）"
+              "都会删掉，清空后就不能撤销以前的改动了。",
+        "en": "Clear the assistant's chat history?\nChat cards, Claude Code's conversation records, the file backups "
+              "used for undo and Yunyun's recollections (chat summaries) will be deleted; earlier changes can no longer "
+              "be undone.",
+        "ja": "アシスタントの履歴を消去しますか？\nやり取りのカード、Claude Code の会話記録、取り消し用のファイルのバックアップ、"
+              "芸芸の思い出（会話の要約）が削除され、以前の変更は取り消せなくなります。",
     },
     "assistant_history_cleared": {"zh": "历史对话已清空。", "en": "Chat history cleared.", "ja": "履歴を消去しました。"},
     # 历史对话面板
@@ -1117,6 +1128,7 @@ TEXTS = {
     "assistant_action_web_fetch": {"zh": "看网页", "en": "Read page", "ja": "ページを読む"},
     "assistant_action_remember": {"zh": "记一条", "en": "Note", "ja": "メモ"},
     "assistant_action_recall": {"zh": "翻记事本", "en": "Check notes", "ja": "メモを見る"},
+    "assistant_action_recall_chats": {"zh": "翻回忆", "en": "Recall chats", "ja": "前の会話を見る"},
     "assistant_action_forget": {"zh": "划掉一条", "en": "Remove note", "ja": "メモを消す"},
     "assistant_action_screenshot": {"zh": "看屏幕", "en": "Screenshot", "ja": "画面を見る"},
     "assistant_action_find_app": {"zh": "找软件", "en": "Find app", "ja": "ソフトを探す"},

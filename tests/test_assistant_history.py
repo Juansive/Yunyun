@@ -87,10 +87,17 @@ def test_clear_deletes_cards_and_claude_code_records():
     for name in ("projects/p", "file-history/s", "backups"):
         (claude / name).mkdir(parents=True)
         (claude / name / "x.json").write_text("{}", encoding="utf-8")
+    from yunyun.assistant import rapport, recollections
+    recollections.remember("s1", datetime.now().isoformat(timespec="seconds"), "聊答辩准备")
+    data = rapport.Rapport()
+    rapport.apply(data, {"add": [{"text": "喜欢被叫主人", "explicit": True}]}, "s1", "2026-10-14T19:00:00")
+    rapport.save(data)
     assistant_history.clear()
     assert not assistant_history.history_path().exists()
     assert not (claude / "projects").exists() and not (claude / "file-history").exists()
     assert (claude / "backups" / "x.json").exists()    # Claude Code 自己的设置备份不动
+    assert recollections.load() == []                   # 回忆是从对话里写的：一起删（11.4）
+    assert rapport.active_lines(rapport.load()) == ["喜欢被叫主人"]   # 相处笔记不是对话内容：不动
 
 
 # ---------- 一段段对话：存下的卡片 + 从 Claude Code 记录里找回来的 ----------

@@ -22,7 +22,7 @@ from claude_agent_sdk import (
     UserMessage,
 )
 
-from yunyun.assistant import apps, memory, permissions, proctree, protocol, rapport, transcripts
+from yunyun.assistant import apps, memory, permissions, proctree, protocol, rapport, recollections, transcripts
 from yunyun.assistant.browser import Browser
 from yunyun.assistant.environment import (   # noqa: F401（clean_environment、hide_child_consoles 也从这里用）
     clean_environment, hide_child_consoles, prepare_process, system_proxy_env,
@@ -136,8 +136,11 @@ def build_options(settings, api_key, language, stderr=None, gate=None, resume=""
     # 记事本（阶段 10）：目录接在人设后面（这段对话里不变，命中缓存），细节和写入用芸芸自己的工具（进程内 MCP）
     notebook = memory.index_lines(memory.load(), settings.workspace) if settings.notebook else None
     learned = rapport.active_lines(rapport.load()) if settings.rapport else ()   # 相处笔记（11.3）：生效的接在性格后面
+    # 回忆（11.4）：最近几段的摘要接进人设，更早的用"翻回忆"工具查；和相处笔记一个开关（"回想以前的对话"）
+    chats = recollections.recent_lines(recollections.load()) if settings.rapport else ()
     server = yunyun_server(settings.workspace, notebook=settings.notebook, bridge=bridge, screen=screen,
-                           browser=browser)
+                           browser=browser, chats=CONFIG_DIR / "projects" if settings.rapport else None,
+                           language=language)
     return ClaudeAgentOptions(
         resume=resume or None,            # 历史对话"接着聊"：Claude Code 读回那段对话的记录
         # 撤销（2.7）：Claude Code 改文件前先备份（放在 CLAUDE_CONFIG_DIR 里），每一问传回一个 uuid，rewind_files 到它
@@ -157,7 +160,7 @@ def build_options(settings, api_key, language, stderr=None, gate=None, resume=""
                                          screen=screen, apps=bridge is not None, browser=browser is not None,
                                          personality=settings.personality,
                                          personality_text=settings.personality_text,
-                                         user_name=settings.user_name, rapport=learned)},
+                                         user_name=settings.user_name, rapport=learned, chats=chats)},
         include_partial_messages=True,    # 逐字显示
         # 每段对话的上限：Claude Code 按整段对话累计算；但它只认 Claude 的价格，自己算钱的服务商由 TurnState 管。
         # 每次回答的上限都由 TurnState 估算

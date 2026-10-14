@@ -16,7 +16,7 @@ import shutil
 from dataclasses import dataclass, field, fields
 from datetime import datetime, timedelta
 
-from yunyun.assistant import transcripts
+from yunyun.assistant import recollections, transcripts
 from yunyun.assistant.providers import recorded_cost
 from yunyun.assistant.session import Action
 from yunyun.assistant.settings import HISTORY_KEEP_DAYS, SESSION_DATA_DIRS
@@ -124,13 +124,18 @@ def save(cards, now=None):
 
 
 def clear():
-    """设置页"清空历史对话"：删掉卡片和 Claude Code 自己的对话记录、撤销用的备份（正在用的删不掉就跳过）。"""
+    """设置页"清空历史对话"：删掉卡片和 Claude Code 自己的对话记录、撤销用的备份（正在用的删不掉就跳过），
+    还有从对话里写的回忆（11.4，每段一句话的摘要）。相处笔记不删（它不是对话内容，在设置 → 记事本里另外删）。"""
     try:
         history_path().unlink(missing_ok=True)
     except OSError as e:
         log.warning("删不了助手的历史卡片（%s）", type(e).__name__)
     for name in SESSION_DATA_DIRS:
         shutil.rmtree(claude_data_dir() / name, ignore_errors=True)
+    try:
+        recollections.clear()
+    except OSError as e:
+        log.warning("删不了回忆（%s）", type(e).__name__)
 
 
 # ---------- 历史对话：一段段对话 ----------

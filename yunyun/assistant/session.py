@@ -31,7 +31,7 @@ from datetime import datetime
 from PySide6.QtCore import QCoreApplication, QObject, Signal
 
 from yunyun import i18n
-from yunyun.assistant import ledger, memory, protocol, transcripts
+from yunyun.assistant import ledger, memory, protocol, recollections, transcripts
 
 log = logging.getLogger(__name__)
 
@@ -47,6 +47,7 @@ _TOOL_TEXT = {
     protocol.BROWSER_BACK_TOOL: "assistant_tool_browser_back", protocol.BROWSER_CLICK_TOOL: "assistant_tool_browser_click",
     protocol.BROWSER_TYPE_TOOL: "assistant_tool_browser_type", protocol.BROWSER_SELECT_TOOL: "assistant_tool_browser_select",
     protocol.BROWSER_DOWNLOAD_TOOL: "assistant_tool_browser_download",
+    recollections.RECALL_CHATS_TOOL: "assistant_tool_recall_chats",
 }
 SETTINGS_ERRORS = {"no_key", "auth", "model", "budget", "reply_budget"}   # 这几种错误在设置页能改好（界面可以给个"去设置"）
 UNDO_NOTE = transcripts.UNDO_NOTE   # 历史对话读回来时要认出它、去掉它，所以放在 transcripts 里

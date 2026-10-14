@@ -304,6 +304,20 @@ _NOTEBOOK = {
         "- タイトルはユーザーの言語で一文に、詳細は content に。目次の項目が今の作業に関係するときは、先に recall で詳細を読んでください。\n"
     ),
 }
+# 回忆（阶段 11.4，assistant/recollections.py）：最近几段对话的摘要，后面接"怎么用"
+_CHATS = {
+    "zh": "\n\n# 以前聊过的（你回想时记下的每段对话摘要，新的在前）\n{lines}\n"
+          "- 和眼前的事有关时可以自然地接上话（比如问问上次说的事怎么样了），但不要每次都提。\n"
+          "- 更早的、或者要看当时具体说了什么，用 recall_chats 查；摘要里没有的细节不要假装记得。\n",
+    "en": "\n\n# Earlier chats (one-line summaries you wrote when looking back, newest first)\n{lines}\n"
+          "- When it relates to what's going on, you can naturally pick up where you left off (e.g. ask how the "
+          "thing they mentioned went), but don't bring it up every time.\n"
+          "- For older chats, or to see what was actually said, use recall_chats. Don't pretend to remember details "
+          "that aren't in a summary.\n",
+    "ja": "\n\n# これまでの会話（振り返ったときに書いた各会話の要約。新しい順）\n{lines}\n"
+          "- 今の話に関係があれば、自然に話をつないでかまいません（前に話していたことがどうなったか聞くなど）。ただし毎回は持ち出さないこと。\n"
+          "- もっと前のことや、実際に何を話したかは recall_chats で調べてください。要約にない細かいことを覚えているふりはしないこと。\n",
+}
 _NOTEBOOK_HEADINGS = {   # (关于用户, 这个项目, 还没有)
     "zh": ("关于用户：", "这个项目：", "（还没有）"),
     "en": ("About the user:", "This project:", "(nothing yet)"),
@@ -320,12 +334,13 @@ def character(language, personality="default", personality_text=""):
 
 
 def persona(language, working=False, project_notes="", web_search=True, notebook=None, screen=False, apps=False,
-            browser=False, personality="default", personality_text="", user_name="", rapport=()):
+            browser=False, personality="default", personality_text="", user_name="", rapport=(), chats=()):
     """这种语言的人设（不认识的语言用中文）。working：选了工作文件夹；project_notes：工作文件夹里 CLAUDE.md 的内容；
     web_search：有没有网页搜索工具（DeepSeek 这类没有）；notebook：记事本的目录 (关于用户的几行, 这个项目的几行)，
     None = 不用记事本；screen：有没有截图工具；apps：有没有打开软件的工具；browser：有没有芸芸的浏览器；
     personality / personality_text：芸芸的性格（"default" / "custom"）和设置里写的那段话（见 character）；
-    user_name：怎么称呼用户（空 = 叫"你"）；rapport：生效的相处笔记（每条一行，rapport.active_lines）。"""
+    user_name：怎么称呼用户（空 = 叫"你"）；rapport：生效的相处笔记（每条一行，rapport.active_lines）；
+    chats：最近几段对话的摘要（每段一行，recollections.recent_lines）。"""
     if language not in _CHARACTER:
         language = "zh"
     web = _WEB[language][0 if web_search else 1]
@@ -345,6 +360,8 @@ def persona(language, working=False, project_notes="", web_search=True, notebook
         text += _NOTEBOOK[language] + about_user + "\n" + ("\n".join(user) or empty)
         if working:
             text += "\n" + this_project + "\n" + ("\n".join(project) or empty)
+    if chats:
+        text += _CHATS[language].format(lines="\n".join(f"- {line}" for line in chats))
     if project_notes.strip():
         text += _PROJECT_NOTES[language] + project_notes.strip()
     return text

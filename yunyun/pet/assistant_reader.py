@@ -29,7 +29,7 @@ from PySide6.QtWidgets import QApplication, QGraphicsOpacityEffect, QHBoxLayout,
 from shiboken6 import isValid
 
 from yunyun import i18n
-from yunyun.assistant import memory, protocol
+from yunyun.assistant import memory, protocol, recollections
 from yunyun.pet.assistant_deck import context_status
 from yunyun.pet.bubble import animate
 from yunyun.pet.side_panel import (
@@ -85,6 +85,7 @@ _ACTION_VERBS = {
     protocol.BROWSER_CLICK_TOOL: "assistant_action_browser_click", protocol.BROWSER_TYPE_TOOL: "assistant_action_browser_type",
     protocol.BROWSER_SELECT_TOOL: "assistant_action_browser_select",
     protocol.BROWSER_DOWNLOAD_TOOL: "assistant_action_browser_download",
+    recollections.RECALL_CHATS_TOOL: "assistant_action_recall_chats",
 }
 _DECISION_COLORS = {"auto": "#8A94A6", "granted": "#2E7D32", "allowed": "#2E7D32", "remembered": "#2E7D32",
                     "denied": "#C62828", "blocked": "#C62828", "stopped": "#B7791F"}

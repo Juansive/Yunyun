@@ -105,7 +105,7 @@ def test_rapport_notes_are_listed_last_and_can_be_edited_deleted_and_cleared(pag
     assert group.child(1).foreground(0).color() == notebook_page.WAITING_COLOR
 
     class FakeDialog:
-        def __init__(self, entry, parent=None, details=True):
+        def __init__(self, entry, parent=None, details=True, **kw):
             assert entry.title == "偶尔开实验室的玩笑" and not details              # 只有一句话
         exec = lambda self: QDialog.DialogCode.Accepted
         values = lambda self: ("偶尔开实验室的玩笑她会笑", "")
@@ -113,7 +113,7 @@ def test_rapport_notes_are_listed_last_and_can_be_edited_deleted_and_cleared(pag
     monkeypatch.setattr(notebook_page, "NotebookEditDialog", FakeDialog)
     page._tree.setCurrentItem(group.child(1))
     group.child(1).setSelected(True)
-    assert page.selected_is_rapport and page.selected_id == "r2"
+    assert page.selected_kind == notebook_page.RAPPORT and page.selected_id == "r2"
     page._edit()
     assert [n.text for n in rapport.load().notes] == ["喜欢被叫主人", "偶尔开实验室的玩笑她会笑"]
     select(page, "r1")
@@ -122,6 +122,37 @@ def test_rapport_notes_are_listed_last_and_can_be_edited_deleted_and_cleared(pag
     monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.StandardButton.Yes)
     page._clear()
     assert rapport.load().notes == [] and memory.load() == [] and page._tree.isHidden()
+
+
+def test_recollections_are_listed_and_can_be_edited_deleted_and_cleared(page, monkeypatch):
+    """回忆（11.4）：放最后一组，新的在前，鼠标停上去看关键词；改、删、全部清空都管它。"""
+    from datetime import datetime, timedelta
+    from yunyun.assistant import recollections
+    day = lambda ago: datetime.now() - timedelta(days=ago)
+    recollections.remember("s1", day(2).isoformat(timespec="seconds"), "聊答辩准备", ["答辩"])
+    recollections.remember("s2", day(0).isoformat(timespec="seconds"), "修好 pytest 的报错", ["pytest"])
+    page.refresh()
+    group = page._tree.topLevelItem(2)
+    assert tree(page)[2] == ("回忆（2 段）", ["修好 pytest 的报错", "聊答辩准备"])
+    assert group.child(0).text(1) == f"{day(0):%m-%d}" and group.child(1).toolTip(0) == "答辩"
+
+    class FakeDialog:
+        def __init__(self, entry, parent=None, details=True, heading="", max_title=0):
+            assert entry.title == "聊答辩准备" and not details and heading == "recollections_edit_title"
+        exec = lambda self: QDialog.DialogCode.Accepted
+        values = lambda self: ("聊答辩准备，周五交初稿", "")
+
+    monkeypatch.setattr(notebook_page, "NotebookEditDialog", FakeDialog)
+    select(page, "s1")
+    assert page.selected_kind == notebook_page.CHAT
+    page._edit()
+    assert [r.summary for r in recollections.load()] == ["聊答辩准备，周五交初稿", "修好 pytest 的报错"]
+    select(page, "s2")
+    page._delete()
+    assert [r.session for r in recollections.load()] == ["s1"]
+    monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.StandardButton.Yes)
+    page._clear()
+    assert recollections.load() == [] and memory.load() == []
 
 
 def test_rapport_switch_is_on_by_default_and_saved(page):

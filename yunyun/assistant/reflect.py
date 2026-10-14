@@ -1,4 +1,5 @@
-"""回想（阶段 11.3）：新的一段对话开始时，芸芸在后台回想上一两段还没回想过的对话，更新相处笔记（rapport.py）。
+"""回想（阶段 11.3）：新的一段对话开始时，芸芸在后台回想上一两段还没回想过的对话，更新相处笔记（rapport.py），
+顺便写一句摘要 + 几个关键词存进回忆（recollections.py，阶段 11.4；同一次调用，几乎不多花钱）。
 
 **只在助手子进程里 import**（直接用 anthropic SDK 调一次模型，芸芸进程不碰）。设计见 docs/助手模式计划.md 11.3：
 - 只读问答文字（transcripts.read_transcript），不读工具输出；太长的只留后面的部分；
@@ -13,7 +14,7 @@ import os
 import re
 from datetime import datetime, timedelta
 
-from yunyun.assistant import protocol, rapport, transcripts
+from yunyun.assistant import protocol, rapport, recollections, transcripts
 from yunyun.assistant.environment import system_proxy_env
 from yunyun.assistant.persona import character
 
@@ -34,13 +35,24 @@ them when they are tired or stressed, running jokes or shared moments, the answe
 Not facts about their projects, files or tasks (another notebook keeps those). No secrets or personal data. No judgments \
 of the user's character. Nothing that would make Yunyun rude, dishonest or unsafe.
 
+You also write a one-line summary of the conversation, so Yunyun can recall it later.
+
 You get Yunyun's preset personality (fixed: never restate it as a note), the current notes, and one past conversation. \
 Reply with JSON only, no other text:
 {{"seen": ["ids of notes this conversation shows again"],
  "revise": [{{"id": "r1", "text": "better wording"}}],
  "drop": ["ids this conversation clearly contradicts"],
- "add": [{{"text": "a new note", "explicit": false}}]}}
-Rules:
+ "add": [{{"text": "a new note", "explicit": false}}],
+ "summary": "what this conversation was about",
+ "keywords": ["words to find it by"]}}
+Summary and keywords:
+- "summary": one sentence in {language} (under 40 characters for Chinese or Japanese, under 20 words otherwise) from \
+Yunyun's side: what you did together and anything worth following up later (a plan, a deadline, how the user felt), \
+e.g. "Fixed the user's pytest error; they hand in the first draft on Friday". No secrets, passwords or keys.
+- "keywords": 3 to 6 short search words in {language} (topics, project or file names, people).
+- In summaries and notes, refer to the user as "the user" (or the name they asked to be called); never guess their \
+gender (no he / she).
+Rules for the notes:
 - Use only evidence from this conversation. If nothing stands out, return empty lists — most conversations add nothing.
 - "explicit": true only when the user directly asked for it (e.g. "don't call me that", "be more direct with me").
 - At most 3 adds. If an existing note already covers something, put its id in "seen" instead of adding.
@@ -69,8 +81,8 @@ def pending_talks(data, projects_dir, current="", now=None):
     return sorted(found, key=lambda item: item[1], reverse=True)[:MAX_TALKS]
 
 
-def talk_text(talk, language):
-    """一段对话 → 交给模型的问答文字（旧的在前；太长的从前面扔，每个回答截一截）。"""
+def talk_text(talk, language, limit=TALK_CHARS):
+    """一段对话 → 交给模型的问答文字（旧的在前；超过 limit 字从前面扔，每个回答截一截）。"""
     me = "芸芸" if language in ("zh", "ja") else "Yunyun"
     lines, size = [], 0
     for turn in reversed(talk.turns):
@@ -78,7 +90,7 @@ def talk_text(talk, language):
         if len(answer) > ANSWER_CHARS:
             answer = answer[:ANSWER_CHARS] + "…"
         block = f"User: {' '.join(turn.question.split())}\n{me}: {answer or '(no answer)'}"
-        if size + len(block) > TALK_CHARS and lines:
+        if size + len(block) > limit and lines:
             break
         lines.append(block)
         size += len(block)
@@ -148,9 +160,12 @@ async def reflect_recent(settings, api_key, language, emit, current="", projects
             log.info("回想没做成：%s", type(e).__name__)
             return
         cost = rates.cost(input_tokens=input_tokens, output_tokens=output_tokens) if rates else 0.0
+        changes = parse(reply)
         data = rapport.load()   # 调模型的时候设置页可能改过笔记：重新读
-        outcome = rapport.apply(data, parse(reply), talk.session_id, updated)
+        outcome = rapport.apply(data, changes, talk.session_id, updated)
         rapport.save(data)
+        recollections.remember(talk.session_id, updated, changes.get("summary"), changes.get("keywords"), talk.cwd,
+                               now=now)
         log.info("回想了一段对话（%d 轮）：加了 %d 条，%d 条开始生效，约 %.4f 美元", len(talk.turns), outcome.added,
                  outcome.activated, cost)
         emit(protocol.Reflected(cost, outcome.added, outcome.activated))
