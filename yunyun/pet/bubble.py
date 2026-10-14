@@ -149,6 +149,12 @@ class Bubble(QWidget):
         self.hide()
         self.expired.emit(self)
 
+    def mousePressEvent(self, event):
+        """点一下就收起（提醒的气泡要留 30 秒，看过了就点掉；阶段 11.5）。"""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._hide_timer.stop()
+            self._on_timeout()
+
     def hideEvent(self, event):
         self._anim_timer.stop()  # 看不见时就别再跑动画了，省 CPU
         super().hideEvent(event)

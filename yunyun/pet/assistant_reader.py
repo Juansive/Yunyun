@@ -86,6 +86,8 @@ _ACTION_VERBS = {
     protocol.BROWSER_SELECT_TOOL: "assistant_action_browser_select",
     protocol.BROWSER_DOWNLOAD_TOOL: "assistant_action_browser_download",
     recollections.RECALL_CHATS_TOOL: "assistant_action_recall_chats",
+    protocol.SET_REMINDER_TOOL: "assistant_action_set_reminder", protocol.LIST_REMINDERS_TOOL: "assistant_action_reminders",
+    protocol.CANCEL_REMINDER_TOOL: "assistant_action_cancel_reminder",
 }
 _DECISION_COLORS = {"auto": "#8A94A6", "granted": "#2E7D32", "allowed": "#2E7D32", "remembered": "#2E7D32",
                     "denied": "#C62828", "blocked": "#C62828", "stopped": "#B7791F"}

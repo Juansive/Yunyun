@@ -30,6 +30,7 @@ SAMPLES = [
     protocol.BrowserChanged(True),
     protocol.Downloaded("a.zip", "C:\\Users\\me\\Downloads\\a.zip", True),
     protocol.Reflected(0.006, 1, 2),
+    protocol.RemindersChanged(),
     protocol.Quit(),
     protocol.Ready("anthropic", "claude-haiku-4-5"),
     protocol.TextDelta("你好～"),

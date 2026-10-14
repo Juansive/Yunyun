@@ -266,6 +266,20 @@ class BrowserChanged:
     open: bool
 
 
+# 提醒（阶段 11.5，assistant/tools/reminders.py）：设 / 看 / 取消，都不用问。提醒存在 notify/reminders.py 的文件里，
+# 到点由芸芸本体响；工具改了以后发 RemindersChanged，芸芸马上重新排时间
+SET_REMINDER_TOOL = "mcp__yunyun__set_reminder"
+LIST_REMINDERS_TOOL = "mcp__yunyun__list_reminders"
+CANCEL_REMINDER_TOOL = "mcp__yunyun__cancel_reminder"
+REMINDER_TOOLS = (SET_REMINDER_TOOL, LIST_REMINDERS_TOOL, CANCEL_REMINDER_TOOL)
+
+
+@_message
+class RemindersChanged:
+    """助手加了 / 取消了提醒（11.5）：芸芸重新读提醒、排下一次响的时间。"""
+    TYPE: ClassVar[str] = "reminders_changed"
+
+
 DECISIONS = (
     "auto",        # 按规则不用问（读文件、搜索、网页）
     "granted",     # 你之前选了"这次对话都允许"
@@ -367,4 +381,5 @@ ERROR_KINDS = (
 
 COMMANDS = (Ask, Interrupt, PermissionReply, Rewind, ScreenshotReply, OpenAppReply, Quit)
 EVENTS = (Ready, TextDelta, ToolStarted, ToolFinished, PermissionRequest, ToolDecision, ScreenshotRequest,
-          OpenAppRequest, BrowserChanged, Downloaded, TurnFinished, Compacting, Compacted, Reflected, Rewound, Error)
+          OpenAppRequest, BrowserChanged, Downloaded, TurnFinished, Compacting, Compacted, Reflected, RemindersChanged,
+          Rewound, Error)

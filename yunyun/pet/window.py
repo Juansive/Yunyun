@@ -17,6 +17,7 @@ from PySide6.QtGui import QDesktopServices, QGuiApplication, QPainter, QPixmap
 from PySide6.QtWidgets import QApplication, QWidget
 
 from yunyun import i18n, logs, shortcut
+from yunyun.notify import reminders
 from yunyun.features import assistant_available
 from yunyun.ai import settings as ai_settings
 from yunyun.pet import winapi
@@ -770,6 +771,9 @@ class PetWindow(QWidget):
             assistant.triggered.connect(self.open_assistant)
             menu.addAction(assistant)
             menu.addAction(glyph_icon(Icon.HISTORY), tr("menu_assistant_history"), self.open_assistant_history)   # 以前的对话，可以接着聊
+            pending = len(reminders.load())   # 提醒（11.5）：有的话放一项，打开设置 → 提醒
+            if pending:
+                menu.addAction(glyph_icon(Icon.CLOCK), tr("menu_reminders", pending), lambda: self.open_settings("reminders"))
             if self._assistant is not None and self._assistant.last_answer:   # 语音：再读一遍（2026-10-13 用户要的）
                 menu.addAction(glyph_icon(Icon.SPEAK), tr("menu_assistant_read_again"), self._assistant.read_again)
             if self._assistant is not None:

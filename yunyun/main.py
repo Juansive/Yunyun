@@ -23,6 +23,7 @@ from yunyun.notify.quiet import QuietHours
 from yunyun.pet.card_deck import MailCard, mailbox_label
 from yunyun.pet.sprites import load_sprites
 from yunyun.pet.state import StateMachine
+from yunyun.pet.reminder_clock import ReminderClock
 from yunyun.pet.tray import PetTray
 from yunyun.pet.window import PetWindow
 
@@ -101,10 +102,14 @@ def main():
     updates.start()
 
     # 托盘图标（极少数系统环境没有托盘，那就不显示）
+    tray = None
     if QSystemTrayIcon.isSystemTrayAvailable():
         tray = PetTray(pet, QIcon(sprites.tray))
         tray.show()
         app.aboutToQuit.connect(tray.hide)  # 退出时立刻移除图标，避免托盘里残留"幽灵图标"
+
+    # ---- 提醒（阶段 11.5）：到点冒气泡 + Windows 系统通知（托盘图标弹出）+ 说出来；错过的打开后补一句 ----
+    pet.reminder_clock = ReminderClock(pet, notify=tray.notify if tray is not None else None)
 
     # 首次使用：还没添加邮箱，就打个招呼并打开邮箱设置窗口
     if not has_mail_account():

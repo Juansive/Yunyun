@@ -27,6 +27,7 @@ from yunyun.pet.assistant_page import AssistantSettingsPage
 from yunyun.pet.history_page import HistoryPage
 from yunyun.pet.mail_page import MailAccountsPage
 from yunyun.pet.notebook_page import NotebookPage
+from yunyun.pet.reminders_page import RemindersPage
 from yunyun.pet.voice_page import VoicePage
 from yunyun.pet.watch_page import WatchPage
 from yunyun.pet.bubble import animate
@@ -35,8 +36,8 @@ from yunyun.pet.theme import SETTINGS_STYLE, Sidebar, Toggle
 from yunyun.pet.widgets import StatusLabel, note
 
 # 页面顺序；open_settings(page) 用这些名字。"旁观"（阶段 8）和助手模式无关，打包版也有
-PAGES = ["general", "mail", "ai", "assistant", "notebook", "voice", "watch", "history", "about"]
-ASSISTANT_PAGES = ("assistant", "notebook", "voice")   # 助手模式的页：这个版本没有助手模式时藏起来
+PAGES = ["general", "mail", "ai", "assistant", "notebook", "voice", "reminders", "watch", "history", "about"]
+ASSISTANT_PAGES = ("assistant", "notebook", "voice", "reminders")   # 助手模式的页：这个版本没有助手模式时藏起来
 
 
 class SettingsWindow(FramedDialog):
@@ -97,6 +98,7 @@ class SettingsWindow(FramedDialog):
         self.voice_page = VoicePage()   # 语音（阶段 7）
         self.voice_page.apply_hotkey = self._pet.apply_voice_settings
         self.voice_page.suspend_hotkey = self._pet.suspend_voice_hotkey
+        self.reminders_page = RemindersPage()   # 提醒（阶段 11.5）
         self.watch_page = WatchPage()
         self.watch_page.test_requested.connect(self._test_watch)
         self.history_page = HistoryPage(self._pet.history, self._pet.mail_accounts)
@@ -107,7 +109,7 @@ class SettingsWindow(FramedDialog):
 
         self._stack = QStackedWidget()  # 一叠页面，同时只显示一页（顺序和 PAGES 一样）
         for widget in (self.general_page, self.mail_page, self.ai_page, self.assistant_page, self.notebook_page,
-                       self.voice_page, self.watch_page, self.history_page, self.about_page):
+                       self.voice_page, self.reminders_page, self.watch_page, self.history_page, self.about_page):
             self._stack.addWidget(widget)
         # 左栏：浅蓝紫渐变的面板，上面芸芸的头像和名字，中间页面列表，最下面版本号
         self._panel = QFrame(objectName="sidebarPanel")

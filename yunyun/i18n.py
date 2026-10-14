@@ -412,6 +412,39 @@ TEXTS = {
         "en": "I'm right here~",
         "ja": "ここにいるよ～",
     },
+    # 提醒（阶段 11.5）：到点时气泡 / 系统通知；错过的补一句；设置 → 提醒
+    "reminder_title": {"zh": "芸芸提醒你", "en": "Reminder from Yunyun", "ja": "芸芸からのお知らせ"},
+    "reminder_ring": {"zh": "⏰ 提醒：{}", "en": "⏰ Reminder: {}", "ja": "⏰ リマインダー：{}"},
+    "reminder_missed": {"zh": "⏰ 刚才错过了一个提醒（{}）：{}", "en": "⏰ You missed a reminder ({}): {}",
+                        "ja": "⏰ さっきのリマインダー（{}）：{}"},
+    "page_reminders": {"zh": "提醒", "en": "Reminders", "ja": "リマインダー"},
+    "reminders_intro": {
+        "zh": "让芸芸提醒你：在助手模式里说\"25 分钟后叫我\"\"每天下午 3 点提醒我喝水\"。"
+              "到点芸芸冒气泡、弹 Windows 通知（助手模式开着时还会说出来）；芸芸没开着时错过的，下次打开补一句。",
+        "en": "Ask Yunyun in assistant mode: \"remind me in 25 minutes\", \"remind me to drink water every day at 3 pm\". "
+              "At that time she shows a bubble and a Windows notification (and says it aloud if assistant mode is "
+              "open); if she wasn't running, she tells you about missed ones next time.",
+        "ja": "アシスタントモードで「25 分後に呼んで」「毎日午後 3 時に水を飲むよう知らせて」と頼んでください。"
+              "時間になると吹き出しと Windows の通知で知らせます（アシスタントモードが開いていれば読み上げも）。"
+              "芸芸が起動していなかったときの分は、次に起動したときに知らせます。",
+    },
+    "reminders_empty": {"zh": "还没有提醒。", "en": "No reminders yet.", "ja": "リマインダーはまだありません。"},
+    "reminders_when": {"zh": "时间", "en": "When", "ja": "時間"},
+    "reminders_repeat": {"zh": "重复", "en": "Repeat", "ja": "繰り返し"},
+    "reminders_text": {"zh": "内容", "en": "What", "ja": "内容"},
+    "reminders_repeat_": {"zh": "—", "en": "—", "ja": "—"},
+    "reminders_repeat_daily": {"zh": "每天", "en": "Every day", "ja": "毎日"},
+    "reminders_repeat_weekdays": {"zh": "工作日", "en": "Weekdays", "ja": "平日"},
+    "reminders_repeat_weekly": {"zh": "每周", "en": "Every week", "ja": "毎週"},
+    "weekday_names": {"zh": "周一,周二,周三,周四,周五,周六,周日", "en": "Mon,Tue,Wed,Thu,Fri,Sat,Sun",
+                      "ja": "月,火,水,木,金,土,日"},
+    "reminders_today": {"zh": "今天 {}", "en": "Today {}", "ja": "今日 {}"},
+    "reminders_tomorrow": {"zh": "明天 {}", "en": "Tomorrow {}", "ja": "明日 {}"},
+    "reminders_delete": {"zh": "删除", "en": "Delete", "ja": "削除"},
+    "reminders_clear": {"zh": "全部清空", "en": "Clear all", "ja": "すべて削除"},
+    "reminders_clear_confirm": {"zh": "确定要删掉全部 {} 个提醒吗？", "en": "Delete all {} reminders?",
+                                "ja": "{} 件のリマインダーをすべて削除しますか？"},
+    "menu_reminders": {"zh": "提醒（{}）…", "en": "Reminders ({})…", "ja": "リマインダー（{}）…"},
     "no_new_mail": {
         "zh": "现在没有新邮件哦～",
         "en": "No new mail right now~",
@@ -854,6 +887,8 @@ TEXTS = {
     "assistant_tool_recall": {"zh": "正在翻记事本……", "en": "Checking the notebook…", "ja": "メモ帳を見ています…"},
     "assistant_tool_recall_chats": {"zh": "正在翻回忆……", "en": "Looking back at earlier chats…",
                                     "ja": "前の会話を思い出しています…"},
+    "assistant_tool_set_reminder": {"zh": "正在设提醒……", "en": "Setting a reminder…", "ja": "リマインダーを設定しています…"},
+    "assistant_tool_reminders": {"zh": "正在看提醒……", "en": "Checking reminders…", "ja": "リマインダーを確認しています…"},
     "assistant_tool_forget": {"zh": "正在从记事本里划掉……", "en": "Crossing it out of the notebook…",
                               "ja": "メモ帳から消しています…"},
     "assistant_tool_screenshot": {"zh": "正在看屏幕……", "en": "Looking at the screen…", "ja": "画面を見ています…"},
@@ -1129,6 +1164,9 @@ TEXTS = {
     "assistant_action_remember": {"zh": "记一条", "en": "Note", "ja": "メモ"},
     "assistant_action_recall": {"zh": "翻记事本", "en": "Check notes", "ja": "メモを見る"},
     "assistant_action_recall_chats": {"zh": "翻回忆", "en": "Recall chats", "ja": "前の会話を見る"},
+    "assistant_action_set_reminder": {"zh": "设提醒", "en": "Set reminder", "ja": "リマインダー設定"},
+    "assistant_action_reminders": {"zh": "看提醒", "en": "List reminders", "ja": "リマインダー確認"},
+    "assistant_action_cancel_reminder": {"zh": "取消提醒", "en": "Cancel reminder", "ja": "リマインダー取消"},
     "assistant_action_forget": {"zh": "划掉一条", "en": "Remove note", "ja": "メモを消す"},
     "assistant_action_screenshot": {"zh": "看屏幕", "en": "Screenshot", "ja": "画面を見る"},
     "assistant_action_find_app": {"zh": "找软件", "en": "Find app", "ja": "ソフトを探す"},

@@ -48,6 +48,8 @@ _TOOL_TEXT = {
     protocol.BROWSER_TYPE_TOOL: "assistant_tool_browser_type", protocol.BROWSER_SELECT_TOOL: "assistant_tool_browser_select",
     protocol.BROWSER_DOWNLOAD_TOOL: "assistant_tool_browser_download",
     recollections.RECALL_CHATS_TOOL: "assistant_tool_recall_chats",
+    protocol.SET_REMINDER_TOOL: "assistant_tool_set_reminder", protocol.LIST_REMINDERS_TOOL: "assistant_tool_reminders",
+    protocol.CANCEL_REMINDER_TOOL: "assistant_tool_reminders",
 }
 SETTINGS_ERRORS = {"no_key", "auth", "model", "budget", "reply_budget"}   # 这几种错误在设置页能改好（界面可以给个"去设置"）
 UNDO_NOTE = transcripts.UNDO_NOTE   # 历史对话读回来时要认出它、去掉它，所以放在 transcripts 里
@@ -124,6 +126,7 @@ class AssistantSession(QObject):
     open_app_requested = Signal(object)     # 大脑要打开软件（protocol.OpenAppRequest，你已同意）：打开后调 answer
     downloaded = Signal(object)             # 芸芸的浏览器下载好了一个文件（protocol.Downloaded）
     rapport_learned = Signal(int)           # 回想以前的对话后，有几条相处笔记开始生效（11.3）：冒个气泡
+    reminders_changed = Signal()            # 助手加了 / 取消了提醒（11.5）：芸芸重新排下一次响的时间
 
     def __init__(self, parent=None, make_process=None):
         """make_process(语言, parent, resume=会话编号) → 和 AssistantProcess 一样的对象；不传就用 default_process。"""
@@ -368,6 +371,8 @@ class AssistantSession(QObject):
             self.browser_open = event.open
         elif isinstance(event, protocol.Downloaded):
             self.downloaded.emit(event)
+        elif isinstance(event, protocol.RemindersChanged):   # 助手加了 / 取消了提醒（11.5）：芸芸重新排时间
+            self.reminders_changed.emit()
         elif isinstance(event, protocol.Reflected):   # 后台回想完一段以前的对话（11.3）：记账；有新的相处笔记生效就告诉界面
             ledger.record(event.cost_usd)
             if event.activated:

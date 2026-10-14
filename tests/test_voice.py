@@ -487,6 +487,21 @@ def menu_texts(pet):
     return [a.text() for a in pet._build_menu().actions() if not a.isSeparator()]
 
 
+def test_reminders_are_said_aloud_unless_voice_is_off(voice_world):
+    """提醒到点（11.5）：助手模式开着就说出来；"芸芸出声回答"选了"不说"就不说。另外助手改了提醒，芸芸的闹钟马上重新排。"""
+    pet, _, brain, voices = voice_world
+    pet.assistant.say_aloud("喝水")
+    voices[0].say(protocol.Ready())
+    assert voices[0].said == ["喝水"]
+    voice_settings.save_settings(VoiceSettings("never"))
+    pet.assistant.say_aloud("站起来活动一下")
+    assert voices[0].said == ["喝水"]
+    checks = []
+    pet.reminder_clock = type("Clock", (), {"check": lambda self: checks.append(1)})()
+    brain.say(assistant_protocol.RemindersChanged())
+    assert checks == [1]
+
+
 def test_answer_is_read_aloud_while_it_is_written(voice_world, qapp):
     pet, machine, brain, voices = voice_world
     voice_settings.save_settings(VoiceSettings("always", ""))

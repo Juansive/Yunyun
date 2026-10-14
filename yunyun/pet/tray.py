@@ -8,6 +8,8 @@ from PySide6.QtWidgets import QSystemTrayIcon
 from yunyun import i18n
 from yunyun.pet.menu import DANGER, Icon, KeepOpenMenu, glyph_icon
 
+NOTIFY_MS = 10_000   # 系统通知显示多久（Windows 自己也有上限）
+
 
 class PetTray(QSystemTrayIcon):
     def __init__(self, pet, icon):
@@ -23,6 +25,10 @@ class PetTray(QSystemTrayIcon):
         self.activated.connect(self._on_activated)
         pet.language_changed.connect(self._update_tooltip)
         self._update_tooltip()
+
+    def notify(self, title, text):
+        """Windows 系统通知（右下角弹出、进通知中心；提醒到点时用，阶段 11.5）。"""
+        self.showMessage(title, text, self.icon(), NOTIFY_MS)
 
     def _update_tooltip(self):
         self.setToolTip(i18n.tr("app_name"))  # 鼠标悬停在托盘图标上时显示的文字

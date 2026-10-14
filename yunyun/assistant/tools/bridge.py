@@ -41,6 +41,10 @@ class Bridge:
         finally:
             self._pending.pop(request_id, None)
 
+    def notify(self, event):
+        """只告诉芸芸一声、不等回答（提醒改了：RemindersChanged）。"""
+        self._emit(event)
+
     def reply(self, reply):
         pending = self._pending.get(reply.request_id)
         if pending is None:

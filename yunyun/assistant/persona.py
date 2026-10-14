@@ -214,6 +214,20 @@ _APPS = {
            "- ほかのソフトの操作はまだできません。"),
 }
 
+# 提醒（阶段 11.5：tools/reminders.py），和打开软件一样在有 bridge 时才有
+_REMINDERS = {
+    "zh": "\n- 你能给用户设提醒：set_reminder（到点芸芸冒气泡、弹 Windows 通知、说出来，可以每天 / 工作日 / 每周重复），"
+          "list_reminders 看、cancel_reminder 取消；都不用先问。相对时间（\"25 分钟后\"）用 in_minutes；"
+          "设好了在回答里说清楚几点提醒什么。",
+    "en": "\n- You can set reminders for the user: set_reminder (at that time Yunyun shows a bubble and a Windows "
+          "notification and says it aloud; it can repeat daily, on weekdays or weekly), list_reminders to see them, "
+          "cancel_reminder to cancel; no need to ask first. Use in_minutes for relative times (\"in 25 minutes\"); "
+          "afterwards say clearly when and what you'll remind them of.",
+    "ja": "\n- ユーザーにリマインダーを設定できます：set_reminder（時間になると芸芸が吹き出し・Windows の通知・読み上げで知らせます。"
+          "毎日・平日・毎週の繰り返しも可）、list_reminders で確認、cancel_reminder で取り消し。どれも先に聞く必要はありません。"
+          "「25 分後」のような相対時間は in_minutes を使い、設定したら何時に何を知らせるかを回答ではっきり伝えてください。",
+}
+
 # 芸芸的浏览器（阶段 6.2：tools/browser.py）
 _BROWSER = {
     "zh": "\n- 你有自己的浏览器（一个用户看得见的 Edge 窗口，登录状态和用户自己的浏览器分开）：browser_open 打开网页、"
@@ -345,6 +359,8 @@ def persona(language, working=False, project_notes="", web_search=True, notebook
         language = "zh"
     web = _WEB[language][0 if web_search else 1]
     limits = _SCREEN[language][0 if screen else 1] + "\n" + _APPS[language][0 if apps else 1]
+    if apps:
+        limits += _REMINDERS[language]
     if browser:
         limits += _BROWSER[language]
     name = user_name.strip()
