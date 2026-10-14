@@ -272,6 +272,9 @@ SET_REMINDER_TOOL = "mcp__yunyun__set_reminder"
 LIST_REMINDERS_TOOL = "mcp__yunyun__list_reminders"
 CANCEL_REMINDER_TOOL = "mcp__yunyun__cancel_reminder"
 REMINDER_TOOLS = (SET_REMINDER_TOOL, LIST_REMINDERS_TOOL, CANCEL_REMINDER_TOOL)
+# 剪贴板（11.5，assistant/tools/clipboard.py）：放进去不用问，看要问
+COPY_TO_CLIPBOARD_TOOL = "mcp__yunyun__copy_to_clipboard"
+READ_CLIPBOARD_TOOL = "mcp__yunyun__read_clipboard"
 
 
 @_message

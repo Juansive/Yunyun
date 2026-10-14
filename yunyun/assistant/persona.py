@@ -214,18 +214,24 @@ _APPS = {
            "- ほかのソフトの操作はまだできません。"),
 }
 
-# 提醒（阶段 11.5：tools/reminders.py），和打开软件一样在有 bridge 时才有
-_REMINDERS = {
+# 桌面上的小工具（阶段 11.5：tools/reminders.py、clipboard.py），和打开软件一样在有 bridge 时才有
+_DESKTOP = {
     "zh": "\n- 你能给用户设提醒：set_reminder（到点芸芸冒气泡、弹 Windows 通知、说出来，可以每天 / 工作日 / 每周重复），"
           "list_reminders 看、cancel_reminder 取消；都不用先问。相对时间（\"25 分钟后\"）用 in_minutes；"
-          "设好了在回答里说清楚几点提醒什么。",
+          "设好了在回答里说清楚几点提醒什么。"
+          "\n- 你能把文字放进剪贴板（copy_to_clipboard，不用问，比如替用户写好的回复，让用户自己粘贴发送），"
+          "也能看用户的剪贴板（read_clipboard，芸芸会先问用户）。",
     "en": "\n- You can set reminders for the user: set_reminder (at that time Yunyun shows a bubble and a Windows "
           "notification and says it aloud; it can repeat daily, on weekdays or weekly), list_reminders to see them, "
           "cancel_reminder to cancel; no need to ask first. Use in_minutes for relative times (\"in 25 minutes\"); "
-          "afterwards say clearly when and what you'll remind them of.",
+          "afterwards say clearly when and what you'll remind them of."
+          "\n- You can put text on the clipboard (copy_to_clipboard, no need to ask; e.g. a reply you drafted for the "
+          "user to paste and send themselves) and read the user's clipboard (read_clipboard; Yunyun asks them first).",
     "ja": "\n- ユーザーにリマインダーを設定できます：set_reminder（時間になると芸芸が吹き出し・Windows の通知・読み上げで知らせます。"
           "毎日・平日・毎週の繰り返しも可）、list_reminders で確認、cancel_reminder で取り消し。どれも先に聞く必要はありません。"
-          "「25 分後」のような相対時間は in_minutes を使い、設定したら何時に何を知らせるかを回答ではっきり伝えてください。",
+          "「25 分後」のような相対時間は in_minutes を使い、設定したら何時に何を知らせるかを回答ではっきり伝えてください。"
+          "\n- テキストをクリップボードに入れられます（copy_to_clipboard、確認不要。たとえばユーザーが自分で貼り付けて送る返信の下書き）。"
+          "ユーザーのクリップボードを見ることもできます（read_clipboard、芸芸が先にユーザーに確認します）。",
 }
 
 # 芸芸的浏览器（阶段 6.2：tools/browser.py）
@@ -360,7 +366,7 @@ def persona(language, working=False, project_notes="", web_search=True, notebook
     web = _WEB[language][0 if web_search else 1]
     limits = _SCREEN[language][0 if screen else 1] + "\n" + _APPS[language][0 if apps else 1]
     if apps:
-        limits += _REMINDERS[language]
+        limits += _DESKTOP[language]
     if browser:
         limits += _BROWSER[language]
     name = user_name.strip()

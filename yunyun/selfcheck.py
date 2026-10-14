@@ -93,6 +93,7 @@ def _claude_code():
     """助手模式的入口会出现；助手子进程（Agent SDK、芸芸的工具）和"测试连接"小进程（官方 SDK）要用的模块都在；
     SDK 找得到它自带的 claude.exe，而且能启动。"""
     import anthropic  # noqa: F401
+    import win32clipboard  # noqa: F401（剪贴板的工具，11.5：用到时才 import）
     import yunyun.assistant.check  # noqa: F401
     import yunyun.assistant.claude_brain  # noqa: F401
     from claude_agent_sdk._internal.transport.subprocess_cli import SubprocessCLITransport

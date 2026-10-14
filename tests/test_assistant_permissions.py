@@ -103,6 +103,14 @@ def test_saved_long_outputs_of_claude_code_can_be_read_without_asking(ws):
     assert decide("Read", {"file_path": str(saved / "a.txt")}, ws / "proj").action == ASK   # 没告诉它在哪：问
 
 
+def test_clipboard_copy_is_free_but_reading_asks(ws):
+    """剪贴板（11.5，用户定的）：放进去不用问；看剪贴板每次问（可能有密码），可以"这次对话都允许"。"""
+    assert decide("mcp__yunyun__copy_to_clipboard", {"text": "x"}, ws / "proj").action == ALLOW
+    asked = decide("mcp__yunyun__read_clipboard", {}, ws / "proj")
+    assert (asked.action, asked.kind, asked.grant) == (ASK, "clipboard", (("clipboard",),))
+    assert decide("mcp__yunyun__read_clipboard", {}, ws / "proj", {("clipboard",)}).action == ALLOW
+
+
 def test_home_folder_shortcut_is_outside(ws):
     assert decide("Read", {"file_path": "~/.ssh/id_rsa"}, ws / "proj").action == ASK
 
