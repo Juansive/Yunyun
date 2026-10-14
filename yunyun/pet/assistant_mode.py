@@ -49,7 +49,7 @@ from yunyun.assistant import apps, protocol
 from yunyun.assistant import settings as assistant_settings
 from yunyun.assistant.session import SETTINGS_ERRORS, AssistantSession, error_text
 from yunyun.assistant.transcripts import tool_detail
-from yunyun.pet import assistant_history, screen_capture, winapi
+from yunyun.pet import assistant_history, screen_capture, window_control, winapi
 from yunyun.pet.assistant_confirm import AssistantConfirm, element_text, title_key
 from yunyun.pet.assistant_deck import AssistantCard, AssistantDeck, markdown_to_plain
 from yunyun.pet.assistant_history_panel import AssistantHistoryPanel
@@ -208,6 +208,7 @@ class AssistantMode(QObject):
         self.session.compact_changed.connect(self._on_compact_changed)
         self.session.screenshot_requested.connect(self._on_screenshot_requested)
         self.session.open_app_requested.connect(self._on_open_app_requested)
+        self.session.window_requested.connect(self._on_window_requested)
         self.session.downloaded.connect(self._on_downloaded)
         self.session.rapport_learned.connect(self._on_rapport_learned)
         self.session.reminders_changed.connect(self._on_reminders_changed)
@@ -823,6 +824,16 @@ class AssistantMode(QObject):
         else:
             target, data, width, height = result
             reply = protocol.ScreenshotReply(request.request_id, True, data, "image/jpeg", width, height, target)
+        self.session.answer(reply)
+
+    def _on_window_requested(self, request):
+        """窗口工具（11.5）：在芸芸本体列出 / 切换 / 最小化 / 还原（芸芸是前台程序，Windows 才让切），马上回答。"""
+        if request.action == "list":
+            reply = protocol.WindowReply(request.request_id, True,
+                                         window_control.describe(window_control.list_windows()))
+        else:
+            ok, detail = window_control.act(request.action, request.window)
+            reply = protocol.WindowReply(request.request_id, ok, detail)
         self.session.answer(reply)
 
     def _on_open_app_requested(self, request):

@@ -102,6 +102,12 @@ def no_real_assistant(monkeypatch, tmp_path):
     monkeypatch.setattr(apps, "_query_start_apps", lambda: [dict(item) for item in FAKE_APPS])
     monkeypatch.setattr(apps, "_startfile", opened.append)
     monkeypatch.setattr(apps, "opened", opened, raising=False)
+    # 窗口（11.5）：不列你真的窗口（换成 FAKE_WINDOWS），绝不真的切换 / 最小化（做过的记在 window_control.applied 里）
+    from yunyun.pet import window_control
+    applied = []
+    monkeypatch.setattr(window_control, "_enumerate", lambda: [window_control.WindowInfo(*w) for w in FAKE_WINDOWS])
+    monkeypatch.setattr(window_control, "_apply", lambda action, hwnd: applied.append((action, hwnd)) or True)
+    monkeypatch.setattr(window_control, "applied", applied, raising=False)
     # 芸芸的浏览器（阶段 6.2）：绝不真的启动 Playwright / Edge；配置文件夹也在临时目录
     from yunyun.assistant import browser
 
@@ -137,6 +143,12 @@ def no_real_assistant(monkeypatch, tmp_path):
     yield
     apps.clear_cache()
 
+
+FAKE_WINDOWS = [   # 假的窗口：(句柄, 标题, 程序, 进程号, 最小化了没有)；进程号 0 的那个当作芸芸自己（测试里传 own_pid=0）
+    (101, "微信", "WeChat.exe", 11, False),
+    (102, "论文初稿.docx - Word", "WINWORD.EXE", 12, True),
+    (103, "芸芸", "python.exe", 0, False),
+]
 
 FAKE_APPS = [   # 假的开始菜单（Get-StartApps 的样子）
     {"Name": "计算器", "AppID": "Microsoft.WindowsCalculator_8wekyb3d8bbwe!App"},

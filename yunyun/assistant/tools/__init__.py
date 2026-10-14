@@ -4,7 +4,7 @@
 
 **只在助手子进程里 import**（会 import SDK）。现在有：记事本的三个工具（notebook.py，阶段 10）、截图（screen.py，阶段 5）、
 找软件 / 打开软件（apps.py，阶段 6）、芸芸的浏览器（browser.py，阶段 6.2）、翻回忆（recall_chats.py，阶段 11.4）、
-提醒、剪贴板（reminders.py、clipboard.py，阶段 11.5）。截图和打开软件要请芸芸进程去做，走 bridge.py。
+提醒、剪贴板、窗口（reminders.py、clipboard.py、windows.py，阶段 11.5）。截图和打开软件要请芸芸进程去做，走 bridge.py。
 新加工具：在这里挂上，在 permissions.decide 里加规则（不然一律拒绝），界面上的名字加进 session / 阅读框的对照表。
 """
 from claude_agent_sdk import create_sdk_mcp_server
@@ -17,6 +17,7 @@ from yunyun.assistant.tools.notebook import notebook_tools
 from yunyun.assistant.tools.recall_chats import recall_chats_tools
 from yunyun.assistant.tools.reminders import reminder_tools
 from yunyun.assistant.tools.screen import screen_tools
+from yunyun.assistant.tools.windows import window_tools
 
 SERVER = "yunyun"
 
@@ -30,7 +31,7 @@ def yunyun_server(workspace, notebook=True, bridge=None, screen=False, browser=N
     if chats is not None:
         tools += recall_chats_tools(chats, language)
     if bridge is not None:
-        tools += (app_tools(bridge) + reminder_tools(bridge) + clipboard_tools()
+        tools += (app_tools(bridge) + reminder_tools(bridge) + clipboard_tools() + window_tools(bridge)
                   + (screen_tools(bridge) if screen else []))
     if browser is not None:
         tools += browser_tools(browser)

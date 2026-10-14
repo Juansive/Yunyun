@@ -51,6 +51,7 @@ _TOOL_TEXT = {
     protocol.SET_REMINDER_TOOL: "assistant_tool_set_reminder", protocol.LIST_REMINDERS_TOOL: "assistant_tool_reminders",
     protocol.CANCEL_REMINDER_TOOL: "assistant_tool_reminders",
     protocol.COPY_TO_CLIPBOARD_TOOL: "assistant_tool_copy", protocol.READ_CLIPBOARD_TOOL: "assistant_tool_read_clipboard",
+    protocol.LIST_WINDOWS_TOOL: "assistant_tool_windows", protocol.WINDOW_ACTION_TOOL: "assistant_tool_windows",
 }
 SETTINGS_ERRORS = {"no_key", "auth", "model", "budget", "reply_budget"}   # 这几种错误在设置页能改好（界面可以给个"去设置"）
 UNDO_NOTE = transcripts.UNDO_NOTE   # 历史对话读回来时要认出它、去掉它，所以放在 transcripts 里
@@ -125,6 +126,7 @@ class AssistantSession(QObject):
     compact_changed = Signal(object)  # 某一轮答完后的"整理前面的对话"开始了 / 做完了（Turn.compact）
     screenshot_requested = Signal(object)   # 大脑要看屏幕（protocol.ScreenshotRequest）：界面截好后调 answer
     open_app_requested = Signal(object)     # 大脑要打开软件（protocol.OpenAppRequest，你已同意）：打开后调 answer
+    window_requested = Signal(object)       # 大脑要列出 / 切换窗口（protocol.WindowRequest，11.5）：做完调 answer
     downloaded = Signal(object)             # 芸芸的浏览器下载好了一个文件（protocol.Downloaded）
     rapport_learned = Signal(int)           # 回想以前的对话后，有几条相处笔记开始生效（11.3）：冒个气泡
     reminders_changed = Signal()            # 助手加了 / 取消了提醒（11.5）：芸芸重新排下一次响的时间
@@ -361,13 +363,14 @@ class AssistantSession(QObject):
             self._on_rewound(event)
         elif isinstance(event, (protocol.Compacting, protocol.Compacted)):
             self._on_compact(event)
-        elif isinstance(event, (protocol.ScreenshotRequest, protocol.OpenAppRequest)):
-            screenshot = isinstance(event, protocol.ScreenshotRequest)
+        elif isinstance(event, (protocol.ScreenshotRequest, protocol.OpenAppRequest, protocol.WindowRequest)):
+            reply, signal = {protocol.ScreenshotRequest: (protocol.ScreenshotReply, self.screenshot_requested),
+                             protocol.OpenAppRequest: (protocol.OpenAppReply, self.open_app_requested),
+                             protocol.WindowRequest: (protocol.WindowReply, self.window_requested)}[type(event)]
             if turn is None:   # 停下之后迟到的：不做了
-                reply = protocol.ScreenshotReply if screenshot else protocol.OpenAppReply
                 process.send(reply(event.request_id, False, detail="The user stopped the task."))
             else:
-                (self.screenshot_requested if screenshot else self.open_app_requested).emit(event)
+                signal.emit(event)
         elif isinstance(event, protocol.BrowserChanged):
             self.browser_open = event.open
         elif isinstance(event, protocol.Downloaded):

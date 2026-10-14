@@ -28,7 +28,8 @@ def test_web_tools_never_ask(ws, tool):
 
 @pytest.mark.parametrize("tool", ["mcp__yunyun__remember", "mcp__yunyun__recall", "mcp__yunyun__forget",
                                   "mcp__yunyun__screenshot", "mcp__yunyun__recall_chats", "mcp__yunyun__set_reminder",
-                                  "mcp__yunyun__list_reminders", "mcp__yunyun__cancel_reminder"])
+                                  "mcp__yunyun__list_reminders", "mcp__yunyun__cancel_reminder",
+                                  "mcp__yunyun__list_windows", "mcp__yunyun__window_action"])
 def test_notebook_and_screenshot_never_ask(ws, tool):
     """芸芸的记事本（阶段 10）：只动芸芸自己的记事本，你在设置 → 记事本里随时能看、改、删；
     截图（阶段 5）：用户定的不用问（截之前气泡说一声，芸芸自己的窗口不截）；翻回忆（11.4）：只读芸芸自己存的。"""

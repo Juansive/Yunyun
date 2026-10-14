@@ -31,6 +31,8 @@ SAMPLES = [
     protocol.Downloaded("a.zip", "C:\\Users\\me\\Downloads\\a.zip", True),
     protocol.Reflected(0.006, 1, 2),
     protocol.RemindersChanged(),
+    protocol.WindowRequest(1, "switch", "w1234"),
+    protocol.WindowReply(1, True, 'Switched to "微信".'),
     protocol.Quit(),
     protocol.Ready("anthropic", "claude-haiku-4-5"),
     protocol.TextDelta("你好～"),

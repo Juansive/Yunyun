@@ -220,18 +220,25 @@ _DESKTOP = {
           "list_reminders 看、cancel_reminder 取消；都不用先问。相对时间（\"25 分钟后\"）用 in_minutes；"
           "设好了在回答里说清楚几点提醒什么。"
           "\n- 你能把文字放进剪贴板（copy_to_clipboard，不用问，比如替用户写好的回复，让用户自己粘贴发送），"
-          "也能看用户的剪贴板（read_clipboard，芸芸会先问用户）。",
+          "也能看用户的剪贴板（read_clipboard，芸芸会先问用户）。"
+          "\n- 你能看用户开着哪些窗口（list_windows），切换到某个窗口、最小化、还原（window_action）；都不用问。"
+          "不能关窗口；窗口标题可能有隐私，只提和眼前的事有关的。",
     "en": "\n- You can set reminders for the user: set_reminder (at that time Yunyun shows a bubble and a Windows "
           "notification and says it aloud; it can repeat daily, on weekdays or weekly), list_reminders to see them, "
           "cancel_reminder to cancel; no need to ask first. Use in_minutes for relative times (\"in 25 minutes\"); "
           "afterwards say clearly when and what you'll remind them of."
           "\n- You can put text on the clipboard (copy_to_clipboard, no need to ask; e.g. a reply you drafted for the "
-          "user to paste and send themselves) and read the user's clipboard (read_clipboard; Yunyun asks them first).",
+          "user to paste and send themselves) and read the user's clipboard (read_clipboard; Yunyun asks them first)."
+          "\n- You can see which windows the user has open (list_windows) and switch to, minimize or restore one "
+          "(window_action); no need to ask. You can't close windows. Titles can be private: mention only what's "
+          "relevant.",
     "ja": "\n- ユーザーにリマインダーを設定できます：set_reminder（時間になると芸芸が吹き出し・Windows の通知・読み上げで知らせます。"
           "毎日・平日・毎週の繰り返しも可）、list_reminders で確認、cancel_reminder で取り消し。どれも先に聞く必要はありません。"
           "「25 分後」のような相対時間は in_minutes を使い、設定したら何時に何を知らせるかを回答ではっきり伝えてください。"
           "\n- テキストをクリップボードに入れられます（copy_to_clipboard、確認不要。たとえばユーザーが自分で貼り付けて送る返信の下書き）。"
-          "ユーザーのクリップボードを見ることもできます（read_clipboard、芸芸が先にユーザーに確認します）。",
+          "ユーザーのクリップボードを見ることもできます（read_clipboard、芸芸が先にユーザーに確認します）。"
+          "\n- ユーザーが開いているウィンドウを確認し（list_windows）、切り替え・最小化・元に戻す（window_action）ことができます。"
+          "どれも確認不要です。ウィンドウは閉じられません。タイトルには私的な内容もあるので、関係のあることだけ触れてください。",
 }
 
 # 芸芸的浏览器（阶段 6.2：tools/browser.py）

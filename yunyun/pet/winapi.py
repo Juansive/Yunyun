@@ -35,6 +35,8 @@ QUNS_BUSY = 2                       # 有程序在全屏（比如全屏看视频
 QUNS_RUNNING_D3D_FULL_SCREEN = 3    # 全屏游戏
 QUNS_PRESENTATION_MODE = 4          # 演示模式（比如 PPT 放映）
 SW_RESTORE = 9
+SW_MINIMIZE = 6
+PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 WS_EX_TOOLWINDOW = 0x00000080
 VK_LBUTTON, VK_RBUTTON = 0x01, 0x02
 SM_SWAPBUTTON = 23   # 左右键对调了（左撇子设置）：物理的"左键"在系统里是 VK_RBUTTON
@@ -43,6 +45,7 @@ if IS_WINDOWS:
     user32 = ctypes.WinDLL("user32", use_last_error=True)
     dwmapi = ctypes.WinDLL("dwmapi")
     shell32 = ctypes.WinDLL("shell32")
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
     WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
 
     # 声明每个函数的返回值和参数类型。
@@ -70,6 +73,12 @@ if IS_WINDOWS:
         (user32.GetWindowTextLengthW, INT, [HWND]),
         (user32.RegisterHotKey, BOOL, [HWND, INT, wintypes.UINT, wintypes.UINT]),   # 按住说话的快捷键（阶段 7）
         (user32.UnregisterHotKey, BOOL, [HWND, INT]),
+        (user32.GetWindowTextW, INT, [HWND, wintypes.LPWSTR, INT]),   # 窗口工具（11.5）：标题、哪个程序
+        (user32.IsWindow, BOOL, [HWND]),
+        (kernel32.OpenProcess, wintypes.HANDLE, [wintypes.DWORD, BOOL, wintypes.DWORD]),
+        (kernel32.QueryFullProcessImageNameW, BOOL, [wintypes.HANDLE, wintypes.DWORD, wintypes.LPWSTR,
+                                                     ctypes.POINTER(wintypes.DWORD)]),
+        (kernel32.CloseHandle, BOOL, [wintypes.HANDLE]),
     ):
         func.restype, func.argtypes = restype, argtypes
 
@@ -115,6 +124,56 @@ def activate(hwnd):
     if user32.IsIconic(hwnd):
         user32.ShowWindow(hwnd, SW_RESTORE)
     user32.SetForegroundWindow(hwnd)
+
+
+def window_title(hwnd):
+    if not IS_WINDOWS:
+        return ""
+    length = user32.GetWindowTextLengthW(hwnd)
+    buffer = ctypes.create_unicode_buffer(length + 1)
+    user32.GetWindowTextW(hwnd, buffer, length + 1)
+    return buffer.value
+
+
+def is_normal_window(hwnd):
+    """看得见、有标题、不是工具小窗、没被"隐身"（后台的 UWP 窗口）：任务栏上会有的那种窗口。"""
+    return bool(IS_WINDOWS and user32.IsWindowVisible(hwnd) and user32.GetWindowTextLengthW(hwnd) > 0
+                and not user32.GetWindowLongW(hwnd, GWL_EXSTYLE) & WS_EX_TOOLWINDOW and not _is_cloaked(hwnd))
+
+
+def is_minimized(hwnd):
+    return bool(IS_WINDOWS and user32.IsIconic(hwnd))
+
+
+def is_window(hwnd):
+    return bool(IS_WINDOWS and hwnd and user32.IsWindow(hwnd))
+
+
+def process_name(pid):
+    """进程的程序文件名（"WeChat.exe"）；看不到（权限不够、已经没了）是 ""。"""
+    if not IS_WINDOWS or not pid:
+        return ""
+    handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    if not handle:
+        return ""
+    try:
+        size = wintypes.DWORD(1024)
+        buffer = ctypes.create_unicode_buffer(size.value)
+        if not kernel32.QueryFullProcessImageNameW(handle, 0, buffer, ctypes.byref(size)):
+            return ""
+        return os.path.basename(buffer.value)
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+def minimize(hwnd):
+    if IS_WINDOWS:
+        user32.ShowWindow(hwnd, SW_MINIMIZE)
+
+
+def restore(hwnd):
+    if IS_WINDOWS:
+        user32.ShowWindow(hwnd, SW_RESTORE)
 
 
 def left_button_down():

@@ -89,6 +89,7 @@ _ACTION_VERBS = {
     protocol.SET_REMINDER_TOOL: "assistant_action_set_reminder", protocol.LIST_REMINDERS_TOOL: "assistant_action_reminders",
     protocol.CANCEL_REMINDER_TOOL: "assistant_action_cancel_reminder",
     protocol.COPY_TO_CLIPBOARD_TOOL: "assistant_action_copy", protocol.READ_CLIPBOARD_TOOL: "assistant_action_read_clipboard",
+    protocol.LIST_WINDOWS_TOOL: "assistant_action_list_windows", protocol.WINDOW_ACTION_TOOL: "assistant_action_window",
 }
 _DECISION_COLORS = {"auto": "#8A94A6", "granted": "#2E7D32", "allowed": "#2E7D32", "remembered": "#2E7D32",
                     "denied": "#C62828", "blocked": "#C62828", "stopped": "#B7791F"}

@@ -142,6 +142,15 @@ class OpenAppReply:
 
 
 @_message
+class WindowReply:
+    """芸芸做完窗口的事（WindowRequest 的回答，11.5）：detail 是给模型看的说明（列出时是窗口列表）。"""
+    TYPE: ClassVar[str] = "window_reply"
+    request_id: int
+    ok: bool
+    detail: str = ""
+
+
+@_message
 class Quit:
     """关掉助手：子进程收拾好就退出。"""
     TYPE: ClassVar[str] = "quit"
@@ -275,6 +284,19 @@ REMINDER_TOOLS = (SET_REMINDER_TOOL, LIST_REMINDERS_TOOL, CANCEL_REMINDER_TOOL)
 # 剪贴板（11.5，assistant/tools/clipboard.py）：放进去不用问，看要问
 COPY_TO_CLIPBOARD_TOOL = "mcp__yunyun__copy_to_clipboard"
 READ_CLIPBOARD_TOOL = "mcp__yunyun__read_clipboard"
+# 窗口（11.5，assistant/tools/windows.py）：列出、切换 / 最小化 / 还原，都不用问；在芸芸本体做（pet/window_control.py）
+LIST_WINDOWS_TOOL = "mcp__yunyun__list_windows"
+WINDOW_ACTION_TOOL = "mcp__yunyun__window_action"
+
+
+@_message
+class WindowRequest:
+    """模型要列出窗口（action="list"）或者 switch / minimize / restore 一个窗口（window：列出时给的编号 "w1234"）：
+    请芸芸本体做（它是前台程序，Windows 才让它切窗口），等 WindowReply。"""
+    TYPE: ClassVar[str] = "window_request"
+    request_id: int
+    action: str
+    window: str = ""
 
 
 @_message
@@ -382,7 +404,7 @@ ERROR_KINDS = (
     "other",
 )
 
-COMMANDS = (Ask, Interrupt, PermissionReply, Rewind, ScreenshotReply, OpenAppReply, Quit)
+COMMANDS = (Ask, Interrupt, PermissionReply, Rewind, ScreenshotReply, OpenAppReply, WindowReply, Quit)
 EVENTS = (Ready, TextDelta, ToolStarted, ToolFinished, PermissionRequest, ToolDecision, ScreenshotRequest,
-          OpenAppRequest, BrowserChanged, Downloaded, TurnFinished, Compacting, Compacted, Reflected, RemindersChanged,
-          Rewound, Error)
+          OpenAppRequest, WindowRequest, BrowserChanged, Downloaded, TurnFinished, Compacting, Compacted, Reflected,
+          RemindersChanged, Rewound, Error)

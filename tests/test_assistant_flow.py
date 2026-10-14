@@ -142,6 +142,22 @@ def test_download_finished_is_said_in_a_bubble(world, monkeypatch):
     assert '下载好了：报告.pdf（在"下载"文件夹里）' in bubbles(pet)
 
 
+def test_window_requests_are_done_by_yunyun_and_answered(world, monkeypatch):
+    """窗口工具（11.5）：大脑请芸芸列出 / 切换窗口，芸芸本体做完马上回答（窗口是 conftest 的假窗口）。"""
+    from yunyun.pet import window_control
+    pet, _, processes = world
+    has_key(monkeypatch)
+    pet.open_assistant()
+    process = processes[0]
+    process.say(protocol.Ready("anthropic", "m"))
+    ask(pet, "切到微信")
+    process.say(protocol.WindowRequest(1, "list"))
+    assert process.sent[-1].request_id == 1 and "w101 · WeChat.exe · 微信" in process.sent[-1].detail
+    process.say(protocol.WindowRequest(2, "switch", "w101"))
+    assert process.sent[-1] == protocol.WindowReply(2, True, 'Switched to "微信".')
+    assert window_control.applied == [("switch", 101)]
+
+
 def test_new_rapport_notes_are_said_once_a_day(world, monkeypatch):
     """相处笔记（11.3）：回想后有新的生效，芸芸冒个气泡（一天最多一次；自己设定的性格换一句不傲娇的）。"""
     from PySide6.QtCore import QSettings

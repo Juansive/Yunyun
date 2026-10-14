@@ -14,6 +14,7 @@
   翻回忆（阶段 11.4）：不用问——只读芸芸自己存的对话摘要和这台电脑上的对话记录；
   提醒（阶段 11.5，2026-10-14 用户定）：设、看、取消都不用问——只动芸芸自己的提醒，设置 → 提醒里能看能删；
 - 剪贴板（阶段 11.5，用户定的）：放进去不用问；看剪贴板每次问（可能有你复制的密码），可以选"这次对话都允许"；
+- 窗口（阶段 11.5，用户定的）：列出、切换、最小化、还原都不用问（都撤得回来）；没有"关闭窗口"；
 - 截图（阶段 5）：不用问（2026-10-06 用户定的；截之前芸芸会在气泡里说一声，芸芸自己的窗口不截）；
   设置里选了"截图前先问我"（ask_screenshot）就每次问，可以选"这次对话都允许截图"；
 - 打开软件（阶段 6，2026-10-09 用户定的）：按名字找不用问；打开每次问，可以选"这次对话都允许打开它"（按软件记）；
@@ -40,8 +41,8 @@ from yunyun.assistant.memory import NOTEBOOK_TOOLS
 from yunyun.assistant.recollections import RECALL_CHATS_TOOL
 from yunyun.assistant.protocol import (
     BROWSER_ACTION_TOOLS, BROWSER_BACK_TOOL, BROWSER_CLICK_TOOL, BROWSER_DOWNLOAD_TOOL, BROWSER_OPEN_TOOL,
-    BROWSER_READ_TOOL, BROWSER_SELECT_TOOL, BROWSER_TYPE_TOOL, COPY_TO_CLIPBOARD_TOOL, FIND_APP_TOOL, OPEN_APP_TOOL,
-    READ_CLIPBOARD_TOOL, REMINDER_TOOLS, SCREENSHOT_TOOL,
+    BROWSER_READ_TOOL, BROWSER_SELECT_TOOL, BROWSER_TYPE_TOOL, COPY_TO_CLIPBOARD_TOOL, FIND_APP_TOOL, LIST_WINDOWS_TOOL,
+    OPEN_APP_TOOL, READ_CLIPBOARD_TOOL, REMINDER_TOOLS, SCREENSHOT_TOOL, WINDOW_ACTION_TOOL,
 )
 
 ALLOW, ASK, DENY = "allow", "ask", "deny"
@@ -130,7 +131,8 @@ def decide(tool, tool_input, workspace, grants=frozenset(), ask_screenshot=False
     """
     tool_input = tool_input if isinstance(tool_input, dict) else {}
     if tool in WEB_TOOLS or tool in NOTEBOOK_TOOLS or tool in REMINDER_TOOLS or tool in (
-            FIND_APP_TOOL, BROWSER_READ_TOOL, BROWSER_BACK_TOOL, RECALL_CHATS_TOOL, COPY_TO_CLIPBOARD_TOOL):
+            FIND_APP_TOOL, BROWSER_READ_TOOL, BROWSER_BACK_TOOL, RECALL_CHATS_TOOL, COPY_TO_CLIPBOARD_TOOL,
+            LIST_WINDOWS_TOOL, WINDOW_ACTION_TOOL):
         return Decision(ALLOW)
     if tool == READ_CLIPBOARD_TOOL:
         if ("clipboard",) in grants:
