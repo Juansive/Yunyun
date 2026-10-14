@@ -6,6 +6,7 @@ from yunyun.assistant.protocol import decode as _decode
 
 _TYPES = {}
 _message = registry(_TYPES)
+NAME_FOLLOW_S = 8.0   # 只叫了"芸芸"：这么久之内说的下一句不用再叫名字（两边都用）
 
 
 def decode(line):
@@ -52,7 +53,7 @@ class CancelListening:
 @_message
 class Watch:
     """"始终在听"开 / 关（7.3）。开着时一直录音，说完一句就在本机识别：开头叫了"芸芸"才发 Called，别的扔掉；
-    芸芸自己在说话时不听。暂停（全屏、免打扰）由芸芸那边发 Watch(False)。"""
+    芸芸自己在说话时只听你叫她 / 说"别说了"（发 Interrupt，7.9）。暂停（全屏、免打扰）由芸芸那边发 Watch(False)。"""
     TYPE: ClassVar[str] = "watch"
     on: bool
 
@@ -109,9 +110,18 @@ class Heard:
 
 @_message
 class Called:
-    """"始终在听"时你叫了芸芸：text 是名字后面的话（问题）；只叫了名字是空的——那之后 FOLLOW_S 秒内说的下一句不用再叫名字。"""
+    """"始终在听"时你叫了芸芸：text 是名字后面的话（问题）；只叫了名字是空的——那之后 NAME_FOLLOW_S 秒内说的下一句不用再叫名字。"""
     TYPE: ClassVar[str] = "called"
     text: str
+
+
+@_message
+class Interrupt:
+    """芸芸正在说话时你打断了她（7.9 ②，"始终在听"时）：stop = 说了"别说了"这类；不然是叫了她——
+    text 是名字后面的话（只叫了名字是空的）。芸芸那边让她停下（Hush），叫了她就应一声 / 当成新的一问。"""
+    TYPE: ClassVar[str] = "interrupt"
+    text: str = ""
+    stop: bool = False
 
 
 @_message

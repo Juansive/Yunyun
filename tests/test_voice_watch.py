@@ -45,6 +45,24 @@ def test_filler(text, filler):
     assert speech_text.is_filler(text) is filler
 
 
+HER = "好的，今天北京是晴天，最高气温23度，早晚有点凉。明天下午可能有小雨，芸芸建议你带把伞。"
+
+
+@pytest.mark.parametrize("heard, saying, whole, expected", [
+    # 2026-10-14 合成的她 + 你混在一起实测到的样子
+    ("别说了。", HER, True, ("stop", "")),
+    ("是晴天最高气温23度，别说了。", HER, False, ("stop", "")),
+    ("云云，帮我查一下上海的天气。", HER, True, ("call", "帮我查一下上海的天气。")),   # 戴耳机：完整一句
+    ("最高气温23度云云帮我查一下上海。", "今天北京是晴天，最高气温23度", False, ("call", "")),
+    ("多云下午可能有小雨，云云建议。", HER, False, None),     # 她自己说的"芸芸"
+    ("芸芸建议你带把伞。", HER, True, None),                 # 回声
+    ("早晚有点凉，出门记得带。", HER, False, None),
+    ("今天北京是晴天", HER, True, None),
+])
+def test_interruption(heard, saying, whole, expected):
+    assert speech_text.interruption(heard, saying, whole) == expected
+
+
 # ---------- 语音子进程 ----------
 
 class FakeSegmenter:
@@ -63,7 +81,7 @@ class FakeSegmenter:
 SAID = {b"a": "芸芸，开灯", b"b": "随便聊聊", b"c": "云云", b"d": "打开记事本", b"e": "嗯。", b"f": "芸芸，嗯"}
 
 
-def start_worker(lines, out, recorders, players, segmenters, load_segmenter=None):
+def start_worker(lines, out, recorders, players, segmenters, load_segmenter=None, synthesize=None, recognize=None):
     def make_recorder(on_level, on_chunk=None):
         recorders.append(FakeRecorder(on_level, on_chunk))
         return recorders[-1]
@@ -78,8 +96,9 @@ def start_worker(lines, out, recorders, players, segmenters, load_segmenter=None
 
     async def never(text, voice, pitch):
         raise AssertionError("这里不该合成")
-    return asyncio.create_task(worker.serve(lines, lambda data: out.append(protocol.decode(data)), never, make_player,
-                                            make_recorder, lambda: lambda audio: SAID.get(audio, "嗯"),
+    return asyncio.create_task(worker.serve(lines, lambda data: out.append(protocol.decode(data)), synthesize or never,
+                                            make_player, make_recorder,
+                                            lambda: recognize or (lambda audio: SAID.get(audio, "嗯")),
                                             load_segmenter or segmenter))
 
 
@@ -105,11 +124,10 @@ def test_worker_only_passes_on_what_was_said_to_yunyun(monkeypatch):
         await asyncio.sleep(0.05)
         assert len(called()) == 3
 
-        players[0].playing = True    # 芸芸在说话：不听（不然会把她自己的声音当成你的）
+        players[0].playing = True    # 芸芸在说话：叫她算打断（7.9 ②，见下一个测试），不是平常的叫法
         stream.on_chunk(b"a")
-        assert segmenters[0].resets >= 1
+        await until(lambda: any(isinstance(e, protocol.Interrupt) for e in out))
         players[0].playing = False
-        stream.on_chunk(b"a")        # 刚说完：回声还在，也不听
         await asyncio.sleep(0.1)
         assert len(called()) == 3
         stream.on_chunk(b"a")
@@ -187,6 +205,66 @@ def test_worker_opens_a_follow_up_window_after_the_answer_is_said(monkeypatch):
         await until(lambda: called()[-1] == "" and windows()[-1] == worker.FOLLOW_S)
         lines.send(protocol.Watch(False))   # 不听了：窗口关掉
         await until(lambda: windows()[-1] == 0)
+        lines.end()
+        await asyncio.wait_for(task, 3)
+    asyncio.run(scenario())
+
+
+def test_worker_hears_you_cut_her_off(monkeypatch):
+    """7.9 ②：她说话时（外放：她的声音也进麦克风）只认打断她的话——完整一句开头叫了她 → Interrupt(后面的话)、
+    "别说了" → Interrupt(stop)；她自己说的（回声，连她自称"芸芸"的那句）不算；每秒看一眼最近几秒（片段），
+    里面有"别说了"或者名字（她这段没说过"芸芸"时）也算。她说完了，叫她又是平常的 Called。"""
+    monkeypatch.setattr(worker, "ECHO_TAIL_S", 0.05)
+    monkeypatch.setattr(worker, "PEEK_EVERY_S", 100)   # 先只看完整的句子
+    whole = {b"a": "芸芸，开灯", b"s": "别说了", b"m": "芸芸觉得明天会下雨", b"o": "明天会下雨，记得带伞"}
+    pieces = {b"p": "气温二十度，别说了，早晚有点凉", b"q": "最高气温23度云云帮我查一下上海"}
+
+    def recognize(audio):   # 片段（最近几秒，好几块）/ 一句（假的 VAD：一块就是一句）
+        return (pieces if len(audio) > 1 else whole).get(bytes(audio[-1:]), "嗯")
+
+    async def synthesize(text, voice, pitch):
+        return b"x", False
+
+    async def scenario():
+        lines, out, recorders, players, segmenters = Lines(), [], [], [], []
+        task = start_worker(lines, out, recorders, players, segmenters, synthesize=synthesize, recognize=recognize)
+        lines.send(protocol.Watch(True))
+        await until(lambda: recorders and recorders[0].recording and segmenters)
+        stream = recorders[0]
+        await asyncio.sleep(0.05)
+        cuts = lambda: [(e.text, e.stop) for e in out if isinstance(e, protocol.Interrupt)]   # noqa: E731
+        lines.send(protocol.Say(1, "芸芸觉得明天会下雨，记得带伞", "v"))
+        await until(lambda: players[0].added)
+        players[0].playing = True
+        for chunk in (b"m", b"o"):   # 她自己的声音
+            stream.on_chunk(chunk)
+        await asyncio.sleep(0.05)
+        assert cuts() == []
+        stream.on_chunk(b"s")
+        await until(lambda: cuts() == [("", True)])
+        stream.on_chunk(b"a")
+        await until(lambda: cuts() == [("", True), ("开灯", False)])
+
+        lines.send(protocol.Hush())   # 新的一段：她这段没说过"芸芸"
+        players[0].playing = False
+        stream.on_chunk(b"-")        # 麦克风一直有声音送来（真的是每 0.05 秒一块）
+        await asyncio.sleep(0.1)
+        monkeypatch.setattr(worker, "PEEK_EVERY_S", 0.05)
+        lines.send(protocol.Say(2, "今天是晴天", "v"))
+        await until(lambda: len(players[0].added) == 2)
+        players[0].playing = True
+        stream.on_chunk(b"-")        # 开始说了：每 0.05 秒看一眼
+        await asyncio.sleep(0.06)
+        stream.on_chunk(b"q")        # 片段里有名字（外放时整句要等她说完才切得出来）
+        await until(lambda: cuts()[-1] == ("", False))
+        await asyncio.sleep(0.06)
+        stream.on_chunk(b"p")        # 片段里有"别说了"
+        await until(lambda: cuts()[-1] == ("", True))
+
+        players[0].playing = False   # 她说完了：叫她是平常的叫法
+        await asyncio.sleep(0.1)
+        stream.on_chunk(b"a")
+        await until(lambda: any(isinstance(e, protocol.Called) and e.text == "开灯" for e in out))
         lines.end()
         await asyncio.wait_for(task, 3)
     asyncio.run(scenario())
@@ -300,6 +378,27 @@ def test_spoken_questions_get_a_follow_up_window(watch_world, qapp):
     voice.say(protocol.Following(3))
     pet.close_assistant()   # 不听了：样子和绿条都收起
     assert machine.state != PetState.LISTENING and pet._mic_mark.left == 0
+
+
+def test_cutting_her_off(watch_world, qapp):
+    """7.9 ②：她念回答时被打断——"别说了"停下；只叫了名字停下、应一声、开"接着说"的窗口；叫了她还带着话就当成新的一问。"""
+    pet, _, brain, voices, _ = watch_world
+    voice = voices[0]
+    voice.say(protocol.Called("讲个故事"))
+    brain.say(assistant_protocol.TextDelta("从前有座山。山里有座庙。"))
+    pet.assistant._update_bubble()
+    assert voice.said == ["从前有座山。"]
+    voice.say(protocol.Speaking(1), protocol.Interrupt("", stop=True))
+    assert voice.sent[-1] == protocol.Hush() and not pet.assistant.speaking
+    assert i18n.tr("voice_hushed") in bubbles(pet)
+    brain.say(assistant_protocol.TextDelta("庙里有个老和尚。"), assistant_protocol.TurnFinished())
+    assert voice.said == ["从前有座山。"]   # 停下了：后面的不读了，回答照样写完
+
+    voice.say(protocol.Interrupt(""))
+    assert voice.sent[-2:] == [protocol.Hush(), protocol.Follow(protocol.NAME_FOLLOW_S)]
+    assert i18n.tr("voice_called") in bubbles(pet)
+    voice.say(protocol.Interrupt("换一个故事"))
+    assert brain.asked[-1] == "换一个故事"
 
 
 def test_watching_pauses_in_full_screen_and_stops_on_exit(watch_world, qapp):

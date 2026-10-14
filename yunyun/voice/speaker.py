@@ -13,6 +13,7 @@
     speaker.heard.connect(...)              # 听到的话（空的 = 没听清）
     speaker.watch(True / False)             # 始终在听（7.3）；speaker.called.connect(...)：叫了芸芸（后面的话，只叫名字是空的）
     speaker.follow(秒数, asks)              # 回答都送出去了：说完以后开"接着说"的窗口（7.9）；speaker.following.connect(...)：开了几秒 / 0 关了
+    speaker.interrupted.connect(...)        # 她说话时你打断了她（7.9 ②）：(名字后面的话, 是不是"别说了")
 
 只 import Qt 和 voice 里的纯模块，不碰 edge_tts / miniaudio。语音子进程用到时才启动（第一句要说的时候），
 准备好之前的句子先排着；它意外退出了也没关系，下一句再启动一个。
@@ -39,6 +40,7 @@ class Speaker(QObject):
     level = Signal(float)
     heard = Signal(str)
     called = Signal(str)
+    interrupted = Signal(str, bool)
     following = Signal(float)
 
     def __init__(self, parent=None, make_process=None):
@@ -82,8 +84,9 @@ class Speaker(QObject):
         elif on:
             self._process_ready()
 
-    def follow(self, seconds, asks=False):
-        """这段回答都送出去了：说完以后开 seconds 秒"接着说"的窗口（只在始终在听时；没在听就什么都不做）。"""
+    def follow(self, seconds=protocol.NAME_FOLLOW_S, asks=False):
+        """这段回答都送出去了（或者打断她时只叫了名字）：说完以后开 seconds 秒"接着说"的窗口
+        （只在始终在听时；没在听就什么都不做）。"""
         if self._watching:
             self._send(protocol.Follow(seconds, asks))
 
@@ -154,6 +157,8 @@ class Speaker(QObject):
             self.heard.emit(event.text)
         elif isinstance(event, protocol.Called):
             self.called.emit(event.text)
+        elif isinstance(event, protocol.Interrupt):
+            self.interrupted.emit(event.text, event.stop)
         elif isinstance(event, protocol.Following):
             self.following.emit(event.seconds)
         elif isinstance(event, protocol.Error):

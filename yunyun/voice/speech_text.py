@@ -114,6 +114,41 @@ def _skip(text, at, chars):
     return at
 
 
+# ---------- 芸芸说话时打断她（7.9 ②） ----------
+
+STOP_PHRASES = ("别说了", "停一下", "停停", "闭嘴", "安静", "够了", "好了好了", "不用说了", "别念了", "打住",
+                "stop", "shutup", "やめて", "ストップ")
+
+
+def interruption(heard, saying, whole):
+    """芸芸正在说话时听到的话（外放时里面混着她自己的声音）。saying：她这段在说的话（比对回声）；
+    whole：VAD 切出的完整一句（戴耳机时就是你说的那句）；不然是最近几秒的片段（她说话时每秒看一眼，开头结尾是半截的）。
+    返回 None（像她自己的声音 / 没叫她）、("stop", "")（"别说了"）、("call", 名字后面的话)（叫了她，只叫名字是 ""）。
+    2026-10-14 实测（合成的她 + 你，混在一起）：外放时整句会被她的声音连成一大段，只有片段能及时听出"别说了""芸芸"。"""
+    mine, hers = plain(heard), plain(saying)
+    if any(phrase in mine and phrase not in hers for phrase in STOP_PHRASES):
+        return "stop", ""
+    if whole:
+        question = after_wake_word(heard)
+        if question is not None and not is_echo(heard, saying):
+            return "call", question
+    elif "芸芸" in mine and "芸芸" not in hers:   # 片段里有名字：她自己在说"芸芸"时分不清是谁说的，不算
+        return "call", ""
+    return None
+
+
+def is_echo(heard, saying):
+    """听到的这句像不像她自己刚说的（外放的回声）：一半以上的相邻两个字在她说的话里出现过。"""
+    mine, hers = plain(heard), plain(saying)
+    pairs = [mine[i:i + 2] for i in range(len(mine) - 1)]
+    return bool(pairs) and sum(p in hers for p in pairs) * 2 >= len(pairs)
+
+
+def plain(text):
+    """比较用："云云"换成"芸芸"，去掉标点和空白，小写。"""
+    return "".join(c for c in heard_text(text).lower() if c not in _PUNCTUATION and not c.isspace())
+
+
 _FILLER_CHARS = set("嗯恩哦噢喔啊呃额唔哈嘿诶欸哎呀咦哼")
 _FILLERS = {word * n for word in ("um", "umm", "uh", "hmm", "hm", "mm", "mhm", "ah", "oh", "er", "erm", "uh-huh",
                                   "えー", "えっと", "あー", "あの", "うーん", "うん", "ん") for n in (1, 2, 3)}

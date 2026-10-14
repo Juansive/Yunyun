@@ -164,6 +164,7 @@ class AssistantMode(QObject):
         self._held = QElapsedTimer()
         self._listen_timer = QTimer(self, singleShot=True, interval=self.LISTEN_MAX_MS, timeout=self._on_talk_released)
         self.speaker.called.connect(self._on_called)   # 始终在听（7.3）
+        self.speaker.interrupted.connect(self._on_interrupted)   # 她说话时打断她（7.9 ②）
         self.speaker.following.connect(self._on_following)   # 接着说的窗口（7.9）
         self._always = False         # 设置里开着"始终在听"
         self._watch_on = False       # 现在真的在听（开着、不在免打扰 / 全屏、模型下好了）
@@ -820,6 +821,20 @@ class AssistantMode(QObject):
             self._pet.say(i18n.tr("voice_called"), self.CALLED_SAY_MS)
             return
         self._ask_by_voice(text)
+
+    def _on_interrupted(self, question, stop):
+        """她说话时你打断了她（7.9 ②，2026-10-14 用户定）："别说了" → 停下；叫了她 → 停下、应一声，几秒内接着说不用再叫名字；
+        叫了她还带着话 → 停下、当成新的一问（还在写回答就说"我还在忙"，和平时一样）。"""
+        if self._listening or self._recognizing:
+            return
+        self.hush()
+        if stop:
+            self._pet.say(i18n.tr("voice_hushed"), self.SCREENSHOT_SAY_MS)
+        elif not question:
+            self._pet.say(i18n.tr("voice_called"), self.CALLED_SAY_MS)
+            self.speaker.follow()
+        else:
+            self._ask_by_voice(question)
 
     def _ask_by_voice(self, text):
         """说出来的一问：直接发给大脑，回答会读出来。还在忙就说一声。"""
