@@ -1,4 +1,4 @@
-"""语音的设置（config.yaml 的 voice 部分）：芸芸什么时候出声回答、用哪个声音和音调、按住说话的快捷键。
+"""语音的设置（config.yaml 的 voice 部分）：芸芸什么时候出声回答、按住说话的快捷键、始终在听。
 芸芸和语音子进程都 import，不碰 Qt。"""
 from dataclasses import dataclass
 
@@ -6,38 +6,22 @@ from yunyun import config as cfg
 
 # 芸芸什么时候出声回答（2026-10-10 用户定：默认"你用语音问时才说"）
 REPLY_MODES = ("voice", "always", "never")
-# 设置页能选的声音（edge-tts 的名字 → 界面上的名字 i18n key）；默认晓伊（2026-10-10 用户听过试听后选的）
-VOICES = {
-    "zh-CN-XiaoyiNeural": "voice_name_xiaoyi",
-    "zh-CN-XiaoxiaoNeural": "voice_name_xiaoxiao",
-    "zh-CN-YunxiNeural": "voice_name_yunxi",
-    "zh-CN-YunxiaNeural": "voice_name_yunxia",
-    "ja-JP-NanamiNeural": "voice_name_nanami",
-    "ja-JP-KeitaNeural": "voice_name_keita",
-    "en-US-AvaMultilingualNeural": "voice_name_ava",       # Multilingual：回答里夹着中文也念得出来
-    "en-US-AndrewMultilingualNeural": "voice_name_andrew",
-}
-DEFAULT_VOICES = {"zh": "zh-CN-XiaoyiNeural", "en": "en-US-AvaMultilingualNeural", "ja": "ja-JP-NanamiNeural"}
-# 音调能选的几档（比原来高多少 Hz，edge-tts 合成时调，音质不掉）；默认 +30（2026-10-14 用户听试听后选的：晓伊平均 330 → 400 Hz）
-PITCHES = (0, 15, 30, 45, 60)
-DEFAULT_PITCH = 30
+# 芸芸的声音（2026-10-14 用户定：芸芸就这一种声线，设置里不让选）：晓伊调高 30 Hz（听过 12 段试听后选的，
+# 平均音高 330 → 400 Hz，在 edge-tts 服务器那边调，音质不掉）。晓伊念不好日文，日文 / 英文界面换成那种语言的女声，同样调高
+VOICES = {"zh": "zh-CN-XiaoyiNeural", "en": "en-US-AvaMultilingualNeural", "ja": "ja-JP-NanamiNeural"}
+PITCH = "+30Hz"
+_RETIRED = ("voice", "pitch")   # 以前能选声音和音调时存的，读的时候不管、存的时候删掉
 
 
-def pitch_text(hz):
-    """几 Hz → edge-tts 的写法（"+30Hz"）。"""
-    return f"{hz:+d}Hz"
+def voice_for(language):
+    return VOICES.get(language, VOICES["zh"])
 
 
 @dataclass
 class VoiceSettings:
     reply: str = "voice"   # REPLY_MODES 里的一个
-    voice: str = ""        # VOICES 里的一个；空 = 跟着界面语言（DEFAULT_VOICES）
     hotkey: str = ""       # 按住说话的快捷键（Qt 的写法，比如 "Ctrl+Shift+Space"，见 pet/hotkey.py）；空 = 没设（用户自己设）
     always: bool = False   # 始终在听（7.3）：叫一声"芸芸"就能说话
-    pitch: int = DEFAULT_PITCH   # 音调：PITCHES 里的一档
-
-    def voice_for(self, language):
-        return self.voice if self.voice in VOICES else DEFAULT_VOICES.get(language, DEFAULT_VOICES["zh"])
 
 
 def load_settings():
@@ -48,17 +32,15 @@ def load_settings():
         saved = {}
     if not isinstance(saved, dict):
         saved = {}
-    reply, voice, hotkey, pitch = saved.get("reply"), saved.get("voice"), saved.get("hotkey"), saved.get("pitch")
-    return VoiceSettings(reply if reply in REPLY_MODES else "voice", voice if voice in VOICES else "",
-                         hotkey if isinstance(hotkey, str) else "", saved.get("always") is True,
-                         pitch if pitch in PITCHES and not isinstance(pitch, bool) else DEFAULT_PITCH)
+    reply, hotkey = saved.get("reply"), saved.get("hotkey")
+    return VoiceSettings(reply if reply in REPLY_MODES else "voice", hotkey if isinstance(hotkey, str) else "",
+                         saved.get("always") is True)
 
 
 def save_settings(settings):
     """只改 voice 部分（邮箱、AI、助手的设置都保留）。"""
     config = cfg.load_config_or_empty()
     section = config.get("voice")
-    config["voice"] = {**(section if isinstance(section, dict) else {}),
-                       "reply": settings.reply, "voice": settings.voice, "hotkey": settings.hotkey,
-                       "always": bool(settings.always), "pitch": settings.pitch}
+    kept = {k: v for k, v in section.items() if k not in _RETIRED} if isinstance(section, dict) else {}
+    config["voice"] = {**kept, "reply": settings.reply, "hotkey": settings.hotkey, "always": bool(settings.always)}
     cfg.save_config(config)

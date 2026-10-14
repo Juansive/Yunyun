@@ -75,20 +75,31 @@ def test_sentences_do_not_change_while_the_answer_grows():
 # ---------- 设置、消息 ----------
 
 def test_voice_settings_defaults_and_saving():
-    s = voice_settings.load_settings()
-    assert (s.reply, s.voice, s.pitch) == ("voice", "", 30)                  # 音调默认 +30 Hz（用户选的）
-    assert s.voice_for("zh") == "zh-CN-XiaoyiNeural" and s.voice_for("ja") == "ja-JP-NanamiNeural"
-    voice_settings.save_settings(VoiceSettings("always", "zh-CN-YunxiNeural", pitch=0))
-    s = voice_settings.load_settings()
-    assert (s.reply, s.voice, s.voice_for("en"), s.pitch) == ("always", "zh-CN-YunxiNeural", "zh-CN-YunxiNeural", 0)
-    assert voice_settings.pitch_text(30) == "+30Hz" and voice_settings.pitch_text(0) == "+0Hz"
+    assert voice_settings.load_settings() == VoiceSettings("voice", "", False)
+    voice_settings.save_settings(VoiceSettings("always", "F9", True))
+    assert voice_settings.load_settings() == VoiceSettings("always", "F9", True)
 
 
-@pytest.mark.parametrize("section", [{"reply": "loud", "voice": "robot", "pitch": 999}, {"pitch": True}, "乱写的", None])
+def test_yunyun_has_one_voice_per_language():
+    """芸芸就一种声线（用户定的）：中文晓伊；晓伊念不好日文，日文 / 英文界面用那种语言的女声。都调高 30 Hz。"""
+    assert voice_settings.voice_for("zh") == "zh-CN-XiaoyiNeural" and voice_settings.voice_for("fr") == "zh-CN-XiaoyiNeural"
+    assert voice_settings.voice_for("ja") == "ja-JP-NanamiNeural"
+    assert voice_settings.voice_for("en") == "en-US-AvaMultilingualNeural"
+    assert voice_settings.PITCH == "+30Hz"
+
+
+def test_old_voice_and_pitch_choices_are_ignored_and_dropped():
+    cfg.save_config({"voice": {"reply": "always", "voice": "zh-CN-YunxiNeural", "pitch": 0}})   # 以前能选的时候存的
+    assert voice_settings.load_settings() == VoiceSettings("always")
+    voice_settings.save_settings(VoiceSettings("never"))
+    assert cfg.load_config_or_empty()["voice"] == {"reply": "never", "hotkey": "", "always": False}
+
+
+@pytest.mark.parametrize("section", [{"reply": "loud", "hotkey": 3, "always": "yes"}, "乱写的", None])
 def test_bad_voice_settings_fall_back_to_defaults(section):
     cfg.save_config({"voice": section, "assistant": {"provider": "anthropic"}})
     assert voice_settings.load_settings() == VoiceSettings()
-    voice_settings.save_settings(VoiceSettings("never", ""))
+    voice_settings.save_settings(VoiceSettings("never"))
     assert cfg.load_config_or_empty()["assistant"] == {"provider": "anthropic"}   # 别的设置不动
 
 
@@ -397,7 +408,8 @@ def test_speaker_queues_until_ready_then_sends_new_sentences(speaker):
     assert process.said == ["你好。"]
     speaker.update("你好。我是芸芸。", final=True)
     assert process.said == ["你好。", "我是芸芸。"]
-    assert [(c.sentence_id, c.voice) for c in process.sent] == [(1, "zh-CN-XiaoyiNeural"), (2, "zh-CN-XiaoyiNeural")]
+    assert [(c.sentence_id, c.voice, c.pitch) for c in process.sent] == [(1, "zh-CN-XiaoyiNeural", "+30Hz"),
+                                                                         (2, "zh-CN-XiaoyiNeural", "+30Hz")]
 
 
 def test_speaker_speaking_state_and_hush(speaker):
@@ -420,7 +432,7 @@ def test_speaker_speaking_state_and_hush(speaker):
     assert changes == [True, False, True, False]
 
 
-def test_speaker_restarts_a_dead_worker_and_uses_the_chosen_voice(speaker):
+def test_speaker_restarts_a_dead_worker_and_follows_the_app_language(speaker, monkeypatch):
     errors = []
     speaker.error_occurred.connect(errors.append)
     speaker.begin()
@@ -429,12 +441,12 @@ def test_speaker_restarts_a_dead_worker_and_uses_the_chosen_voice(speaker):
     first.say(protocol.Ready(), protocol.Speaking(1), protocol.Error("audio", "x"))
     first.die()
     assert not speaker.speaking and errors == ["audio"]
-    voice_settings.save_settings(VoiceSettings("always", "ja-JP-KeitaNeural"))
+    monkeypatch.setattr(i18n, "_current", "ja")   # 换了界面语言：下一段回答用日语的声音
     speaker.begin()
     speaker.update("二。", final=True)
     second = speaker.processes[1]
     second.say(protocol.Ready())
-    assert second.sent[-1].voice == "ja-JP-KeitaNeural"
+    assert second.sent[-1].voice == "ja-JP-NanamiNeural"
     speaker.close()
     assert second.stopped
 
@@ -568,15 +580,13 @@ def test_voice_page_saves_right_away_and_previews(qapp, monkeypatch):
     make = factory()
     page = VoicePage(make_voice=make)
     page._reply.setCurrentIndex(voice_settings.REPLY_MODES.index("always"))
-    page._voice.setCurrentIndex(page._voice.findData("ja-JP-NanamiNeural"))
-    assert page._pitch.currentData() == 30 and "可爱" in page._pitch.currentText()   # 默认那一档
-    page._pitch.setCurrentIndex(page._pitch.findData(45))
-    assert voice_settings.load_settings() == VoiceSettings("always", "ja-JP-NanamiNeural", pitch=45)
+    assert voice_settings.load_settings() == VoiceSettings("always")
+    assert not hasattr(page, "_voice") and not hasattr(page, "_pitch")    # 芸芸就一种声线：不让选
     page.preview()
     process = make.processes[0]
     process.say(protocol.Ready())
-    assert "".join(process.said) == i18n.TEXTS["voice_preview_text"]["ja"]   # 日语的声音说日语
-    assert {(c.voice, c.pitch) for c in process.sent} == {("ja-JP-NanamiNeural", "+45Hz")}   # 试听用选中的音调
+    assert "".join(process.said) == i18n.TEXTS["voice_preview_text"]["zh"]
+    assert {(c.voice, c.pitch) for c in process.sent} == {("zh-CN-XiaoyiNeural", "+30Hz")}
     process.say(protocol.Error("audio"))
     assert page._result.text() == i18n.tr("voice_error_audio")
     page.show()

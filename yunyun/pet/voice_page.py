@@ -45,7 +45,6 @@ class VoicePage(QWidget):
         self.suspend_hotkey = lambda suspend: None
         saved = voice_settings.load_settings()
         self._hotkey_text = saved.hotkey
-        language = i18n.current_language()
 
         layout = QVBoxLayout(self)
         layout.addWidget(note(tr("voice_intro")))
@@ -54,21 +53,9 @@ class VoicePage(QWidget):
         for mode in voice_settings.REPLY_MODES:
             self._reply.addItem(tr(f"voice_reply_{mode}"), mode)
         self._reply.setCurrentIndex(voice_settings.REPLY_MODES.index(saved.reply))
-        self._voice = QComboBox()
-        default = voice_settings.DEFAULT_VOICES.get(language, voice_settings.DEFAULT_VOICES["zh"])
-        self._voice.addItem(tr("voice_voice_auto", tr(voice_settings.VOICES[default])), "")
-        for name, key in voice_settings.VOICES.items():
-            self._voice.addItem(tr(key), name)
-        self._voice.setCurrentIndex(max(self._voice.findData(saved.voice), 0))
-        self._preview = QPushButton(tr("voice_preview"))
+        self._preview = QPushButton(tr("voice_preview"))   # 声音不让选（芸芸就一种声线），试听听听她、也检查扬声器
         self._preview.clicked.connect(self.preview)
-        self._pitch = QComboBox()   # 音调（默认 +30 Hz，用户选的"可爱"那一档）
-        for hz in voice_settings.PITCHES:
-            self._pitch.addItem(tr(f"voice_pitch_{hz}"), hz)
-        self._pitch.setCurrentIndex(self._pitch.findData(saved.pitch))
-        form.addRow(tr("voice_reply_label"), self._reply)
-        form.addRow(tr("voice_voice_label"), _row(self._voice, self._preview))
-        form.addRow(tr("voice_pitch_label"), self._pitch)
+        form.addRow(tr("voice_reply_label"), _row(self._reply, self._preview))
 
         self._key = QKeySequenceEdit(QKeySequence.fromString(saved.hotkey, _PORTABLE))
         self._key.setMaximumSequenceLength(1)
@@ -102,8 +89,6 @@ class VoicePage(QWidget):
         layout.addStretch()
 
         self._reply.currentIndexChanged.connect(self._save)
-        self._voice.currentIndexChanged.connect(self._save)
-        self._pitch.currentIndexChanged.connect(self._save)
         self._key.editingFinished.connect(self._hotkey_edited)
         self._download.progress.connect(self._refresh_model)
         self._download.finished.connect(self._on_downloaded)
@@ -116,17 +101,14 @@ class VoicePage(QWidget):
         return self._speaker
 
     def preview(self):
-        """试听：用选中的声音和音调说一句（那个声音的语言）。"""
+        """试听：芸芸用现在的声音说一句（界面语言的那句）。"""
         if self._speaker is None:
             self._speaker = Speaker(self, self._make_voice)
             self._speaker.error_occurred.connect(self._on_error)
         self._result.clear()
-        settings = self._settings()
-        voice = settings.voice_for(i18n.current_language())
         self._speaker.hush()
-        self._speaker.begin(voice, settings.pitch)
-        language = {"zh": "zh", "ja": "ja"}.get(voice[:2], "en")
-        self._speaker.update(i18n.TEXTS["voice_preview_text"][language], final=True)
+        self._speaker.begin()
+        self._speaker.update(i18n.tr("voice_preview_text"), final=True)
 
     def set_hotkey(self, text):
         """换快捷键（录完 / 清除；测试也直接调）：能用就存下来、马上换上，不能用就退回原来的。"""
@@ -153,8 +135,7 @@ class VoicePage(QWidget):
     # ---------- 内部 ----------
 
     def _settings(self):
-        return voice_settings.VoiceSettings(self._reply.currentData(), self._voice.currentData(), self._hotkey_text,
-                                            self._watch.isChecked(), self._pitch.currentData())
+        return voice_settings.VoiceSettings(self._reply.currentData(), self._hotkey_text, self._watch.isChecked())
 
     def _save(self):
         voice_settings.save_settings(self._settings())

@@ -48,17 +48,14 @@ class Speaker(QObject):
         self._live_from = 1    # 这个编号以前的句子都被 hush 掉了（迟到的 Speaking 不算）
         self._sent = 0         # 这段回答已经送出去几句（speech_text.sentences 的前几个）
         self._voice = ""
-        self._pitch = voice_settings.pitch_text(voice_settings.DEFAULT_PITCH)
         self._waiting = []     # 子进程还没准备好时排着的命令
         self._watching = False   # 始终在听：子进程重新开起来时也要接着听
         self.speaking = False
 
-    def begin(self, voice=None, pitch=None):
-        """新的一段回答（或者一句试听）。voice：用哪个声音；pitch：音调（几 Hz）。不给就按设置。"""
+    def begin(self):
+        """新的一段回答（或者一句试听）：芸芸的声音按现在的界面语言（voice_settings.voice_for）。"""
         self._sent = 0
-        saved = voice_settings.load_settings()
-        self._voice = voice or saved.voice_for(i18n.current_language())
-        self._pitch = voice_settings.pitch_text(saved.pitch if pitch is None else pitch)
+        self._voice = voice_settings.voice_for(i18n.current_language())
 
     def update(self, markdown, final=False):
         items = speech_text.sentences(markdown, i18n.tr("voice_code_note"), final)
@@ -114,7 +111,7 @@ class Speaker(QObject):
     # ---------- 内部 ----------
 
     def _say(self, text):
-        self._send(protocol.Say(self._next_id, text, self._voice, self._pitch))
+        self._send(protocol.Say(self._next_id, text, self._voice, voice_settings.PITCH))
         self._next_id += 1
 
     def _process_ready(self):
