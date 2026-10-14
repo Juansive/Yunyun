@@ -24,5 +24,9 @@ logs/
 mail_state.json
 cards.json
 memory.json
+rapport.json
+recollections.json
+reminders.json
+assistant_spending.json
 # Archify 画的图（开发用，不进公开仓库）
 .archify/
