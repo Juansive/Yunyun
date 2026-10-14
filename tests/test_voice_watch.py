@@ -437,6 +437,39 @@ def test_cutting_her_off(watch_world, qapp):
     assert brain.asked[-1] == "换一个故事"
 
 
+def test_not_meant_for_her(watch_world, qapp):
+    """7.9 ⑤"这句不是跟你说的"（2026-10-14 用户定）：语音问的最新一问能撤回——阅读框按钮、右键"忽略刚才那句"；
+    卡片消失、历史对话里也没有，大脑换成"接着这段对话、扔掉那一问"的子进程；气泡"好，当我没听见～"。打字问的不能撤回。
+    还在回答时撤回：停下一起扔，卡片不留。"""
+    from test_voice import menu_texts
+    from yunyun.assistant import transcripts
+    from yunyun.pet import assistant_history
+    pet, _, brain, voices, _ = watch_world
+    mode = pet.assistant
+    mode.session.ask("打字问的")
+    brain.say(assistant_protocol.TextDelta("好。"), assistant_protocol.TurnFinished(session_id="s1"))
+    assert mode.withdrawable is None and i18n.tr("menu_assistant_withdraw") not in menu_texts(pet)
+    voices[0].say(protocol.Called("你去买点菜吧"))
+    brain.say(assistant_protocol.TextDelta("好呀"), assistant_protocol.TurnFinished(session_id="s1"))
+    typed, heard = mode.cards
+    assert mode.reader.can_withdraw(heard) and not mode.reader.can_withdraw(typed)
+    assert i18n.tr("menu_assistant_withdraw") in menu_texts(pet)
+
+    mode.reader.withdraw_requested.emit(heard)
+    assert mode.cards == [typed] and [c.question for c in assistant_history.load()] == ["打字问的"]
+    second = mode.session.process
+    assert second is not brain and brain.stopped
+    assert (second.resume, second.withdraw) == ("s1", transcripts.question_digest("你去买点菜吧"))
+    assert i18n.tr("assistant_withdrawn_said") in bubbles(pet) and mode.withdrawable is None
+
+    second.say(assistant_protocol.Ready("anthropic", "m"))
+    voices[0].say(protocol.Called("今晚吃什么"))   # 还在回答时就撤回
+    assert mode.busy and mode.withdrawable is not None
+    next(a for a in pet._build_menu().actions() if a.text() == i18n.tr("menu_assistant_withdraw")).trigger()
+    assert not mode.busy and mode.cards == [typed] and second.stopped
+    assert mode.session.process.withdraw == transcripts.question_digest("今晚吃什么")
+
+
 def test_watching_pauses_in_full_screen_and_stops_on_exit(watch_world, qapp):
     pet, _, _, voices, busy = watch_world
     voice = voices[0]

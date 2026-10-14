@@ -106,12 +106,15 @@ def load(now=None):
     return prune(cards, now)
 
 
-def save(cards, now=None):
+def save(cards, now=None, drop=()):
     """把这些卡片记进历史：按卡片编号合并（已有的更新、没有的加上；卡片堆里只是当前这段对话，别的对话不能被冲掉），
-    顺便去掉过期的。分隔卡不存（卡片堆只放一段对话，用不着了）。先写临时文件再替换：写到一半断电也不会把原来的弄坏。"""
+    顺便去掉过期的。分隔卡不存（卡片堆只放一段对话，用不着了）。先写临时文件再替换：写到一半断电也不会把原来的弄坏。
+    drop：要从历史里删掉的卡片编号（撤回的那一问，7.9 ⑤——光合并删不掉）。"""
     path = history_path()
     merged = {card.card_id: card for card in load(now) if card.kind == "turn"}
     merged.update((card.card_id, card) for card in cards if card.kind == "turn")
+    for card_id in drop:
+        merged.pop(card_id, None)
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(".tmp")

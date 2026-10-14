@@ -163,8 +163,10 @@ def serve(api):
     return server
 
 
-def make_brain(server, tmp, workspace, emit, resume="", provider=None, model="", compact_tokens=0, notebook=False):
-    """一个连到假接口的 ClaudeBrain：数据目录都在 tmp 里，工作文件夹是 workspace（"" = 只聊天）；resume：接着哪段对话。
+def make_brain(server, tmp, workspace, emit, resume="", provider=None, model="", compact_tokens=0, notebook=False,
+               withdraw=""):
+    """一个连到假接口的 ClaudeBrain：数据目录都在 tmp 里，工作文件夹是 workspace（"" = 只聊天）；resume：接着哪段对话
+    （withdraw：并且扔掉它的最后一问——那一问的指纹）。
     provider：照哪家服务商的样子（地址换成假接口）；不给就是 Claude 官方那样。model：空 = 那家的默认模型。
     compact_tokens：对话超过多少自动整理（0 = 不整理，免得别的剧本被整理打乱）；notebook：用不用记事本（同理默认不用）。"""
     claude_brain.CONFIG_DIR = Path(tmp) / "claude"
@@ -177,4 +179,4 @@ def make_brain(server, tmp, workspace, emit, resume="", provider=None, model="",
     settings = AssistantSettings(provider="fake", model=model, workspace=str(workspace) if workspace else "",
                                  budget_usd=10, conversation_budget_usd=50, compact_tokens=compact_tokens,
                                  notebook=notebook)
-    return claude_brain.ClaudeBrain(settings, "sk-fake-not-a-real-key", "zh", emit, resume=resume)
+    return claude_brain.ClaudeBrain(settings, "sk-fake-not-a-real-key", "zh", emit, resume=resume, withdraw=withdraw)

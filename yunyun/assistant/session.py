@@ -58,10 +58,11 @@ UNDO_NOTE = transcripts.UNDO_NOTE   # 历史对话读回来时要认出它、去
 _generations = itertools.count(1)   # 子进程的编号：芸芸整个运行期间不重复（助手模式退出再唤出也不会撞号）
 
 
-def default_process(language, parent, resume=""):
-    """真正的助手子进程（测试时换成假的）。resume：接着哪一段以前的对话聊（Claude Code 的会话编号）。"""
+def default_process(language, parent, resume="", withdraw=""):
+    """真正的助手子进程（测试时换成假的）。resume：接着哪一段以前的对话聊（Claude Code 的会话编号）；
+    withdraw：并且扔掉它的最后一问（那一问的指纹，7.9 ⑤）。"""
     from yunyun.assistant.process import AssistantProcess
-    return AssistantProcess(language, parent, resume=resume)
+    return AssistantProcess(language, parent, resume=resume, withdraw=withdraw)
 
 
 def error_text(error):
@@ -107,6 +108,7 @@ class Turn:
     compact: str = ""          # 这一轮答完后整理前面的对话："" 没整理、"running" 正在整理、"done" 整理好了、"failed" 没做成
     remembered: int = 0        # 这一轮往记事本里记了几条
     images: int = 0            # 这一问带了几张图片（输入框里粘贴的）
+    by_voice: bool = False     # 这一问是说出来的（界面填；只有这种能"这句不是跟你说的"撤回，7.9 ⑤）
 
     def action(self, tool_id):
         return next((a for a in self.actions if a.tool_id and a.tool_id == tool_id), None)
@@ -189,13 +191,16 @@ class AssistantSession(QObject):
     def progress(self):
         return self._progress
 
-    def start(self, resume=""):
-        """把大脑启动起来（已经在运行就什么也不做）。resume：接着哪一段以前的对话聊（Claude Code 的会话编号）。"""
+    def start(self, resume="", withdraw=""):
+        """把大脑启动起来（已经在运行就什么也不做）。resume：接着哪一段以前的对话聊（Claude Code 的会话编号）；
+        withdraw：并且扔掉它的最后一问（见 withdraw()）。"""
         if self._process is not None:
             return
         # parent 不用会话自己：会话关掉后，子进程还要几百毫秒才能好好退出
         owner = self.parent() or QCoreApplication.instance()
-        process = self._make_process(i18n.current_language(), owner, resume=resume)
+        # withdraw 只在撤回时传（平时的调用和测试里的假子进程都不用管它）
+        process = self._make_process(i18n.current_language(), owner, resume=resume,
+                                     **({"withdraw": withdraw} if withdraw else {}))
         self.session_id = resume   # 当前这段对话的会话编号：接着聊就是那段的；新对话等第一问答完才知道
         process.event.connect(lambda event, p=process: self._on_event(p, event))
         process.finished.connect(lambda p=process: self._on_process_finished(p))
@@ -280,14 +285,24 @@ class AssistantSession(QObject):
         if self._process is not None:
             self._process.send(reply)
 
-    def new_conversation(self, resume=""):
+    def new_conversation(self, resume="", withdraw=""):
         """换一个新的子进程：忘掉现在的对话（resume 为空），或者接着以前的某一段聊（resume = 那段的会话编号）。"""
         self._retire_process()
         self._pending = None
         if self.busy:
             self._end_turn(stopped=True)
         self.turns = []
-        self.start(resume)
+        self.start(resume, withdraw)
+
+    def withdraw(self, question):
+        """"这句不是跟你说的"（7.9 ⑤）：撤回最后一问 question——换一个子进程接着这段对话、扔掉最后一问，大脑就像没听过它。
+        子进程核对记录里的最后一问确实是它才扔（对不上照常接着聊）。还在回答就直接换（停在半截的那一问一起扔）；
+        那一问还没交给大脑：收回就行。还不知道会话编号（新对话的第一问就是它）：开一段新对话。返回换没换子进程。"""
+        if self._pending is not None:
+            self.stop()
+            return False
+        self.new_conversation(self.session_id, transcripts.question_digest(question) if self.session_id else "")
+        return True
 
     def close(self, wait=False):
         """关掉子进程。wait=True（芸芸退出时）：等它真的退出再返回。"""

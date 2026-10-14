@@ -2,6 +2,7 @@
 import asyncio
 import json
 import subprocess
+from types import SimpleNamespace
 
 import anyio
 import pytest
@@ -10,7 +11,7 @@ from claude_agent_sdk import (
     ToolUseBlock, UserMessage,
 )
 
-from yunyun.assistant import claude_brain, protocol
+from yunyun.assistant import claude_brain, protocol, transcripts
 from yunyun.assistant.claude_brain import TurnState, error_kind, translate
 from yunyun.assistant.persona import persona
 from yunyun.assistant.providers import PROVIDERS, make_rates
@@ -583,6 +584,34 @@ def test_previous_cost_of_resumed_conversation(tmp_path, monkeypatch):
     assert claude_brain.previous_cost("s1", PROVIDERS["anthropic"]) == 5.0
     assert claude_brain.previous_cost("s1", PROVIDERS["deepseek"]) == pytest.approx(0.3)
     assert claude_brain.previous_cost("nope", PROVIDERS["deepseek"]) == 0.0
+
+
+def test_withdraw_point(tmp_path, monkeypatch):
+    """"这句不是跟你说的"（7.9 ⑤）：扔掉最后一问、留到它的 parentUuid（上一问的最后一条，不管是什么类型）；
+    这段对话只有这一问 → (None, …) 开新对话；最后一问对不上（指纹不同）→ None，不扔。真 Claude Code 上的验证在 try_withdraw.py。"""
+    monkeypatch.setattr(claude_brain, "CONFIG_DIR", tmp_path)
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", "测试结束后恢复")   # withdraw_point 会改这个环境变量
+    (tmp_path / "projects" / "F--proj").mkdir(parents=True)
+    (tmp_path / "projects" / "F--proj" / "s1.jsonl").write_text("\n".join(json.dumps(x) for x in [
+        {"type": "user", "uuid": "u1", "parentUuid": None}, {"type": "assistant", "uuid": "a1", "parentUuid": "u1"},
+        {"type": "attachment", "uuid": "x1", "parentUuid": "a1"}, {"type": "user", "uuid": "u2", "parentUuid": "x1"},
+    ]), encoding="utf-8")
+
+    def message(kind, uuid, content):
+        return SimpleNamespace(type=kind, uuid=uuid, message={"role": kind, "content": content})
+    messages = [message("user", "u1", "第一问"), message("assistant", "a1", [{"type": "text", "text": "答"}]),
+                message("user", "t1", [{"type": "tool_result", "tool_use_id": "x", "content": "ok"}]),
+                message("user", "u2", [{"type": "text", "text": "第二问"}])]
+    monkeypatch.setattr(claude_brain, "get_session_messages", lambda session_id: messages)
+    digest = transcripts.question_digest
+    assert claude_brain.withdraw_point("s1", digest("第二问")) == ("x1", "u2")
+    assert claude_brain.withdraw_point("s1", digest("别的话")) is None
+    del messages[1:]
+    assert claude_brain.withdraw_point("s1", digest("第一问")) == (None, "u1")
+    options = claude_brain.build_options(AssistantSettings(), "k", "zh", resume="s1", withdraw=("x1", "u2"))
+    assert (options.resume, options.resume_session_at, options.resume_drops_turn) == ("s1", "x1", "u2")
+    plain = claude_brain.build_options(AssistantSettings(), "k", "zh", resume="s1")
+    assert plain.resume_session_at is None and plain.resume_drops_turn is None
 
 
 def test_build_options(monkeypatch):

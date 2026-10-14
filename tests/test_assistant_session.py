@@ -10,7 +10,8 @@ from shiboken6 import isValid
 
 from fake_assistant_process import FakeProcess
 from yunyun import i18n
-from yunyun.assistant import protocol
+from yunyun.assistant import process as process_module
+from yunyun.assistant import protocol, transcripts
 from yunyun.assistant.session import AssistantSession, error_text
 from helpers import wait_until
 
@@ -22,8 +23,8 @@ def session(qapp, monkeypatch):
     monkeypatch.setattr(i18n, "_current", "zh")
     processes = []
 
-    def make(language, parent, resume=""):
-        process = FakeProcess(language, parent, resume)
+    def make(language, parent, resume="", withdraw=""):
+        process = FakeProcess(language, parent, resume, withdraw)
         processes.append(process)
         return process
 
@@ -38,6 +39,30 @@ def session(qapp, monkeypatch):
 
 def logged(session, name):
     return [value for n, value in session.log if n == name]
+
+
+def test_withdraw_drops_the_last_question(session, monkeypatch):
+    """"这句不是跟你说的"（7.9 ⑤）：换一个子进程接着这段对话，带上要扔掉的那一问的指纹（还在回答也直接换）；
+    还没交给大脑的直接收回；新对话的第一问（还没有会话编号）：开一段新对话。"""
+    session.ask("甲")
+    first = session.processes[0]
+    first.say(protocol.Ready("anthropic", "m"), protocol.TurnFinished(session_id="s1"))
+    session.ask("乙")
+    assert session.withdraw("乙")
+    assert first.stopped and not session.busy and session.session_id == "s1"
+    second = session.processes[1]
+    assert (second.resume, second.withdraw) == ("s1", transcripts.question_digest("乙"))
+    session.ask("丙")   # 新子进程还没准备好：问题先存着
+    assert not session.withdraw("丙") and len(session.processes) == 2 and not session.busy and second.asked == []
+
+    session.new_conversation()
+    session.processes[2].say(protocol.Ready("anthropic", "m"))
+    session.ask("丁")
+    assert session.withdraw("丁")
+    assert (session.processes[3].resume, session.processes[3].withdraw) == ("", "")
+    monkeypatch.setattr(process_module, "subprocess_command", lambda role, *args, package="assistant": (role, args, None))
+    _, args, _ = process_module.worker_command("zh", "s1", "abc")
+    assert args[-4:] == ("--resume", "s1", "--withdraw", "abc")
 
 
 def test_question_waits_until_the_brain_is_ready(session):

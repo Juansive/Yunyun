@@ -147,6 +147,7 @@ QPushButton:disabled { background: #F4F6FA; color: #9AA3B2; border: 1px solid #E
 class AssistantReader(SidePanel):
     undo_requested = Signal(object)   # 卡片：要撤销这一问的改动（已经点了两次确认）
     read_requested = Signal(object)   # 卡片：要芸芸把这段回答读一遍（2026-10-13 用户要的）
+    withdraw_requested = Signal(object)   # 卡片："这句不是跟你说的"，撤回这一问（7.9 ⑤）
 
     READER_W = 470
     MIN_H = 200
@@ -202,6 +203,10 @@ class AssistantReader(SidePanel):
         self._copy_all = make_button(BUTTON_STYLE, lambda: self._copy(self.card.answer if self.card else "",
                                                                        self._copy_all, "assistant_reader_copy_all"))
         bottom.addWidget(self._copy_all)
+        # "🙈 不是跟你说的"：只在最新一张、用语音问的卡片上（总管换上 can_withdraw）
+        self._withdraw = make_button(BUTTON_STYLE, lambda: self.card and self.withdraw_requested.emit(self.card))
+        self.can_withdraw = lambda card: False
+        bottom.addWidget(self._withdraw)
         layout.addLayout(bottom)
 
         self._swap = QVariantAnimation(self, duration=self.SWAP_MS, valueChanged=self._on_swap,
@@ -238,10 +243,12 @@ class AssistantReader(SidePanel):
         if self.card is not None:
             self._meta.setText(self._meta_text(self.card))
         self._show_undo()
+        self._withdraw.setVisible(self.card is not None and self.can_withdraw(self.card))
 
     def retranslate(self):
         self._copy_all.setText(i18n.tr("assistant_reader_copy_all"))
         self._read.setText(i18n.tr("assistant_reader_read"))
+        self._withdraw.setText(i18n.tr("assistant_reader_withdraw"))
         self._close.setToolTip(i18n.tr("assistant_reader_close"))
         if self.card is not None:
             self._fill(self.card)
@@ -335,7 +342,7 @@ class AssistantReader(SidePanel):
         width = self.READER_W - 2 * (m + pad)
         self._body.document().setTextWidth(width - 10)
         doc_h = int(self._body.document().size().height()) + 18   # 多留一点：估少了就会冒出滚动条
-        bottom_row = self._copy_all.isVisibleTo(self) or self._undo.isVisibleTo(self)
+        bottom_row = any(b.isVisibleTo(self) for b in (self._copy_all, self._undo, self._withdraw))
         others = (self._question.heightForWidth(width - 32) + self._meta.sizeHint().height() + 1
                   + (self._copy_all.sizeHint().height() if bottom_row else 0) + 6 * 4)
         if self._actions_toggle.isVisibleTo(self):

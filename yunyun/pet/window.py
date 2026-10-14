@@ -774,6 +774,8 @@ class PetWindow(QWidget):
             pending = len(reminders.load())   # 提醒（11.5）：有的话放一项，打开设置 → 提醒
             if pending:
                 menu.addAction(glyph_icon(Icon.CLOCK), tr("menu_reminders", pending), lambda: self.open_settings("reminders"))
+            if self._assistant is not None and self._assistant.withdrawable is not None:   # 语音误收了（7.9 ⑤）
+                menu.addAction(glyph_icon(Icon.UNDO), tr("menu_assistant_withdraw"), self._assistant.withdraw)
             if self._assistant is not None and self._assistant.last_answer:   # 语音：再读一遍（2026-10-13 用户要的）
                 menu.addAction(glyph_icon(Icon.SPEAK), tr("menu_assistant_read_again"), self._assistant.read_again)
             if self._assistant is not None:

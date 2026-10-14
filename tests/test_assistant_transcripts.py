@@ -43,6 +43,32 @@ def conversation_lines():
     ]
 
 
+def test_withdrawn_question_is_left_out(tmp_path):
+    """撤回了的那一问（7.9 ⑤）：Claude Code 从上一问结束处接着写，新的一问的 parentUuid 跳过它——读的时候不要它
+    （历史对话、回想、翻回忆都读这里）。整理对话的分界用 logicalParentUuid 接上；没有分叉的平常对话一条不少。"""
+    rows = [
+        line("user", "第一问", promptSource="sdk", uuid="a", parentUuid=None),
+        line("assistant", [{"type": "text", "text": "一答"}], uuid="b", parentUuid="a"),
+        line("system", uuid="c", parentUuid=None, logicalParentUuid="b", subtype="compact_boundary"),
+        line("user", "第二问（误收的）", promptSource="sdk", uuid="d", parentUuid="c"),
+        line("assistant", [{"type": "text", "text": "二答"}], uuid="e", parentUuid="d"),
+        line("user", "第三问", promptSource="sdk", uuid="f", parentUuid="c"),   # 撤回后接着问：跳过了 d、e
+        line("assistant", [{"type": "text", "text": "三答"}], uuid="g", parentUuid="f"),
+        json.dumps({"type": "cost-state", "sessionId": "sess-1", "totalCostUSD": 0.01}),
+    ]
+    t = read_transcript(write(tmp_path / "sess-1.jsonl", rows))
+    assert [turn.question for turn in t.turns] == ["第一问", "第三问"] and t.turns[1].answer == "三答"
+    assert t.cost_usd == 0.01
+    assert transcripts._withdrawn([json.loads(r) for r in conversation_lines() if r.startswith("{")]) == set()
+
+
+def test_question_digest_ignores_the_undo_note():
+    """撤回时核对最后一问用的指纹：撤销后附的说明不算，首尾空白不算。"""
+    digest = transcripts.question_digest
+    assert digest(UNDO_NOTE.format(files="calc.py") + "\n\n再跑一遍") == digest(" 再跑一遍 ")
+    assert digest("甲") != digest("乙") and len(digest("甲")) == 16
+
+
 def test_turns_answers_tools_and_cost(tmp_path):
     t = read_transcript(write(tmp_path / "sess-1.jsonl", conversation_lines()))
     assert (t.session_id, t.cwd, t.cost_usd) == ("sess-1", CWD, 0.0312)

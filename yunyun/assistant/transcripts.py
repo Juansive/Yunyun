@@ -14,6 +14,7 @@
 
 纯函数，不 import Qt / SDK（芸芸进程用）。
 """
+import hashlib
 import json
 import logging
 import os
@@ -29,6 +30,12 @@ UNDO_NOTE = ("[Note from Yunyun, not from the user: the user undid the file chan
 _UNDO_NOTE_RE = re.compile(r"^\[Note from Yunyun, not from the user:.*?\]\n\n", re.DOTALL)
 _INTERRUPTED = "[Request interrupted"
 _COMMAND_RE = re.compile(r"^\s*<(command-name|command-message|local-command-[a-z]+)>")   # 斜杠命令和它的输出
+
+
+def question_digest(text):
+    """一问的指纹：撤回（7.9 ⑤）时子进程核对"记录里的最后一问是不是要撤回的那一问"（原话不放进命令行）。
+    撤销后附的说明（UNDO_NOTE）不算在里面。"""
+    return hashlib.sha256(_UNDO_NOTE_RE.sub("", text).strip().encode("utf-8")).hexdigest()[:16]
 
 
 def _not_a_question(data, content):
@@ -114,12 +121,17 @@ def read_transcript(path):
         return None
     session_id = os.path.splitext(os.path.basename(path))[0]
     cwd, turns, cost, model_usage, updated, tools_by_id = "", [], None, None, None, {}
+    rows = []
     for line in lines:
         try:
             data = json.loads(line)
         except ValueError:
             continue
-        if not isinstance(data, dict):
+        if isinstance(data, dict):
+            rows.append(data)
+    dropped = _withdrawn(rows)
+    for data in rows:
+        if data.get("uuid") in dropped:
             continue
         kind, when = data.get("type"), _time(data)
         cwd = data.get("cwd") or cwd
@@ -157,6 +169,35 @@ def read_transcript(path):
     if not turns:
         return None
     return Transcript(session_id, cwd, turns, cost, updated or turns[-1].time, model_usage)
+
+
+def _parent(row):
+    return row.get("parentUuid") or row.get("logicalParentUuid")   # 整理对话的分界那条用 logicalParentUuid 接上前面
+
+
+def _withdrawn(rows):
+    """撤回了的那一问（7.9 ⑤"这句不是跟你说的"）的几条记录的 uuid。撤回后 Claude Code 从上一问结束处接着写，
+    新的一问的 parentUuid 跳过了它，它还留在文件里（tools/try_withdraw.py 实测）。
+    从最后一条顺着 parentUuid 往回走是"活着的一枝"；只扔掉从这一枝上分出去、又没被接着的分支——连不上的记录照样留着。"""
+    with_id = [r for r in rows if r.get("uuid")]
+    if not with_id:
+        return set()
+    by_uuid = {r["uuid"]: r for r in with_id}
+    live, node = set(), with_id[-1]
+    while node is not None and node["uuid"] not in live:
+        live.add(node["uuid"])
+        node = by_uuid.get(_parent(node))
+    children = {}
+    for r in with_id:
+        children.setdefault(_parent(r), []).append(r["uuid"])
+    dropped = set()
+    stack = [c for u in live for c in children.get(u, ()) if c not in live]
+    while stack:
+        uuid = stack.pop()
+        if uuid not in dropped:
+            dropped.add(uuid)
+            stack.extend(children.get(uuid, ()))
+    return dropped
 
 
 _cache = {}   # 路径 → ((修改时间, 大小), Transcript)：没变过的文件不用重读

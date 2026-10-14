@@ -42,9 +42,10 @@ def subprocess_command(role, *args, package="assistant"):
     return sys.executable, ["-m", f"yunyun.{package}.{role}", *args], str(PROJECT_ROOT)
 
 
-def worker_command(language, resume=""):
-    """resume：接着哪一段以前的对话聊（Claude Code 的会话编号）。"""
-    return subprocess_command("worker", "--language", language, *(["--resume", resume] if resume else []))
+def worker_command(language, resume="", withdraw=""):
+    """resume：接着哪一段以前的对话聊（Claude Code 的会话编号）；withdraw：并且扔掉它的最后一问（那一问的指纹，7.9 ⑤）。"""
+    return subprocess_command("worker", "--language", language, *(["--resume", resume] if resume else []),
+                              *(["--withdraw", withdraw] if withdraw else []))
 
 
 class LineProcess(QObject):
@@ -167,9 +168,10 @@ class LineProcess(QObject):
 class AssistantProcess(LineProcess):
     """助手子进程（worker.py）。"""
 
-    def __init__(self, language, parent=None, command=None, resume=""):
-        """command：(程序, 参数, 工作目录)，测试时换成假的子进程；平时不用传。resume：接着哪一段以前的对话聊。"""
-        super().__init__(command or worker_command(language, resume), parent=parent)
+    def __init__(self, language, parent=None, command=None, resume="", withdraw=""):
+        """command：(程序, 参数, 工作目录)，测试时换成假的子进程；平时不用传。resume：接着哪一段以前的对话聊；
+        withdraw：并且扔掉它的最后一问（见 worker_command）。"""
+        super().__init__(command or worker_command(language, resume, withdraw), parent=parent)
 
     def ask(self, text, images=()):
         self.send(protocol.Ask(text, tuple(images)))

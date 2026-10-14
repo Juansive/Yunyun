@@ -13,10 +13,11 @@ class FakeProcess(QObject):
     event = Signal(object)
     finished = Signal()
 
-    def __init__(self, language, parent=None, resume=""):
+    def __init__(self, language, parent=None, resume="", withdraw=""):
         super().__init__(parent)
         self.language = language
         self.resume = resume   # 接着哪一段以前的对话聊
+        self.withdraw = withdraw   # 并且扔掉它的最后一问（那一问的指纹，7.9 ⑤）
         self.ready = False
         self.started = False
         self.stopped = False

@@ -9,6 +9,7 @@
 import argparse
 import asyncio
 import contextlib
+import functools
 import logging
 import os
 import sys
@@ -155,6 +156,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="芸芸的助手子进程（由芸芸启动，不要直接运行）")
     parser.add_argument("--language", default="zh")
     parser.add_argument("--resume", default="")   # 历史对话"接着聊"：Claude Code 的会话编号
+    parser.add_argument("--withdraw", default="")   # 接着聊并扔掉最后一问（"这句不是跟你说的"）：那一问的指纹
     args, _ = parser.parse_known_args(argv)
 
     # 拿到真正的标准输出（pythonw 下 sys.stdout 可能是 None，这时直接用文件描述符 1）
@@ -172,8 +174,9 @@ def main(argv=None):
 
     from yunyun.assistant.claude_brain import ClaudeBrain   # 到这里才 import SDK
     from yunyun.assistant.reflect import reflect_recent
+    make_brain = functools.partial(ClaudeBrain, withdraw=args.withdraw)
     try:
-        asyncio.run(serve(stdin, write, args.language, ClaudeBrain, resume=args.resume, reflect=reflect_recent))
+        asyncio.run(serve(stdin, write, args.language, make_brain, resume=args.resume, reflect=reflect_recent))
     except Exception:
         log.exception("助手子进程出现意外错误")
         with contextlib.suppress(Exception):

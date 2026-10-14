@@ -10,6 +10,7 @@
   所以什么都逃不过这一关（SDK 的说明也这么建议）。
 """
 import asyncio
+import json
 import logging
 import os
 import time
@@ -19,7 +20,7 @@ from dataclasses import dataclass, field
 from claude_agent_sdk import (
     AssistantMessage, ClaudeAgentOptions, ClaudeSDKClient, CLINotFoundError, HookMatcher, PermissionResultAllow,
     PermissionResultDeny, ResultMessage, ServerToolUseBlock, StreamEvent, SystemMessage, ToolResultBlock, ToolUseBlock,
-    UserMessage,
+    UserMessage, get_session_messages,
 )
 
 from yunyun.assistant import apps, memory, permissions, proctree, protocol, rapport, recollections, transcripts
@@ -91,6 +92,40 @@ def previous_cost(session_id, provider):
     return 0.0
 
 
+def withdraw_point(session_id, digest):
+    """撤回这段对话的最后一问（7.9 ⑤"这句不是跟你说的"）要用的 (留到哪一条, 扔掉的那一问)：对话记录里的 uuid。
+    留到的那条 = 扔掉的那一问的 parentUuid（上一问的最后一条记录，不管是什么类型——SDK 说 resume_session_at 要这样设）；
+    是 None = 这段对话只有这一问（扔掉就什么都不剩：开一段新对话）。
+    找不到记录、或者最后一问不是要撤回的那一问（digest 对不上，比如子进程被换掉时还没记下它）返回 None：照常接着聊，不扔（免得扔错）。"""
+    os.environ["CLAUDE_CONFIG_DIR"] = str(CONFIG_DIR)   # get_session_messages 照它找记录（只在子进程里，和 Claude Code 用的一样）
+    prompts = [m for m in get_session_messages(session_id) if m.type == "user" and _prompt_text(m.message) is not None]
+    if not prompts or transcripts.question_digest(_prompt_text(prompts[-1].message)) != digest:
+        return None
+    drop = prompts[-1].uuid
+    for path in (CONFIG_DIR / "projects").glob(f"*/{session_id}.jsonl"):
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                try:
+                    entry = json.loads(line)
+                except ValueError:
+                    continue
+                if entry.get("uuid") == drop:
+                    return (entry.get("parentUuid") if len(prompts) > 1 else None), drop
+    return None
+
+
+def _prompt_text(message):
+    """对话记录里的一条 user 消息是你问的话就返回文字，不是（工具结果）返回 None。"""
+    content = message.get("content") if isinstance(message, dict) else None
+    if isinstance(content, str):
+        return content
+    blocks = [b for b in content or () if isinstance(b, dict)]
+    if any(b.get("type") == "tool_result" for b in blocks):
+        return None
+    texts = [b.get("text", "") for b in blocks if b.get("type") == "text"]
+    return "\n".join(texts) if texts else None
+
+
 def wanted_tools(settings):
     return WEB_TOOLS + (WORK_TOOLS if settings.workspace else [])
 
@@ -115,9 +150,11 @@ def read_project_notes(workspace):
     return text
 
 
-def build_options(settings, api_key, language, stderr=None, gate=None, resume="", bridge=None, browser=None):
+def build_options(settings, api_key, language, stderr=None, gate=None, resume="", bridge=None, browser=None,
+                  withdraw=None):
     """启动 Claude Code 的全部选项。gate：PermissionGate（每次用工具前拍板）；测试里可以不传。
     resume：接着哪一段对话聊（Claude Code 的会话编号；空 = 新对话）；
+    withdraw：接着聊时扔掉最后一问（withdraw_point 的结果）；
     bridge：tools.Bridge（请芸芸进程截图、打开软件；有它才有这些工具，截图还要服务商能看图片）；
     browser：assistant.browser.Browser（有它才有浏览器的工具）。"""
     provider = settings.info
@@ -143,6 +180,9 @@ def build_options(settings, api_key, language, stderr=None, gate=None, resume=""
                            language=language)
     return ClaudeAgentOptions(
         resume=resume or None,            # 历史对话"接着聊"：Claude Code 读回那段对话的记录
+        # "这句不是跟你说的"（7.9 ⑤）：只读到上一问结束，扔掉最后一问（Claude Code 会核对扔掉的只有那一问）
+        resume_session_at=withdraw[0] if withdraw else None,
+        resume_drops_turn=withdraw[1] if withdraw else None,
         # 撤销（2.7）：Claude Code 改文件前先备份（放在 CLAUDE_CONFIG_DIR 里），每一问传回一个 uuid，rewind_files 到它
         enable_file_checkpointing=working,
         extra_args={"replay-user-messages": None} if working else {},
@@ -530,13 +570,16 @@ class BrainStartError(Exception):
 class ClaudeBrain:
     """一次助手会话：start() 启动 Claude Code，ask() 问一轮，interrupt() 停下，close() 关掉。事件通过 emit 交出去。"""
 
-    def __init__(self, settings, api_key, language, emit, resume=""):
-        """resume：接着哪一段对话聊（Claude Code 的会话编号；空 = 新对话）。"""
+    def __init__(self, settings, api_key, language, emit, resume="", withdraw=""):
+        """resume：接着哪一段对话聊（Claude Code 的会话编号；空 = 新对话）；
+        withdraw：接着聊时扔掉那段对话的最后一问（"这句不是跟你说的"，7.9 ⑤）——那一问的指纹（transcripts.question_digest），
+        记录里的最后一问对得上才扔。"""
         self._settings = settings
         self._api_key = api_key
         self._language = language
         self._emit = emit
         self._resume = resume
+        self._withdraw = withdraw
         self._client = None
         own = settings.info.own_pricing
         self._state = TurnState(
@@ -569,8 +612,15 @@ class ClaudeBrain:
         removed = prune_old_sessions(CONFIG_DIR, HISTORY_KEEP_DAYS)   # 历史只留 30 天（卡片那边芸芸自己清）
         if removed:
             log.info("清理了 %d 个 %d 天以前的对话记录 / 备份文件", removed, HISTORY_KEEP_DAYS)
+        withdraw = withdraw_point(self._resume, self._withdraw) if self._resume and self._withdraw else None
+        if withdraw is not None and withdraw[0] is None:   # 只有那一问：扔掉就什么都不剩，开一段新对话
+            log.info("撤回的是这段对话唯一的一问：开一段新对话")
+            self._resume, withdraw = "", None
+        elif self._resume and self._withdraw and withdraw is None:
+            log.warning("撤回：记录里的最后一问对不上（或者找不到记录），照常接着聊、不扔")
         options = build_options(self._settings, self._api_key, self._language, stderr=self._stderr.append,
-                                gate=self.gate, resume=self._resume, bridge=self.bridge, browser=self.browser)
+                                gate=self.gate, resume=self._resume, bridge=self.bridge, browser=self.browser,
+                                withdraw=withdraw)
         if self._resume:
             # 接着聊：Claude Code 报的花费会接着那段对话的累计往上加（try_resume.py 实测），先把以前花的当起点，
             # 不然第一问会把以前的钱再算一遍

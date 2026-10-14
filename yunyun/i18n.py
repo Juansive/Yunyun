@@ -1241,6 +1241,12 @@ TEXTS = {
     "assistant_reader_copy_all": {"zh": "复制回答", "en": "Copy answer", "ja": "回答をコピー"},
     "assistant_reader_read": {"zh": "🔊 读一遍", "en": "🔊 Read aloud", "ja": "🔊 読み上げる"},
     "menu_assistant_read_again": {"zh": "再读一遍刚才的回答", "en": "Read the last answer again", "ja": "さっきの回答をもう一度読む"},
+    # "这句不是跟你说的"（7.9 ⑤）：语音误收的那一问撤回，大脑就像没听过
+    "assistant_reader_withdraw": {"zh": "🙈 不是跟你说的", "en": "🙈 Wasn't talking to you",
+                                  "ja": "🙈 あなたに言ったんじゃない"},
+    "menu_assistant_withdraw": {"zh": "忽略刚才那句（不是跟她说的）", "en": "Ignore that last line (wasn't for her)",
+                                "ja": "さっきの言葉を取り消す（芸芸に言ったんじゃない）"},
+    "assistant_withdrawn_said": {"zh": "好，当我没听见～", "en": "Okay, I didn't hear that~", "ja": "うん、聞かなかったことにするね～"},
     "assistant_reader_close": {"zh": "关闭（Esc）", "en": "Close (Esc)", "ja": "閉じる（Esc）"},
     "assistant_fix_in_settings": {
         "zh": "可以在这里改：右键芸芸 → 设置… → 助手。",

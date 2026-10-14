@@ -468,8 +468,8 @@ def voice_world(qapp, monkeypatch):
     monkeypatch.setattr(i18n, "_current", "zh")
     monkeypatch.setattr(AssistantMode, "BUBBLE_MS", 10)
     brains = []
-    monkeypatch.setattr(session_module, "default_process", lambda language, parent, resume="":
-                        brains.append(FakeProcess(language, parent, resume)) or brains[-1])
+    monkeypatch.setattr(session_module, "default_process", lambda language, parent, resume="", withdraw="":
+                        brains.append(FakeProcess(language, parent, resume, withdraw)) or brains[-1])
     voices = factory()
     monkeypatch.setattr(speaker_module, "make_voice_process", voices)
     monkeypatch.setattr(assistant_settings, "is_ready", lambda settings=None: True)

@@ -206,6 +206,8 @@ class AssistantMode(QObject):
         self.reader.undo_state_for = self._undo_state_for
         self.reader.undo_requested.connect(self._undo)
         self.reader.read_requested.connect(lambda card: self.read_aloud(card.answer))
+        self.reader.can_withdraw = lambda card: card is self._last_turn[1] and self.withdrawable is not None
+        self.reader.withdraw_requested.connect(lambda card: self.withdraw())
         self.session.rewind_finished.connect(self._on_rewound)
         self.session.busy_changed.connect(self._on_busy)
         self.session.activity_changed.connect(self.activity_changed)
@@ -258,6 +260,44 @@ class AssistantMode(QObject):
 
     def read_again(self):
         self.read_aloud(self.last_answer)
+
+    @property
+    def withdrawable(self):
+        """"这句不是跟你说的"（7.9 ⑤）能撤回的那一问：正在回答的、或者最新一张卡片的那一问（Turn），
+        要是说出来问的、没改文件、后面没整理过对话；没有就是 None。"""
+        turn = self.session.current_turn
+        if turn is None:
+            last, card = self._last_turn
+            turn = last if self.cards and card is self.cards[-1] else None
+        if turn is None or not turn.by_voice or turn.files or turn.compact or self.session.rewinding:
+            return None
+        return turn
+
+    def withdraw(self):
+        """撤回那一问（阅读框"🙈 不是跟你说的"、右键"忽略刚才那句"；2026-10-14 用户定）：卡片直接消失（历史对话里也没有），
+        大脑换一个子进程接着这段对话、就像没听过它；气泡"好，当我没听见～"。还在回答：停下一起扔。"""
+        turn = self.withdrawable
+        if turn is None:
+            return
+        self.hush()
+        self._on_following(0)
+        self._resume_next = ""   # 闲置释放过也一样：下面马上用这段对话的编号重新启动大脑
+        self.session.withdraw(turn.question)   # 还在回答：这里先收到 turn_finished（卡片加上了），下面再拿掉
+        if not self.input.is_open:   # 新大脑也照常闲置释放
+            self._idle_timer.start()
+        last, card = self._last_turn
+        self._last_turn = (None, None)
+        if last is turn and card in self.cards:
+            self.cards.remove(card)
+            if self.reader.card is card:
+                self.reader.close_now()
+            self.deck.reset()
+            if not self.cards:
+                self.deck.hide_animated()
+            assistant_history.save(self.cards, drop={card.card_id})
+        self.reader.refresh_undo()
+        log.info("撤回了一问（不是跟芸芸说的）")
+        self._pet.say(i18n.tr("assistant_withdrawn_said"), self.SCREENSHOT_SAY_MS)
 
     def say_aloud(self, text):
         """提醒到点了（11.5，pet/reminder_clock.py）：说出来。"芸芸出声回答"选了"不说"、正在读回答时不说（气泡和通知照样有）。"""
@@ -715,6 +755,7 @@ class AssistantMode(QObject):
         reply = voice_settings.load_settings().reply
         self._speak_turn = reply == "always" or (reply == "voice" and self.asked_by_voice)
         self._voice_turn, self.asked_by_voice = self.asked_by_voice, False
+        turn.by_voice = self._voice_turn
         self.speaker.hush()
         self._on_following(0)
         if self._speak_turn:
