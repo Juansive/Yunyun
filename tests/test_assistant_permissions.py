@@ -85,6 +85,23 @@ def test_reading_outside_asks_and_can_be_allowed_per_folder(ws, tool, tool_input
     assert decide("Read", {"file_path": f"{ws}/elsewhere"}, ws / "proj", set(decision.grant)).action == ASK
 
 
+def test_saved_long_outputs_of_claude_code_can_be_read_without_asking(ws):
+    """太长的命令输出 Claude Code 存成文件、只给模型看开头（11.2 实测）：读回这些文件不用问，别的对话记录照旧要问。"""
+    projects = ws / "claude" / "projects"
+    saved = projects / "C--proj" / "0fca5e7a" / "tool-results"
+    saved.mkdir(parents=True)
+
+    def read(path, tool="Read", key="file_path"):
+        return decide(tool, {key: str(path)}, ws / "proj", saved_outputs=str(projects)).action
+
+    assert read(saved / "bnly4yvo9.txt") == ALLOW
+    assert read(saved, "Grep", "path") == ALLOW                                       # 在里面搜
+    assert read(projects / "C--proj" / "0fca5e7a.jsonl") == ASK                      # 对话记录：照旧问
+    assert read(projects / "C--proj" / "0fca5e7a" / "tool-results" / ".." / ".." / "x.jsonl") == ASK
+    assert read(ws / "other" / "tool-results" / "a" / "b" / "c.txt") == ASK         # 名字像也不行：要在 projects 里
+    assert decide("Read", {"file_path": str(saved / "a.txt")}, ws / "proj").action == ASK   # 没告诉它在哪：问
+
+
 def test_home_folder_shortcut_is_outside(ws):
     assert decide("Read", {"file_path": "~/.ssh/id_rsa"}, ws / "proj").action == ASK
 

@@ -603,6 +603,8 @@ def test_build_options(monkeypatch):
     assert options.env["ANTHROPIC_API_KEY"] == "sk-ant-test"
     assert options.env["CLAUDE_CONFIG_DIR"] == str(claude_brain.CONFIG_DIR)
     assert options.env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] == "1"
+    assert options.env["CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS"] == "8000"   # 11.2：读大文件分页
+    assert options.env["BASH_MAX_OUTPUT_LENGTH"] == "10000"                   # 11.2：长输出存成文件
 
 
 def test_build_options_uses_the_chosen_work_folder(monkeypatch, tmp_path):

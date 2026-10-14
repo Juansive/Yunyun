@@ -16,7 +16,7 @@ from yunyun.assistant.tools.bridge import text_result as _text
 
 log = logging.getLogger(__name__)
 
-PART_CHARS = 10_000   # 一段快照最多多少字（中文大约也是这么多 token；太长的网页分几段读）
+PART_CHARS = 6_000   # 一段快照最多多少字（中文大约也是这么多 token；太长的网页分几段读）。阶段 11.2 从 1 万改小，和读文件的上限差不多
 
 _SNAPSHOT_NOTE = ("The page is shown as an accessibility snapshot; [ref=e5] marks elements. Values of password and "
                   "payment fields are shown as (hidden).")

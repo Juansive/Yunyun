@@ -5,6 +5,7 @@
 
 - 网页搜索、读网页：不用问；
 - 读工作文件夹里的文件、搜索：不用问；工作文件夹以外的，读也要问（"这次对话都允许"管到那个文件夹）；
+  Claude Code 把太长的工具输出存成的文件（saved_outputs 下的 <项目>/<对话>/tool-results/，阶段 11.2）读回来不用问；
 - 改 / 写工作文件夹里的文件：每次问，可以选"这次对话都允许"；
   .git、.claude 里面的文件（改了可能让程序以后自动运行别的东西）、工作文件夹以外的文件：每次问，不提供"都允许"；
 - 执行命令：每次问，可以选"这次对话里这类命令都允许"（按命令开头记，比如 pytest、git status）；
@@ -112,13 +113,15 @@ class Decision:
     by_grant: bool = False  # ALLOW 是因为你之前选了"这次对话都允许"（操作记录里区分开）
 
 
-def decide(tool, tool_input, workspace, grants=frozenset(), ask_screenshot=False, apps=None, element=None):
+def decide(tool, tool_input, workspace, grants=frozenset(), ask_screenshot=False, apps=None, element=None,
+           saved_outputs=None):
     """Claude 想用 tool（参数 tool_input），工作文件夹是 workspace，这次对话里你已经"都允许"了 grants → Decision。
 
     grants 里的每一项是 decide 以前给出的 Decision.grant 里的一项：("edit",)、("read", 文件夹)、("command", 命令开头)、
     ("screenshot",)、("open_app", 软件名)、("web", 网站)。ask_screenshot：设置里选了"截图前先问我"；
     apps：开始菜单里的软件名（小写，assistant/apps.names()），打开软件时查名字；None = 不查；
-    element：网页上要点 / 输入 / 选的那个元素（ElementFacts），浏览器操作时芸芸自己看的。
+    element：网页上要点 / 输入 / 选的那个元素（ElementFacts），浏览器操作时芸芸自己看的；
+    saved_outputs：Claude Code 的对话记录文件夹（CLAUDE_CONFIG_DIR/projects），它把太长的工具输出存在里面。
     """
     tool_input = tool_input if isinstance(tool_input, dict) else {}
     if tool in WEB_TOOLS or tool in NOTEBOOK_TOOLS or tool in (FIND_APP_TOOL, BROWSER_READ_TOOL, BROWSER_BACK_TOOL):
@@ -138,7 +141,7 @@ def decide(tool, tool_input, workspace, grants=frozenset(), ask_screenshot=False
     if tool in BROWSER_ACTION_TOOLS:
         return _decide_web_action(tool, tool_input, grants, element)
     if tool in READ_TOOLS:
-        return _decide_read(tool, tool_input, os.path.realpath(workspace), grants)
+        return _decide_read(tool, tool_input, os.path.realpath(workspace), grants, saved_outputs)
     if tool in EDIT_TOOLS:
         return _decide_edit(tool_input, os.path.realpath(workspace), grants)
     if tool in SHELL_TOOLS:
@@ -231,9 +234,21 @@ def _read_target(tool, tool_input, workspace):
     return base   # Grep：在 path 里搜（glob 参数只是筛文件名，跑不出去）
 
 
-def _decide_read(tool, tool_input, workspace, grants):
+def _is_saved_output(path, root):
+    """path 是不是 Claude Code 存下来的太长的工具输出：root/<项目>/<对话>/tool-results（或里面的文件）。
+    只认这一种文件夹——同在 root 下的对话记录（.jsonl）照旧要问。"""
+    if not root:
+        return False
+    root = os.path.realpath(root)
+    if not is_inside(path, root):
+        return False
+    parts = os.path.relpath(path, root).split(os.sep)
+    return len(parts) in (3, 4) and parts[2].casefold() == "tool-results"
+
+
+def _decide_read(tool, tool_input, workspace, grants, saved_outputs=None):
     target = _read_target(tool, tool_input, workspace)
-    if is_inside(target, workspace):
+    if is_inside(target, workspace) or _is_saved_output(target, saved_outputs):
         return Decision(ALLOW)
     if any(item[0] == "read" and is_inside(target, item[1]) for item in grants if len(item) == 2):
         return Decision(ALLOW, by_grant=True)

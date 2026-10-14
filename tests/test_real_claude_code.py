@@ -1,5 +1,5 @@
 """用真的 Claude Code（SDK 自带的 claude.exe）+ 本机假的 Anthropic 接口跑几个剧本：权限、撤销、停止、接着聊、别家服务商、
-对话太长时自动整理。
+对话太长时自动整理、工具结果的上限。
 
 **平时跳过**（每个要十几秒）；升级 claude-agent-sdk 之后、或者改了权限 / 撤销 / 停止的代码，跑一遍：
 
@@ -22,7 +22,7 @@ pytestmark = pytest.mark.skipif(not os.environ.get("YUNYUN_REAL_CLAUDE_CODE"),
 
 @pytest.mark.parametrize("script", ["try_permissions.py", "try_rewind.py", "try_stop.py", "try_resume.py",
                                     "try_provider.py", "try_compact.py", "try_notebook.py", "try_screenshot.py",
-                                    "try_watch.py", "try_apps.py", "try_browser.py"])
+                                    "try_watch.py", "try_apps.py", "try_browser.py", "try_context.py"])
 def test_script_reaches_its_conclusion(script):
     result = subprocess.run([sys.executable, str(PROJECT_ROOT / "tools" / script)], capture_output=True,
                             cwd=PROJECT_ROOT, timeout=300, env={**os.environ, "PYTHONIOENCODING": "utf-8"},

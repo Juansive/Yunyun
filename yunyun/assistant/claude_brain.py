@@ -41,6 +41,11 @@ WEB_TOOLS = ["WebSearch", "WebFetch"]
 WORK_TOOLS = ["Read", "Glob", "Grep", "Edit", "Write", "Bash", "PowerShell"]
 PROJECT_NOTES_FILES = ("CLAUDE.md", os.path.join(".claude", "CLAUDE.md"))   # 项目规矩：读，但 .claude/ 里的设置不加载
 PROJECT_NOTES_MAX_CHARS = 20_000   # 太长的只读开头（每一问都要带着它，太长费钱）
+# 工具结果的上限（阶段 11.2，tools/try_context.py 实测）：读文件一次最多多少 token（Claude Code 默认 2.5 万；超了它自己截断，
+# 并告诉模型"第几行到第几行、用 offset 读下一页或者用 Grep"）；命令输出超过多少字符就存成文件、只给模型看开头 2KB（默认 3 万）。
+# 读回存下来的输出不用问（permissions 的 saved_outputs）
+READ_MAX_TOKENS = 8_000
+COMMAND_MAX_CHARS = 10_000
 CONFIG_DIR = data_dir() / "assistant" / "claude"   # Claude Code 的会话记录、设置放这里（里面有完整对话内容）
 WORKSPACE = data_dir() / "assistant" / "workspace"  # 用户没选工作文件夹时用的：一个空文件夹（只聊天）
 # 整理对话（Claude Code 的 /compact）时告诉模型要留下什么（阶段 10）。总结用对话的语言写
@@ -121,6 +126,8 @@ def build_options(settings, api_key, language, stderr=None, gate=None, resume=""
         **launch_env(provider, api_key, settings.effective_model),
         "CLAUDE_CONFIG_DIR": str(CONFIG_DIR),
         "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",   # 不自动更新、不发遥测和错误报告
+        "CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS": str(READ_MAX_TOKENS),
+        "BASH_MAX_OUTPUT_LENGTH": str(COMMAND_MAX_CHARS),
         **system_proxy_env(),
     }
     notes = read_project_notes(settings.workspace)
@@ -184,7 +191,8 @@ class PermissionGate:
 
     def decide(self, tool, tool_input, element=None):
         known = apps.names() if tool == protocol.OPEN_APP_TOOL else None   # 打开软件：只认开始菜单里有的名字
-        return permissions.decide(tool, tool_input, self.workspace, self.grants, self.ask_screenshot, known, element)
+        return permissions.decide(tool, tool_input, self.workspace, self.grants, self.ask_screenshot, known, element,
+                                  saved_outputs=str(CONFIG_DIR / "projects"))
 
     async def _look(self, tool, tool_input):
         """拍板前要先看清的东西：软件列表（第一次要读 1 秒多，在别的线程读好，decide 里就不卡了）；
