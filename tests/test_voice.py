@@ -75,9 +75,11 @@ def test_sentences_do_not_change_while_the_answer_grows():
 # ---------- 设置、消息 ----------
 
 def test_voice_settings_defaults_and_saving():
-    assert voice_settings.load_settings() == VoiceSettings("voice", "", False)
-    voice_settings.save_settings(VoiceSettings("always", "F9", True))
-    assert voice_settings.load_settings() == VoiceSettings("always", "F9", True)
+    assert voice_settings.load_settings() == VoiceSettings("voice", "", False, 8)
+    voice_settings.save_settings(VoiceSettings("always", "F9", True, 3))
+    assert voice_settings.load_settings() == VoiceSettings("always", "F9", True, 3)
+    cfg.save_config({"voice": {"follow": 10}})   # 不是三档之一：用默认的
+    assert voice_settings.load_settings().follow == 8
 
 
 def test_yunyun_has_one_voice_per_language():
@@ -92,7 +94,7 @@ def test_old_voice_and_pitch_choices_are_ignored_and_dropped():
     cfg.save_config({"voice": {"reply": "always", "voice": "zh-CN-YunxiNeural", "pitch": 0}})   # 以前能选的时候存的
     assert voice_settings.load_settings() == VoiceSettings("always")
     voice_settings.save_settings(VoiceSettings("never"))
-    assert cfg.load_config_or_empty()["voice"] == {"reply": "never", "hotkey": "", "always": False}
+    assert cfg.load_config_or_empty()["voice"] == {"reply": "never", "hotkey": "", "always": False, "follow": 8}
 
 
 @pytest.mark.parametrize("section", [{"reply": "loud", "hotkey": 3, "always": "yes"}, "乱写的", None])

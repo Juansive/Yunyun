@@ -867,7 +867,13 @@ class PetWindow(QWidget):
             with winapi.keep_z_order(int(self.winId())):   # 从属窗口：显示时别把芸芸拉到最前面
                 self._mic_mark.show()
         else:
+            self._mic_mark.countdown(0)
             self._mic_mark.hide()
+
+    def mic_countdown(self, seconds):
+        """"接着说"的窗口（7.9）：麦克风标记外面一圈绿条倒数 seconds 秒；0 = 收起。"""
+        if self._mic_mark is not None:
+            self._mic_mark.countdown(seconds)
 
     def suspend_voice_hotkey(self, suspend):
         """设置 → 语音正在录新的快捷键：先放开芸芸注册着的那个。"""

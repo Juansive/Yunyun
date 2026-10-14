@@ -6,6 +6,7 @@
     说话快捷键：  [Ctrl+Shift+Space] [清除]
                   ✓ 助手模式里按住 Ctrl+Shift+Space 说话（被占用 / 不能用时红字）
                   [✓] 始终在听：叫一声"芸芸"就能说话，不用按键（7.3）
+    接着说：      [她说完 8 秒内不用再叫名字 ▾]（7.9；始终在听关着时灰掉）
     识别模型：    还没下载（约 240 MB） [下载]   /   ▓▓▓░░ [取消]   /   ✓ 已下载 [删除]
     试听的结果（放不出声音时红字）
     说明（灰色）：快捷键的注意事项；在线语音会把要读的话发给微软；录音只在本机识别
@@ -69,6 +70,12 @@ class VoicePage(QWidget):
         self._watch.setChecked(saved.always)
         self._watch.toggled.connect(self._watch_toggled)
         form.addRow("", self._watch)
+        self._follow = QComboBox()   # 回答完接着说（7.9）
+        for seconds in voice_settings.FOLLOW_CHOICES:
+            self._follow.addItem(tr("voice_follow_choice", seconds), seconds)
+        self._follow.setCurrentIndex(voice_settings.FOLLOW_CHOICES.index(saved.follow))
+        self._follow.setEnabled(saved.always)
+        form.addRow(tr("voice_follow_label"), self._follow)
 
         self._model_status = QLabel()
         self._model_bar = QProgressBar()
@@ -89,6 +96,7 @@ class VoicePage(QWidget):
         layout.addStretch()
 
         self._reply.currentIndexChanged.connect(self._save)
+        self._follow.currentIndexChanged.connect(self._save)
         self._key.editingFinished.connect(self._hotkey_edited)
         self._download.progress.connect(self._refresh_model)
         self._download.finished.connect(self._on_downloaded)
@@ -135,12 +143,14 @@ class VoicePage(QWidget):
     # ---------- 内部 ----------
 
     def _settings(self):
-        return voice_settings.VoiceSettings(self._reply.currentData(), self._hotkey_text, self._watch.isChecked())
+        return voice_settings.VoiceSettings(self._reply.currentData(), self._hotkey_text, self._watch.isChecked(),
+                                            self._follow.currentData())
 
     def _save(self):
         voice_settings.save_settings(self._settings())
 
     def _watch_toggled(self):
+        self._follow.setEnabled(self._watch.isChecked())
         self._save()
         self.apply_hotkey()   # 助手模式开着就马上开始 / 停止听（apply_hotkey 是设置窗口接上的 pet.apply_voice_settings）
 

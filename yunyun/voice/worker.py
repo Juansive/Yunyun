@@ -2,8 +2,8 @@
     开发版：python -m yunyun.voice.worker
     打包后：芸芸.exe --voice-worker   （tools/exe_entry.py 一开始就分流）
 
-只用 asyncio，不 import Qt。标准输入收命令（Say / Hush / Listen / StopListening / CancelListening / Watch / Quit），
-标准输出发事件（Ready / Speaking / Idle / Level / Heard / Called / Error）；标准输入读到头（芸芸退出或崩溃）就自己退出。
+只用 asyncio，不 import Qt。标准输入收命令（Say / Hush / Listen / StopListening / CancelListening / Watch / Follow / Quit），
+标准输出发事件（Ready / Speaking / Idle / Level / Heard / Called / Following / Error）；标准输入读到头（芸芸退出或崩溃）就自己退出。
 日志不记要说的话、听到的话（和对话内容一样），只记种类、长度。
 """
 import asyncio
@@ -20,6 +20,7 @@ from yunyun.paths import data_dir
 from yunyun.voice import protocol, speech_text
 
 log = logging.getLogger("yunyun.voice.worker")
+SAMPLE_RATE = 16000
 MIN_PCM_BYTES = 9600   # 0.3 秒（16 kHz、16 位）：比这短的不识别（手滑碰了一下快捷键）
 FOLLOW_S = 8.0         # "始终在听"时只叫了"芸芸"：这么久之内说的下一句不用再叫名字
 ECHO_TAIL_S = 0.5      # 芸芸说完以后再等这么久才接着听（房间里的回声）
@@ -31,12 +32,16 @@ class Listener:
     - 按住快捷键（Listen / StopListening / CancelListening）：录下来，松开后识别，回 Heard；
     - "始终在听"（Watch，7.3）：一直录，VAD 一句句切出来在本机识别，开头叫了"芸芸"才回 Called，别的扔掉；
       芸芸自己在说话时（和说完后 ECHO_TAIL_S 秒）不听；按住快捷键时让路，松开后接着听。
+      "接着说"的窗口（7.9）：只叫了名字、或者回答说完了（Follow），几秒内开始说的话不用叫名字；只有语气词的扔掉。
     识别模型、VAD 第一次要用时在线程里加载（和录音同时进行），之后一直留着。
     make_recorder(on_level, on_chunk=None) → asr.Recorder；load_recognizer() → recognize(声音) → 文字；
-    load_segmenter() → asr.Segmenter；is_playing() → 芸芸是不是正在说话。测试时都换成假的。"""
+    load_segmenter() → asr.Segmenter；is_playing() → 芸芸是不是正在说话；is_saying() → 还有没说完的（在合成、排着、在放）。
+    测试时都换成假的。"""
 
-    def __init__(self, emit, make_recorder, load_recognizer, load_segmenter=None, is_playing=lambda: False):
+    def __init__(self, emit, make_recorder, load_recognizer, load_segmenter=None, is_playing=lambda: False,
+                 is_saying=None):
         self._emit, self._make_recorder, self._is_playing = emit, make_recorder, is_playing
+        self._is_saying = is_saying or is_playing
         self._load, self._load_segmenter = load_recognizer, load_segmenter
         self._recorder = None      # 按住快捷键时用的
         self._stream = None        # "始终在听"用的：录到的一块块直接交给 _on_chunk
@@ -44,7 +49,10 @@ class Listener:
         self._segmenter = None     # asyncio.Task：加载好的 Segmenter
         self._watching = False
         self._holding = False      # 正按着快捷键
-        self._follow_until = 0.0   # 刚只叫了名字：这之前说的下一句不用再叫
+        self._follow_after = None  # 回答都送过来了（Follow）：说完以后要开的窗口 (秒数, 回答最后是不是问句)
+        self._follow_until = 0.0   # "接着说"的窗口：这之前开始说的话不用叫名字
+        self._window = None        # 窗口到点关的定时器（开着时有）
+        self._window_asks = False  # 窗口是回答完开的、回答最后问了你一句："嗯"也算回答
         self._hear_after = 0.0     # 芸芸刚说完：这之前的声音不要
         self._tasks = set()
 
@@ -80,6 +88,7 @@ class Listener:
     def watch(self, on):
         self._watching = on
         if not on:
+            self.end_follow()
             self._close_stream()
             return
         self._ensure_recognizer()
@@ -132,8 +141,49 @@ class Listener:
             return
         if now < self._hear_after:
             return
+        self._poll_follow()
         for sentence in segmenter.feed(pcm):
-            self._spawn(self._recognize_called(sentence))
+            # 这句是什么时候开始说的：说完后停了 SILENCE_S 秒才切出来（到点前开口、说到窗口关了以后的照样算）
+            started = now - len(sentence) / SAMPLE_RATE - getattr(segmenter, "SILENCE_S", 0.0)
+            self._spawn(self._recognize_called(sentence, started))
+
+    # ---------- 接着说（7.9） ----------
+
+    def follow(self, seconds, asks=False):
+        """回答都送过来了：说完以后（和回声的 ECHO_TAIL_S 之后）开 seconds 秒的窗口；没出声的回答马上开。"""
+        self._follow_after = (seconds, asks) if self._watching and seconds > 0 else None
+        self._poll_follow()
+
+    def end_follow(self):
+        """不等了（Hush、按住快捷键、不听了）：要开的不开，开着的关掉。"""
+        self._follow_after = None
+        self._close_window()
+
+    def _poll_follow(self):
+        if self._follow_after and not self._is_saying() and time.monotonic() >= self._hear_after:
+            (seconds, asks), self._follow_after = self._follow_after, None
+            self._open_window(seconds, asks)
+
+    def _open_window(self, seconds, asks=False):
+        """开窗口，告诉芸芸那边（换"在听"的样子、麦克风标记外面的绿条倒数）。"""
+        if self._window is not None:
+            self._window.cancel()
+        self._follow_until = time.monotonic() + seconds
+        self._window_asks = asks
+        self._window = asyncio.get_running_loop().call_later(seconds, self._window_ended)
+        self._emit(protocol.Following(seconds))
+
+    def _window_ended(self):
+        """到点了：绿条走完。_follow_until 留着——到点前开口、还没说完的那句照样算。"""
+        self._window = None
+        self._emit(protocol.Following(0))
+
+    def _close_window(self):
+        """提前关（发出去了一问、Hush、按住快捷键、不听了）：之后说的都要叫名字。"""
+        self._follow_until = 0.0
+        if self._window is not None:
+            self._window.cancel()
+            self._window_ended()
 
     # ---------- 识别 ----------
 
@@ -170,9 +220,10 @@ class Listener:
             self._emit(protocol.Error("listen", str(e)[:200]))
             return
         log.info("识别了 %.1f 秒的话：%d 个字", len(pcm) / 32000, len(text))
-        self._emit(protocol.Heard(speech_text.heard_text(text)))
+        heard = speech_text.heard_text(text)
+        self._emit(protocol.Heard("" if speech_text.is_filler(heard) else heard))   # 只有"嗯"：当没听清
 
-    async def _recognize_called(self, sentence):
+    async def _recognize_called(self, sentence, started=0.0):
         recognize = await self._recognizer_ready()
         if recognize is None:
             return
@@ -182,13 +233,21 @@ class Listener:
             log.warning("识别出错（始终在听）：%s %s", type(e).__name__, e)
             return
         question = speech_text.after_wake_word(text)
-        if question is None:
+        if question is None:   # 没叫名字：只有窗口里开始说的才算，光是语气词的不算（除非她刚问了你一句）
             question = speech_text.heard_text(text)
-            if time.monotonic() >= self._follow_until or not question:
-                log.info("听到一句（%.1f 秒），没叫芸芸：扔掉", len(sentence) / 16000)
+            filler = speech_text.is_filler(question) and not self._window_asks
+            if started >= self._follow_until or not question or filler:
+                log.info("听到一句（%.1f 秒），没叫芸芸%s：扔掉", len(sentence) / SAMPLE_RATE, "（语气词）" if filler else "")
                 return
-        self._follow_until = time.monotonic() + FOLLOW_S if not question else 0.0
-        log.info("叫了芸芸：%d 个字", len(question))
+            log.info("接着说的一句：%d 个字", len(question))
+        else:
+            if speech_text.is_filler(question):   # "芸芸，嗯……"：当成只叫了名字
+                question = ""
+            log.info("叫了芸芸：%d 个字", len(question))
+        if question:
+            self._close_window()
+        else:
+            self._open_window(FOLLOW_S)
         self._emit(protocol.Called(question))
 
     def _spawn(self, coroutine):
@@ -200,6 +259,8 @@ class Listener:
         self._watching = False
         self.cancel()
         self._close_stream()
+        if self._window is not None:
+            self._window.cancel()
         for task in self._tasks:
             task.cancel()
 
@@ -217,6 +278,7 @@ async def serve(stdin, write, synthesize, make_player, make_recorder, load_recog
     commands = asyncio.Queue()
     sayings = asyncio.Queue()   # 等着合成的：(第几代, Say)；Hush 一次换一代，旧一代的都不说了
     generation = 0
+    synthesizing = False        # 正在合成一段（这时 Player 可能还没东西放）
 
     def emit(event):
         write(protocol.encode(event))
@@ -228,6 +290,7 @@ async def serve(stdin, write, synthesize, make_player, make_recorder, load_recog
         """合成好就交给 Player 排着放（一边放这一句，一边已经在合成下一段了）。
         第一句单独合成（好快点出声）；已经在说了，排着的几句合在一起合成（MERGE_CHARS 以内）——
         一句句分开合成，每句的语调都从头起，听着僵硬（2026-10-13 用户说的）。"""
+        nonlocal synthesizing
         carry = None   # 合不进上一段的那一句：下一段从它开始
         while True:
             born, say = carry or await sayings.get()
@@ -244,7 +307,11 @@ async def serve(stdin, write, synthesize, make_player, make_recorder, load_recog
                     carry = (next_born, following)
                     break
                 text = speech_text.join(text, following.text)
-            pcm, fallback = await synthesize(text, say.voice, say.pitch)
+            synthesizing = True
+            try:
+                pcm, fallback = await synthesize(text, say.voice, say.pitch)
+            finally:
+                synthesizing = False
             if born != generation:   # 合成的时候被 Hush 了
                 continue
             if pcm is None:
@@ -258,7 +325,8 @@ async def serve(stdin, write, synthesize, make_player, make_recorder, load_recog
                 log.warning("放不出声音：%s %s", type(e).__name__, e)
                 emit(protocol.Error("audio", str(e)[:200]))
 
-    listener = Listener(emit, make_recorder, load_recognizer, load_segmenter, lambda: player.playing)
+    listener = Listener(emit, make_recorder, load_recognizer, load_segmenter, lambda: player.playing,
+                        lambda: player.playing or synthesizing or not sayings.empty())
     start_reader(stdin, protocol.decode, commands)
     speaking = asyncio.create_task(synthesize_all())
     emit(protocol.Ready())
@@ -272,6 +340,7 @@ async def serve(stdin, write, synthesize, make_player, make_recorder, load_recog
             elif isinstance(command, (protocol.Hush, protocol.Listen)):   # 你一开口就停
                 generation += 1
                 player.clear()
+                listener.end_follow()
                 if isinstance(command, protocol.Listen):
                     listener.start()
             elif isinstance(command, protocol.StopListening):
@@ -280,6 +349,8 @@ async def serve(stdin, write, synthesize, make_player, make_recorder, load_recog
                 listener.cancel()
             elif isinstance(command, protocol.Watch):
                 listener.watch(command.on)
+            elif isinstance(command, protocol.Follow):
+                listener.follow(command.seconds, command.asks)
     finally:
         listener.close()
         speaking.cancel()

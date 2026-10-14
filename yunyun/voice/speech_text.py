@@ -63,6 +63,17 @@ def after_wake_word(text):
     return None
 
 
+_FILLER_CHARS = set("嗯恩哦噢喔啊呃额唔哈嘿诶欸哎呀咦哼")
+_FILLERS = {word * n for word in ("um", "umm", "uh", "hmm", "hm", "mm", "mhm", "ah", "oh", "er", "erm", "uh-huh",
+                                  "えー", "えっと", "あー", "あの", "うーん", "うん", "ん") for n in (1, 2, 3)}
+
+
+def is_filler(text):
+    """只有语气词（"嗯""哦哦""啊？""um"）：7.9 用户定的，不发给大脑（零成本）。"""
+    bare = "".join(c for c in text.lower() if c not in _PUNCTUATION and not c.isspace())
+    return not bare or all(c in _FILLER_CHARS for c in bare) or bare in _FILLERS
+
+
 def join(first, second):
     """两句接成一段（合在一起合成）：中文直接接，英文中间加个空格。"""
     if first and second and first[-1].isascii() and second[0].isascii():

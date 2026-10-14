@@ -11,6 +11,7 @@ from test_voice import FakePlayer, FakeRecorder, Lines, speaker, until, voice_wo
 from yunyun import i18n
 from yunyun.assistant import protocol as assistant_protocol
 from yunyun.pet import winapi
+from yunyun.pet.state import PetState
 from yunyun.voice import models, protocol, speech_text, worker
 from yunyun.voice import settings as voice_settings
 from yunyun.voice.settings import VoiceSettings
@@ -29,6 +30,15 @@ def test_wake_word(text, expected):
     assert speech_text.after_wake_word(text) == expected
 
 
+@pytest.mark.parametrize("text, filler", [
+    ("嗯。", True), ("哦哦", True), ("啊？", True), ("嗯嗯嗯……", True), ("Um.", True), ("hmm hmm", True), ("うーん", True),
+    ("", True), ("好的", False), ("嗯，打开记事本", False), ("ok", False), ("哈哈哈你真好", False),
+])
+def test_filler(text, filler):
+    """只有语气词的话不发给大脑（7.9）。"""
+    assert speech_text.is_filler(text) is filler
+
+
 # ---------- 语音子进程 ----------
 
 class FakeSegmenter:
@@ -44,7 +54,7 @@ class FakeSegmenter:
         self.resets += 1
 
 
-SAID = {b"a": "芸芸，开灯", b"b": "随便聊聊", b"c": "云云", b"d": "打开记事本"}
+SAID = {b"a": "芸芸，开灯", b"b": "随便聊聊", b"c": "云云", b"d": "打开记事本", b"e": "嗯。", b"f": "芸芸，嗯"}
 
 
 def start_worker(lines, out, recorders, players, segmenters, load_segmenter=None):
@@ -105,6 +115,72 @@ def test_worker_only_passes_on_what_was_said_to_yunyun(monkeypatch):
         await until(lambda: stream.recording and any(isinstance(e, protocol.Heard) for e in out))
         lines.send(protocol.Watch(False))
         await until(lambda: not stream.recording)
+        lines.end()
+        await asyncio.wait_for(task, 3)
+    asyncio.run(scenario())
+
+
+def test_worker_opens_a_follow_up_window_after_the_answer_is_said(monkeypatch):
+    """7.9：回答都送过来了（Follow）→ 说完（和回声的一小会儿）以后才开窗口，这期间说的话不用叫名字；
+    只有"嗯"的不算（她问了你一句时算）；发出去一问、Hush、到点都会关窗口。"""
+    monkeypatch.setattr(worker, "ECHO_TAIL_S", 0.05)
+
+    async def scenario():
+        lines, out, recorders, players, segmenters = Lines(), [], [], [], []
+        task = start_worker(lines, out, recorders, players, segmenters)
+        lines.send(protocol.Watch(True))
+        await until(lambda: recorders and recorders[0].recording and segmenters)
+        stream = recorders[0]
+        await asyncio.sleep(0.05)
+        called = lambda: [e.text for e in out if isinstance(e, protocol.Called)]   # noqa: E731
+        windows = lambda: [e.seconds for e in out if isinstance(e, protocol.Following)]   # noqa: E731
+
+        players[0].playing = True    # 还在说：先不开
+        lines.send(protocol.Follow(5))
+        await asyncio.sleep(0.05)
+        stream.on_chunk(b"-")
+        assert windows() == []
+        players[0].playing = False
+        stream.on_chunk(b"-")        # 刚说完：等回声过去
+        assert windows() == []
+        await asyncio.sleep(0.1)
+        stream.on_chunk(b"-")
+        assert windows() == [5]
+        stream.on_chunk(b"e")        # 光说"嗯"：不算，窗口还开着
+        await asyncio.sleep(0.05)
+        assert called() == []
+        stream.on_chunk(b"d")        # 不用叫名字
+        await until(lambda: called() == ["打开记事本"])
+        assert windows() == [5, 0]   # 发出去一问就关
+        stream.on_chunk(b"d")
+        await asyncio.sleep(0.05)
+        assert len(called()) == 1
+
+        lines.send(protocol.Follow(5, asks=True))   # 没出声的回答：马上开；她问了你一句，"嗯"就是回答
+        await until(lambda: windows() == [5, 0, 5])
+        stream.on_chunk(b"e")
+        await until(lambda: called() == ["打开记事本", "嗯。"])
+
+        players[0].playing = True
+        lines.send(protocol.Follow(5))
+        lines.send(protocol.Hush())  # 别说了：这个窗口也不开了
+        await asyncio.sleep(0.05)
+        players[0].playing = False
+        await asyncio.sleep(0.1)
+        stream.on_chunk(b"-")
+        assert windows() == [5, 0, 5, 0]
+
+        lines.send(protocol.Follow(0.1))   # 到点自己关
+        await until(lambda: windows() == [5, 0, 5, 0, 0.1, 0])
+        await asyncio.sleep(0.05)    # Windows 上定时器能早到十几毫秒
+        stream.on_chunk(b"d")
+        await asyncio.sleep(0.05)
+        assert len(called()) == 2
+
+        stream.on_chunk(b"f")        # "芸芸，嗯"：当成只叫了名字，开 FOLLOW_S 秒的窗口
+        await until(lambda: called()[-1] == "" and windows()[-1] == worker.FOLLOW_S)
+        lines.send(protocol.Watch(False))   # 不听了：窗口关掉
+        await until(lambda: windows()[-1] == 0)
         lines.end()
         await asyncio.wait_for(task, 3)
     asyncio.run(scenario())
@@ -191,6 +267,35 @@ def test_calling_yunyun_asks_and_the_answer_is_read(watch_world, qapp):
     assert voice.said == ["晴天。"]   # 说出来问的：回答读出来
 
 
+def test_spoken_questions_get_a_follow_up_window(watch_world, qapp):
+    """7.9：说出来问的，答完让语音子进程开"接着说"的窗口（设置里的秒数；回答以问号结尾时"嗯"也算）；
+    打字问的不开。窗口开着时是"在听"的样子、麦克风标记外面绿条倒数；关了就收起。"""
+    pet, machine, brain, voices, _ = watch_world
+    voice = voices[0]
+    follows = lambda: [c for c in voice.sent if isinstance(c, protocol.Follow)]   # noqa: E731
+    voice.say(protocol.Called("今天天气怎么样"))
+    brain.say(assistant_protocol.TextDelta("晴天。"), assistant_protocol.TurnFinished())
+    assert follows() == [protocol.Follow(8, False)]
+
+    voice.say(protocol.Following(8))
+    assert machine.state == PetState.LISTENING and pet._mic_mark.left > 0
+    voice.say(protocol.Following(0))
+    assert machine.state != PetState.LISTENING and pet._mic_mark.left == 0
+
+    voice_settings.save_settings(VoiceSettings(always=True, follow=3))
+    voice.say(protocol.Called("帮我开灯"))
+    brain.say(assistant_protocol.TextDelta("要开**客厅**的灯吗？"), assistant_protocol.TurnFinished())
+    assert follows()[-1] == protocol.Follow(3, True)
+
+    pet.assistant.session.ask("打字问的")
+    brain.say(assistant_protocol.TextDelta("好。"), assistant_protocol.TurnFinished())
+    assert len(follows()) == 2
+
+    voice.say(protocol.Following(3))
+    pet.close_assistant()   # 不听了：样子和绿条都收起
+    assert machine.state != PetState.LISTENING and pet._mic_mark.left == 0
+
+
 def test_watching_pauses_in_full_screen_and_stops_on_exit(watch_world, qapp):
     pet, _, _, voices, busy = watch_world
     voice = voices[0]
@@ -232,7 +337,10 @@ def test_voice_page_checkbox(qapp):
     page = VoicePage(make_voice=factory())
     applied = []
     page.apply_hotkey = lambda: applied.append(1) or "closed"
+    assert not page._follow.isEnabled()   # 接着说（7.9）：始终在听关着时灰掉
     page._watch.setChecked(True)
-    assert voice_settings.load_settings().always and applied == [1]
+    assert voice_settings.load_settings().always and applied == [1] and page._follow.isEnabled()
+    page._follow.setCurrentIndex(0)
+    assert voice_settings.load_settings().follow == 3
     page._watch.setChecked(False)
-    assert not voice_settings.load_settings().always
+    assert not voice_settings.load_settings().always and not page._follow.isEnabled()

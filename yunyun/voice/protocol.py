@@ -58,6 +58,16 @@ class Watch:
 
 
 @_message
+class Follow:
+    """这段回答都送过来了（7.9，"始终在听"时）：等排着的都说完（没出声就马上），开一个 seconds 秒的"接着说"窗口——
+    这期间开始说的话不用叫"芸芸"。Hush / Listen / Watch(False) 会让要开的不开、开着的关掉。
+    asks：回答最后问了你一句（问号结尾）——窗口里光说"嗯"也是在回答她，不当语气词扔掉。"""
+    TYPE: ClassVar[str] = "follow"
+    seconds: float
+    asks: bool = False
+
+
+@_message
 class Quit:
     TYPE: ClassVar[str] = "quit"
 
@@ -102,6 +112,14 @@ class Called:
     """"始终在听"时你叫了芸芸：text 是名字后面的话（问题）；只叫了名字是空的——那之后 FOLLOW_S 秒内说的下一句不用再叫名字。"""
     TYPE: ClassVar[str] = "called"
     text: str
+
+
+@_message
+class Following:
+    """"接着说"的窗口开了（seconds 秒，7.9：回答说完了、或者只叫了名字）/ 关了（0）。
+    芸芸那边换"在听"的样子、麦克风标记外面一圈绿条倒数。到点关的那一刻还在说的那句照样算。"""
+    TYPE: ClassVar[str] = "following"
+    seconds: float
 
 
 @_message

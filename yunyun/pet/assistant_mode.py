@@ -164,8 +164,14 @@ class AssistantMode(QObject):
         self._held = QElapsedTimer()
         self._listen_timer = QTimer(self, singleShot=True, interval=self.LISTEN_MAX_MS, timeout=self._on_talk_released)
         self.speaker.called.connect(self._on_called)   # 始终在听（7.3）
+        self.speaker.following.connect(self._on_following)   # 接着说的窗口（7.9）
         self._always = False         # 设置里开着"始终在听"
         self._watch_on = False       # 现在真的在听（开着、不在免打扰 / 全屏、模型下好了）
+        self._voice_turn = False     # 这一轮是说出来问的：答完开"接着说"的窗口（7.9）
+        self._following = False      # "接着说"的窗口开着：芸芸是"在听"的样子
+        self._look_listening = False   # 现在是不是"在听"的样子（按住快捷键 / 接着说的窗口）
+        # 万一语音子进程没报"窗口关了"（比如它死了）：到点自己收起
+        self._follow_timer = QTimer(self, singleShot=True, timeout=lambda: self._on_following(0))
         quiet = getattr(pet, "quiet_hours", None)
         if quiet is not None:
             quiet.changed.connect(self.apply_voice_settings)   # 免打扰开始就放开快捷键、不听了，结束再回来
@@ -311,6 +317,8 @@ class AssistantMode(QObject):
             self._watch_on = want
             self.speaker.watch(want)
             self._pet.show_mic_mark(want)
+            if not want:
+                self._on_following(0)
 
     def suspend_hotkey(self, suspend):
         """设置页在录新的快捷键：先放开（不然按下去被 Windows 拦走了，框里收不到），录完再注册回来。"""
@@ -705,8 +713,9 @@ class AssistantMode(QObject):
         """新的一问：上一段还没读完就别读了；这一段要不要读，按设置和这一问是不是说出来的定。"""
         reply = voice_settings.load_settings().reply
         self._speak_turn = reply == "always" or (reply == "voice" and self.asked_by_voice)
-        self.asked_by_voice = False
+        self._voice_turn, self.asked_by_voice = self.asked_by_voice, False
         self.speaker.hush()
+        self._on_following(0)
         if self._speak_turn:
             self.speaker.begin()
 
@@ -746,7 +755,7 @@ class AssistantMode(QObject):
         self._listening = True
         self._held.start()
         self._listen_timer.start()
-        self.listening_changed.emit(True)
+        self._on_following(0)   # 接着说的窗口收起（子进程那边也关了），换成"在听"的样子
         self._on_level(0.0)
 
     def _on_talk_released(self):
@@ -764,9 +773,26 @@ class AssistantMode(QObject):
 
     def _stop_listening_look(self):
         self._listen_timer.stop()
-        if self._listening:
-            self._listening = False
-            self.listening_changed.emit(False)
+        self._listening = False
+        self._update_look()
+
+    def _update_look(self):
+        """"在听"的样子 = 按着快捷键，或者"接着说"的窗口开着（7.9）。变了才告诉状态机。"""
+        look = self._listening or self._following
+        if look != self._look_listening:
+            self._look_listening = look
+            self.listening_changed.emit(look)
+
+    def _on_following(self, seconds):
+        """"接着说"的窗口开了（seconds 秒）/ 关了（0）：换"在听"的样子，麦克风标记外面一圈绿条倒数（2026-10-14 用户定）。"""
+        following = seconds > 0 and self._watch_on and not (self._listening or self._recognizing)
+        self._following = following
+        if following:
+            self._follow_timer.start(int(seconds * 1000) + 1000)
+        else:
+            self._follow_timer.stop()
+        self._pet.mic_countdown(seconds if following else 0)
+        self._update_look()
 
     def _on_level(self, level):
         """在听：气泡"在听…松开就发送"，下面一条音量条（2026-10-11 用户选的）。"""
@@ -879,7 +905,11 @@ class AssistantMode(QObject):
         self._bubble_timer.stop()
         if self._speak_turn and not turn.stopped and turn.answer:
             self.speaker.update(turn.answer, final=True)   # 最后半句也读
-        self._speak_turn = False
+        if self._voice_turn and self._watch_on and not turn.stopped and turn.error is None and turn.answer:
+            # 说出来问的：她说完（没出声就是现在）几秒内接着说不用再叫名字（7.9，2026-10-14 用户定）
+            asks = turn.answer.rstrip().rstrip("*_`」』”\"'）)").endswith(("？", "?"))
+            self.speaker.follow(voice_settings.load_settings().follow, asks)
+        self._speak_turn = self._voice_turn = False
         card = card_from_turn(turn, self.workspace)
         self._last_turn = (turn, card)   # 答完马上可能开始整理（compact_changed）：只记最近这一轮的
         self.cards.append(card)

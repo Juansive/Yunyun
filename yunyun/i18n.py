@@ -1329,13 +1329,21 @@ TEXTS = {
                     "ja": "いつも聞く：「芸芸」と呼べば話せる（キー不要）"},
     "voice_watch_note": {
         "zh": "始终在听：只在助手模式开着时听；芸芸自己说话时、全屏时、免打扰时段不听。开头没叫\"芸芸\"的话在本机识别后马上扔掉，"
-              "不会发出去。开着时芸芸左上角有个绿色的小麦克风。",
+              "不会发出去。开着时芸芸左上角有个绿色的小麦克风。用语音问她时，她说完后几秒内接着说不用再叫名字"
+              "（小麦克风外面一圈绿条倒数，只说\"嗯、哦\"这类不算）。",
         "en": "Always listening: only while assistant mode is open; not while Yunyun is talking, in full screen or during quiet "
               "hours. Anything that doesn't start with \"Yunyun\" is recognized on this computer and thrown away at once — "
-              "never sent. While it's on, a small green microphone sits at Yunyun's top-left.",
+              "never sent. While it's on, a small green microphone sits at Yunyun's top-left. After she answers a spoken "
+              "question, you can go on for a few seconds without saying her name (a green ring counts down around the "
+              "microphone; a lone \"um\" or \"oh\" doesn't count).",
         "ja": "いつも聞く：アシスタントモードを開いているときだけ。芸芸が話しているとき・全画面のとき・おやすみ時間は聞きません。"
-              "「芸芸」で始まらない言葉はこのパソコンで認識してすぐ捨て、送りません。オンのあいだは芸芸の左上に緑の小さなマイクが出ます。",
+              "「芸芸」で始まらない言葉はこのパソコンで認識してすぐ捨て、送りません。オンのあいだは芸芸の左上に緑の小さなマイクが出ます。"
+              "声で聞いたときは、答えたあと数秒間は名前を呼ばずに続けて話せます（マイクのまわりの緑の輪がカウントダウン。"
+              "「えー」「うん」だけは数えません）。",
     },
+    "voice_follow_label": {"zh": "接着说：", "en": "Follow-up:", "ja": "続けて話す："},
+    "voice_follow_choice": {"zh": "她说完 {} 秒内不用再叫\"芸芸\"", "en": "No need to say \"Yunyun\" for {} s after she answers",
+                            "ja": "答えたあと {} 秒間は「芸芸」と呼ばなくていい"},
     "menu_assistant_watch": {"zh": "始终在听（叫\"芸芸\"）", "en": "Always listening (say \"Yunyun\")",
                              "ja": "いつも聞く（「芸芸」と呼ぶ）"},
     "voice_called": {"zh": "嗯？我在听，说吧", "en": "Yes? I'm listening.", "ja": "うん？聞いてるよ"},
