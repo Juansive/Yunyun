@@ -82,12 +82,14 @@ def test_voice_settings_defaults_and_saving():
     assert voice_settings.load_settings().follow == 8
 
 
-def test_yunyun_has_one_voice_per_language():
-    """芸芸就一种声线（用户定的）：中文晓伊；晓伊念不好日文，日文 / 英文界面用那种语言的女声。都调高 30 Hz。"""
-    assert voice_settings.voice_for("zh") == "zh-CN-XiaoyiNeural" and voice_settings.voice_for("fr") == "zh-CN-XiaoyiNeural"
-    assert voice_settings.voice_for("ja") == "ja-JP-NanamiNeural"
-    assert voice_settings.voice_for("en") == "en-US-AvaMultilingualNeural"
-    assert voice_settings.PITCH == "+30Hz"
+def test_yunyun_has_one_voice(speaker, monkeypatch):
+    """芸芸就一种声线（用户定的）：什么界面语言都是晓伊调高 30 Hz（日文念得怪也没关系，2026-10-14 用户说的）。"""
+    monkeypatch.setattr(i18n, "_current", "ja")
+    speaker.begin()
+    speaker.update("こんにちは。", final=True)
+    process = speaker.processes[0]
+    process.say(protocol.Ready())
+    assert [(c.voice, c.pitch) for c in process.sent] == [("zh-CN-XiaoyiNeural", "+30Hz")]
 
 
 def test_old_voice_and_pitch_choices_are_ignored_and_dropped():
@@ -443,12 +445,11 @@ def test_speaker_restarts_a_dead_worker_and_follows_the_app_language(speaker, mo
     first.say(protocol.Ready(), protocol.Speaking(1), protocol.Error("audio", "x"))
     first.die()
     assert not speaker.speaking and errors == ["audio"]
-    monkeypatch.setattr(i18n, "_current", "ja")   # 换了界面语言：下一段回答用日语的声音
     speaker.begin()
-    speaker.update("二。", final=True)
+    speaker.update("二。", final=True)   # 子进程死了：下一句再开一个
     second = speaker.processes[1]
     second.say(protocol.Ready())
-    assert second.sent[-1].voice == "ja-JP-NanamiNeural"
+    assert second.said == ["二。"]
     speaker.close()
     assert second.stopped
 

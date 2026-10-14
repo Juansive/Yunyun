@@ -7,16 +7,14 @@ from yunyun import config as cfg
 # 芸芸什么时候出声回答（2026-10-10 用户定：默认"你用语音问时才说"）
 REPLY_MODES = ("voice", "always", "never")
 # 芸芸的声音（2026-10-14 用户定：芸芸就这一种声线，设置里不让选）：晓伊调高 30 Hz（听过 12 段试听后选的，
-# 平均音高 330 → 400 Hz，在 edge-tts 服务器那边调，音质不掉）。晓伊念不好日文，日文 / 英文界面换成那种语言的女声，同样调高
-VOICES = {"zh": "zh-CN-XiaoyiNeural", "en": "en-US-AvaMultilingualNeural", "ja": "ja-JP-NanamiNeural"}
+# 平均音高 330 → 400 Hz，在 edge-tts 服务器那边调，音质不掉）。日文 / 英文界面也是晓伊（2026-10-14 用户定：
+# 先前日 / 英换成那种语言的女声，用户说全用这一个，晓伊念日文怪就怪吧）
+VOICE = "zh-CN-XiaoyiNeural"
 PITCH = "+30Hz"
 _RETIRED = ("voice", "pitch")   # 以前能选声音和音调时存的，读的时候不管、存的时候删掉
+
 # 回答完接着说（7.9）：始终在听时，芸芸说完后几秒内开口不用再叫名字（2026-10-14 用户定三档；默认最长那档）
 FOLLOW_CHOICES = (3, 5, 8)
-
-
-def voice_for(language):
-    return VOICES.get(language, VOICES["zh"])
 
 
 @dataclass
