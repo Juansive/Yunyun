@@ -161,8 +161,10 @@ class Listener:
         else:
             self._poll_follow()
         for sentence in segmenter.feed(pcm):
-            # 这句是什么时候开始说的：说完后停了 SILENCE_S 秒才切出来（到点前开口、说到窗口关了以后的照样算）
-            started = now - len(sentence) / SAMPLE_RATE - getattr(segmenter, "SILENCE_S", 0.0)
+            # 这句是什么时候开始说的：说完后停了 SILENCE_S 秒才切出来，前后各多留了 PAD_S 秒
+            # （到点前开口、说到窗口关了以后的照样算）
+            started = (now - len(sentence) / SAMPLE_RATE - getattr(segmenter, "SILENCE_S", 0.0)
+                       + 2 * getattr(segmenter, "PAD_S", 0.0))
             self._spawn(self._recognize_called(sentence, started, during=started < self._hear_after))
 
     # ---------- 接着说（7.9） ----------

@@ -116,8 +116,10 @@ def load_recognizer(model_dir):
 class Segmenter:
     """"始终在听"：一块块声音喂进来，说完一句（停顿 SILENCE_S 秒）就吐出那一句（-1～1 的小数）。"""
     SILENCE_S = 0.6       # 停这么久算一句说完了
-    MIN_SPEECH_S = 0.3    # 比这短的不算（咳嗽、敲桌子）
+    # 比这短的不算（咳嗽、敲桌子）。原来 0.3：快速叫一声"芸芸"不到 0.3 秒，280 段里被扔了 24 段（7.9 实测，见 docs/设计细节.md）
+    MIN_SPEECH_S = 0.15
     MAX_SPEECH_S = 20     # 一句最长（再长就切开）
+    PAD_S = 0.25          # 切出来的前后各多留这么多：VAD 会切掉开头一点点（"芸"的 y），快读时更明显
 
     def __init__(self, model_path):
         import sherpa_onnx
@@ -129,16 +131,32 @@ class Segmenter:
         config.silero_vad.max_speech_duration = self.MAX_SPEECH_S
         config.sample_rate = SAMPLE_RATE
         self._vad = sherpa_onnx.VoiceActivityDetector(config, buffer_size_in_seconds=self.MAX_SPEECH_S + 10)
+        self._recent = []    # 最近喂进来的（够切一句 + 前后多留的）
+        self._fed = 0        # 从上次 reset 起一共喂了多少个采样（VAD 报的起点是从这里数的）
+        self._keep = int((self.MAX_SPEECH_S + self.SILENCE_S + 2 * self.PAD_S + 1) * SAMPLE_RATE)
 
     def feed(self, pcm):
-        """喂一块 16 位 PCM，返回这期间说完的句子（每句是一串小数）。"""
-        self._vad.accept_waveform([s / 32768 for s in array("h", pcm)])
+        """喂一块 16 位 PCM，返回这期间说完的句子（每句是一串小数，前后各多留 PAD_S 秒）。"""
+        samples = [s / 32768 for s in array("h", pcm)]
+        self._vad.accept_waveform(samples)
+        self._recent += samples
+        self._fed += len(samples)
+        del self._recent[:-self._keep]
         sentences = []
         while not self._vad.empty():
-            sentences.append(list(self._vad.front.samples))
+            segment = self._vad.front
+            sentences.append(self._padded(segment.start, list(segment.samples)))
             self._vad.pop()
         return sentences
 
+    def _padded(self, start, samples):
+        pad = int(self.PAD_S * SAMPLE_RATE)
+        first = start - (self._fed - len(self._recent))   # 在 _recent 里的位置
+        if first < 0 or self._recent[first:first + 8] != samples[:8]:   # 对不上（不该发生）：原样
+            return samples
+        return self._recent[max(0, first - pad):first + len(samples) + pad]
+
     def reset(self):
-        """芸芸在说话：前面听了一半的扔掉（别把她自己的声音接到你的话上）。"""
+        """前面听了一半的扔掉（按住快捷键、不听了的时候）。"""
         self._vad.reset()
+        self._recent, self._fed = [], 0

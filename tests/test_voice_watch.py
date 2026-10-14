@@ -3,6 +3,8 @@
 不碰真的麦克风（conftest）：录音、VAD、识别都是假的。
 """
 import asyncio
+from array import array
+from types import SimpleNamespace
 
 import pytest
 
@@ -12,7 +14,7 @@ from yunyun import i18n
 from yunyun.assistant import protocol as assistant_protocol
 from yunyun.pet import winapi
 from yunyun.pet.state import PetState
-from yunyun.voice import models, protocol, speech_text, worker
+from yunyun.voice import asr, models, protocol, speech_text, worker
 from yunyun.voice import settings as voice_settings
 from yunyun.voice.settings import VoiceSettings
 
@@ -29,6 +31,8 @@ from yunyun.voice.settings import VoiceSettings
     ("哎呀，云月，帮我开灯", "帮我开灯"), ("小圆圆。", ""), ("远远呀。", ""), ("云鱼，你在吗？", "你在吗？"),
     ("Hey Yuanyuan.", ""), ("Heyunyan.", ""), ("Yunyue, open it", "open it"), ("嘿，云。", ""), ("云莹，你在吗？", "你在吗？"),
     ("芸——芸——", ""), ("芸芸呀，帮我查一下", "帮我查一下"),
+    ("黑云云，帮我开灯", "帮我开灯"), ("黑云院。", ""),   # 快读的"嘿芸芸"
+    ("黑云压城", None), ("黑名单", None), ("莹莹也来了", None), ("营业时间是几点", None),
     ("原原本本地说", None), ("远远不够", None), ("圆圆的月亮", None), ("运营那边怎么说", None), ("我头晕晕的", None),
     ("爷爷来了", None), ("he said yes", None), ("云南很好玩", None), ("晕死了", None), ("愉悦的心情", None),
 ])
@@ -43,6 +47,38 @@ def test_wake_word(text, expected):
 def test_filler(text, filler):
     """只有语气词的话不发给大脑（7.9）。"""
     assert speech_text.is_filler(text) is filler
+
+
+class FakeVad:
+    """假的 sherpa-onnx VAD：测试往 queue 里放切好的句子（start = 从开始数第几个采样）。"""
+
+    def __init__(self):
+        self.queue = []
+
+    def accept_waveform(self, samples):
+        pass
+
+    def empty(self):
+        return not self.queue
+
+    @property
+    def front(self):
+        return self.queue[0]
+
+    def pop(self):
+        self.queue.pop(0)
+
+
+def test_segmenter_keeps_a_little_before_and_after():
+    """切出来的一句前后各多留 PAD_S 秒（VAD 会切掉开头一点点，快读的"芸"更明显，7.9 实测）；对不上就原样。"""
+    segmenter = object.__new__(asr.Segmenter)
+    segmenter._vad, segmenter._recent, segmenter._fed, segmenter._keep = FakeVad(), [], 0, 10 * asr.SAMPLE_RATE
+    samples = [s / 32768 for s in range(-8000, 8000)]   # 1 秒，每个采样都不一样
+    pad = int(asr.Segmenter.PAD_S * asr.SAMPLE_RATE)
+    segmenter._vad.queue.append(SimpleNamespace(start=8000, samples=samples[8000:9600]))
+    assert segmenter.feed(array("h", range(-8000, 8000)).tobytes()) == [samples[8000 - pad:9600 + pad]]
+    segmenter._vad.queue.append(SimpleNamespace(start=5, samples=[0.5] * 10))   # 对不上
+    assert segmenter.feed(b"") == [[0.5] * 10]
 
 
 HER = "好的，今天北京是晴天，最高气温23度，早晚有点凉。明天下午可能有小雨，芸芸建议你带把伞。"

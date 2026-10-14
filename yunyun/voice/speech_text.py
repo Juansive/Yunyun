@@ -48,8 +48,9 @@ def sentences(markdown, code_note="", final=False):
 
 
 _PUNCTUATION = " ，,。.、!！?？~～…:：-—"
-# 名字前面只能是这些（"嘿，芸芸……""哎呀芸芸""小芸芸"），可以叠着（"哎呀，嘿，芸芸"）；"我和芸芸说"这种只是提到她，不算
-CALLS = ("哎呀", "嘿嘿", "喂喂", "那个", "嘿", "嗨", "喂", "哎", "诶", "欸", "小", "hey", "hi", "he", "ねえ", "ねぇ")
+# 名字前面只能是这些（"嘿，芸芸……""哎呀芸芸""小芸芸"），可以叠着（"哎呀，嘿，芸芸"）；"我和芸芸说"这种只是提到她，不算。
+# "黑"：快读"嘿芸芸"时常被听成"黑云云"（7.9 实测 280 段里 40 多段）
+CALLS = ("哎呀", "嘿嘿", "喂喂", "那个", "嘿", "黑", "嗨", "喂", "哎", "诶", "欸", "小", "hey", "hi", "he", "ねえ", "ねぇ")
 # 用户说"要发音特别标准才叫得出来"（7.9）：不同声音 / 音调 / 语速 / 语气合成的"芸芸"实测（docs/设计细节.md"语音"），
 # SenseVoice 常听成近音字（远远、云月、圆圆、云鱼、愉悦……）或拼音（Yunyue、Yuyun）。所以名字 = 开头两个音节，
 # 第一个像 yun / yuan / yu，第二个像 yun / yuan / yue / yu。ying（运营）、ye（爷爷）这些不算：常用词太多
@@ -60,6 +61,7 @@ _YU = set("鱼余于雨语愉予宇羽与玉유")
 _FIRST, _SECOND = _YUN | _YUAN | _YU, _YUN | _YUAN | _YUE | _YU
 _ALONE = set("云芸匀윤")   # 只听到一个字（"嘿，云"）、后面什么都没有：当成只叫了名字（只应一声，不花钱）
 _AFTER_ALONE = set("莹盈爷")   # "云莹""云爷"：第一个字明明是"云"时才算（"运营""爷爷"不算）
+# 快读时还常听成"莹莹、营业"（ying）：试过也收，只多认出约 2%，却会把"莹莹也来了""颖颖在吗"这种朋友的名字当成叫她——不收
 _LATIN = re.compile(r"(?:yu+n|yuan|yu)[\s-]*(?:yu+n|yuan|yue|yan|yu)(?![a-z])")
 _LATIN_SECOND = re.compile(r"[\s-]*(?:yu+n|yuan|yue|yan|yu)(?![a-z])")   # "云yun"
 # "原原本本""远远不够""远远的""圆圆的""愉悦地""远远看去"：常用词，不是在叫她（只管近音字，"芸芸 / 云云"本身不受影响）
@@ -95,16 +97,18 @@ def _name_end(lowered, at):
     latin = _LATIN.match(lowered, at)
     if latin:
         return latin.end()
-    if at < len(lowered) and lowered[at] in _FIRST:
-        second = _skip(lowered, at + 1, _PUNCTUATION)   # "芸——芸""云、云"
-        if second < len(lowered) and not lowered.startswith(_NOT_NAME, second + 1) and (
-                lowered[second] in _SECOND or (lowered[at] in _ALONE and lowered[second] in _AFTER_ALONE)):
-            return second + 1
-        latin = _LATIN_SECOND.match(lowered, at + 1)
-        if latin:
-            return latin.end()
-        if lowered[at] in _ALONE and _skip(lowered, at + 1, _PUNCTUATION + _PARTICLES) == len(lowered):
-            return at + 1
+    if at >= len(lowered):
+        return None
+    first, second = lowered[at], _skip(lowered, at + 1, _PUNCTUATION)   # "芸——芸""云、云"
+    after = lowered[second] if second < len(lowered) else ""
+    if first in _FIRST and (after in _SECOND or (first in _ALONE and after in _AFTER_ALONE)) \
+            and not lowered.startswith(_NOT_NAME, second + 1):
+        return second + 1
+    latin = _LATIN_SECOND.match(lowered, at + 1) if first in _FIRST else None   # "云yun"
+    if latin:
+        return latin.end()
+    if first in _ALONE and _skip(lowered, at + 1, _PUNCTUATION + _PARTICLES) == len(lowered):
+        return at + 1
     return None
 
 
