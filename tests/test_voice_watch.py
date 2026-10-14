@@ -25,6 +25,12 @@ from yunyun.voice.settings import VoiceSettings
     ("我跟芸芸说过这件事", None),   # 只是提到她
     ("今天天气不错", None),
     ("", None),
+    # 7.9：语气、音调一变，SenseVoice 常听成近音字 / 拼音（实测见 docs/设计细节.md"语音"）
+    ("哎呀，云月，帮我开灯", "帮我开灯"), ("小圆圆。", ""), ("远远呀。", ""), ("云鱼，你在吗？", "你在吗？"),
+    ("Hey Yuanyuan.", ""), ("Heyunyan.", ""), ("Yunyue, open it", "open it"), ("嘿，云。", ""), ("云莹，你在吗？", "你在吗？"),
+    ("芸——芸——", ""), ("芸芸呀，帮我查一下", "帮我查一下"),
+    ("原原本本地说", None), ("远远不够", None), ("圆圆的月亮", None), ("运营那边怎么说", None), ("我头晕晕的", None),
+    ("爷爷来了", None), ("he said yes", None), ("云南很好玩", None), ("晕死了", None), ("愉悦的心情", None),
 ])
 def test_wake_word(text, expected):
     assert speech_text.after_wake_word(text) == expected
