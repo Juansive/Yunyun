@@ -76,14 +76,15 @@ def test_sentences_do_not_change_while_the_answer_grows():
 
 def test_voice_settings_defaults_and_saving():
     s = voice_settings.load_settings()
-    assert (s.reply, s.voice) == ("voice", "")
+    assert (s.reply, s.voice, s.pitch) == ("voice", "", 30)                  # 音调默认 +30 Hz（用户选的）
     assert s.voice_for("zh") == "zh-CN-XiaoyiNeural" and s.voice_for("ja") == "ja-JP-NanamiNeural"
-    voice_settings.save_settings(VoiceSettings("always", "zh-CN-YunxiNeural"))
+    voice_settings.save_settings(VoiceSettings("always", "zh-CN-YunxiNeural", pitch=0))
     s = voice_settings.load_settings()
-    assert (s.reply, s.voice, s.voice_for("en")) == ("always", "zh-CN-YunxiNeural", "zh-CN-YunxiNeural")
+    assert (s.reply, s.voice, s.voice_for("en"), s.pitch) == ("always", "zh-CN-YunxiNeural", "zh-CN-YunxiNeural", 0)
+    assert voice_settings.pitch_text(30) == "+30Hz" and voice_settings.pitch_text(0) == "+0Hz"
 
 
-@pytest.mark.parametrize("section", [{"reply": "loud", "voice": "robot"}, "乱写的", None])
+@pytest.mark.parametrize("section", [{"reply": "loud", "voice": "robot", "pitch": 999}, {"pitch": True}, "乱写的", None])
 def test_bad_voice_settings_fall_back_to_defaults(section):
     cfg.save_config({"voice": section, "assistant": {"provider": "anthropic"}})
     assert voice_settings.load_settings() == VoiceSettings()
@@ -123,20 +124,20 @@ def test_trims_long_silence_at_both_ends():
 def test_retries_microsoft_then_succeeds(no_wait):
     calls = []
 
-    async def edge(text, voice):
-        calls.append(voice)
+    async def edge(text, voice, pitch):
+        calls.append((voice, pitch))
         if len(calls) < 3:
             raise OSError("403")
         return SPEECH
     synth = tts.Synthesizer(edge=edge, sapi=lambda text, voice: WINDOWS)
-    assert asyncio.run(synth("你好", "zh-CN-XiaoyiNeural")) == (SPEECH, False)
-    assert len(calls) == 3
+    assert asyncio.run(synth("你好", "zh-CN-XiaoyiNeural", "+30Hz")) == (SPEECH, False)
+    assert calls == [("zh-CN-XiaoyiNeural", "+30Hz")] * 3                     # 音调交给在线语音
 
 
 def test_falls_back_to_windows_voice_and_rests_a_while(no_wait):
     clock, edge_calls, sapi_calls = [100.0], [], []
 
-    async def edge(text, voice):
+    async def edge(text, voice, pitch):
         edge_calls.append(text)
         raise OSError("没网")
 
@@ -294,7 +295,7 @@ def test_worker_says_each_sentence_and_hush_drops_the_rest():
         lines, out, players = Lines(), [], []
         gate = asyncio.Event()
 
-        async def synthesize(text, voice):
+        async def synthesize(text, voice, pitch):
             if text == "慢":
                 await gate.wait()
             return text.encode(), text == "退"
@@ -323,13 +324,13 @@ def test_worker_says_each_sentence_and_hush_drops_the_rest():
 
 
 def test_worker_merges_waiting_sentences_once_it_is_talking():
-    """第一句单独合成（快点出声）；已经在说了，排着的几句合在一起合成（语调连贯，不一句一顿）。"""
+    """第一句单独合成（快点出声）；已经在说了，排着的几句合在一起合成（语调连贯，不一句一顿）；音调不同的不合。"""
     async def scenario():
         lines, out, players, asked = Lines(), [], [], []
         gate = asyncio.Event()
 
-        async def synthesize(text, voice):
-            asked.append(text)
+        async def synthesize(text, voice, pitch):
+            asked.append(text if pitch == "+0Hz" else (text, pitch))
             if len(asked) == 1:
                 await gate.wait()   # 第一句合成的时候，后面几句陆续到了
             return text.encode(), False
@@ -344,12 +345,13 @@ def test_worker_merges_waiting_sentences_once_it_is_talking():
         await until(lambda: asked == ["第一句。"])
         for i, text in enumerate(("第二句。", "第三句。", "Third.", "Fourth."), 2):
             lines.send(protocol.Say(i, text, "v"))
+        lines.send(protocol.Say(6, "高。", "v", "+30Hz"))
         await asyncio.sleep(0.1)    # 读线程把它们都放进队列
         players[0].playing = True   # 第一句开始放了
         gate.set()
-        await until(lambda: len(asked) == 2)
-        assert asked == ["第一句。", "第二句。第三句。Third. Fourth."]   # 中文直接接，英文中间加空格
-        await until(lambda: len(players[0].added) == 2)
+        await until(lambda: len(asked) == 3)
+        assert asked == ["第一句。", "第二句。第三句。Third. Fourth.", ("高。", "+30Hz")]   # 中文直接接，英文中间加空格
+        await until(lambda: len(players[0].added) == 3)
         assert players[0].added[1][0] == 2   # 合起来的那段按它第一句的编号报 Speaking
         lines.end()
         await asyncio.wait_for(task, 3)
@@ -360,7 +362,7 @@ def test_worker_reports_what_went_wrong():
     async def scenario():
         lines, out = Lines(), []
 
-        async def synthesize(text, voice):
+        async def synthesize(text, voice, pitch):
             return (None, False) if text == "坏" else (b"x", False)
         task = asyncio.create_task(worker.serve(lines, lambda data: out.append(protocol.decode(data)), synthesize,
                                                 lambda on_start, on_idle: FakePlayer(on_start, on_idle, fail=True),
@@ -567,12 +569,14 @@ def test_voice_page_saves_right_away_and_previews(qapp, monkeypatch):
     page = VoicePage(make_voice=make)
     page._reply.setCurrentIndex(voice_settings.REPLY_MODES.index("always"))
     page._voice.setCurrentIndex(page._voice.findData("ja-JP-NanamiNeural"))
-    assert voice_settings.load_settings() == VoiceSettings("always", "ja-JP-NanamiNeural")
+    assert page._pitch.currentData() == 30 and "可爱" in page._pitch.currentText()   # 默认那一档
+    page._pitch.setCurrentIndex(page._pitch.findData(45))
+    assert voice_settings.load_settings() == VoiceSettings("always", "ja-JP-NanamiNeural", pitch=45)
     page.preview()
     process = make.processes[0]
     process.say(protocol.Ready())
     assert "".join(process.said) == i18n.TEXTS["voice_preview_text"]["ja"]   # 日语的声音说日语
-    assert {c.voice for c in process.sent} == {"ja-JP-NanamiNeural"}
+    assert {(c.voice, c.pitch) for c in process.sent} == {("ja-JP-NanamiNeural", "+45Hz")}   # 试听用选中的音调
     process.say(protocol.Error("audio"))
     assert page._result.text() == i18n.tr("voice_error_audio")
     page.show()

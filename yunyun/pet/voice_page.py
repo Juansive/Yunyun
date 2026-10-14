@@ -62,8 +62,13 @@ class VoicePage(QWidget):
         self._voice.setCurrentIndex(max(self._voice.findData(saved.voice), 0))
         self._preview = QPushButton(tr("voice_preview"))
         self._preview.clicked.connect(self.preview)
+        self._pitch = QComboBox()   # 音调（默认 +30 Hz，用户选的"可爱"那一档）
+        for hz in voice_settings.PITCHES:
+            self._pitch.addItem(tr(f"voice_pitch_{hz}"), hz)
+        self._pitch.setCurrentIndex(self._pitch.findData(saved.pitch))
         form.addRow(tr("voice_reply_label"), self._reply)
         form.addRow(tr("voice_voice_label"), _row(self._voice, self._preview))
+        form.addRow(tr("voice_pitch_label"), self._pitch)
 
         self._key = QKeySequenceEdit(QKeySequence.fromString(saved.hotkey, _PORTABLE))
         self._key.setMaximumSequenceLength(1)
@@ -98,6 +103,7 @@ class VoicePage(QWidget):
 
         self._reply.currentIndexChanged.connect(self._save)
         self._voice.currentIndexChanged.connect(self._save)
+        self._pitch.currentIndexChanged.connect(self._save)
         self._key.editingFinished.connect(self._hotkey_edited)
         self._download.progress.connect(self._refresh_model)
         self._download.finished.connect(self._on_downloaded)
@@ -110,14 +116,15 @@ class VoicePage(QWidget):
         return self._speaker
 
     def preview(self):
-        """试听：用选中的声音说一句（那个声音的语言）。"""
+        """试听：用选中的声音和音调说一句（那个声音的语言）。"""
         if self._speaker is None:
             self._speaker = Speaker(self, self._make_voice)
             self._speaker.error_occurred.connect(self._on_error)
         self._result.clear()
-        voice = self._settings().voice_for(i18n.current_language())
+        settings = self._settings()
+        voice = settings.voice_for(i18n.current_language())
         self._speaker.hush()
-        self._speaker.begin(voice)
+        self._speaker.begin(voice, settings.pitch)
         language = {"zh": "zh", "ja": "ja"}.get(voice[:2], "en")
         self._speaker.update(i18n.TEXTS["voice_preview_text"][language], final=True)
 
@@ -147,7 +154,7 @@ class VoicePage(QWidget):
 
     def _settings(self):
         return voice_settings.VoiceSettings(self._reply.currentData(), self._voice.currentData(), self._hotkey_text,
-                                            self._watch.isChecked())
+                                            self._watch.isChecked(), self._pitch.currentData())
 
     def _save(self):
         voice_settings.save_settings(self._settings())

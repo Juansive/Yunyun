@@ -60,7 +60,7 @@ def start_worker(lines, out, recorders, players, segmenters, load_segmenter=None
         segmenters.append(FakeSegmenter())
         return segmenters[-1]
 
-    async def never(text, voice):
+    async def never(text, voice, pitch):
         raise AssertionError("这里不该合成")
     return asyncio.create_task(worker.serve(lines, lambda data: out.append(protocol.decode(data)), never, make_player,
                                             make_recorder, lambda: lambda audio: SAID.get(audio, "嗯"),
@@ -150,7 +150,7 @@ def test_speaker_watch_survives_a_new_worker(speaker):
     speaker.update("嗯。", final=True)   # 新开的子进程：先接着听，再说话
     second = speaker.processes[1]
     second.say(protocol.Ready())
-    assert second.sent[:2] == [protocol.Watch(True), protocol.Say(1, "嗯。", second.sent[1].voice)]
+    assert second.sent[:2] == [protocol.Watch(True), protocol.Say(1, "嗯。", second.sent[1].voice, "+30Hz")]
     speaker.watch(False)
     assert second.sent[-1] == protocol.Watch(False)
 

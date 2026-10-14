@@ -212,7 +212,7 @@ def _result(task):
 
 
 async def serve(stdin, write, synthesize, make_player, make_recorder, load_recognizer, load_segmenter=None):
-    """主循环。synthesize(text, voice) → (PCM, fallback)；make_player(on_start, on_idle) → Player；
+    """主循环。synthesize(text, voice, pitch) → (PCM, fallback)；make_player(on_start, on_idle) → Player；
     make_recorder / load_recognizer / load_segmenter 见 Listener。测试时都换成假的。"""
     commands = asyncio.Queue()
     sayings = asyncio.Queue()   # 等着合成的：(第几代, Say)；Hush 一次换一代，旧一代的都不说了
@@ -239,11 +239,12 @@ async def serve(stdin, write, synthesize, make_player, make_recorder, load_recog
                 next_born, following = sayings.get_nowait()
                 if next_born != generation:
                     continue
-                if following.voice != say.voice or len(text) + len(following.text) > MERGE_CHARS:
+                if (following.voice, following.pitch) != (say.voice, say.pitch) \
+                        or len(text) + len(following.text) > MERGE_CHARS:
                     carry = (next_born, following)
                     break
                 text = speech_text.join(text, following.text)
-            pcm, fallback = await synthesize(text, say.voice)
+            pcm, fallback = await synthesize(text, say.voice, say.pitch)
             if born != generation:   # 合成的时候被 Hush 了
                 continue
             if pcm is None:

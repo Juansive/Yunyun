@@ -16,11 +16,13 @@ def decode(line):
 
 @_message
 class Say:
-    """把一句话排进队里说出来。sentence_id 一直往上加（Speaking 用它说是哪一句）；voice：edge-tts 的声音名。"""
+    """把一句话排进队里说出来。sentence_id 一直往上加（Speaking 用它说是哪一句）；voice：edge-tts 的声音名；
+    pitch：音调（edge-tts 的写法，比如 "+30Hz"）。"""
     TYPE: ClassVar[str] = "say"
     sentence_id: int
     text: str
     voice: str
+    pitch: str = "+0Hz"
 
 
 @_message

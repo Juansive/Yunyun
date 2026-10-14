@@ -47,10 +47,10 @@ class AudioError(Exception):
     """打不开扬声器。"""
 
 
-async def edge_synthesize(text, voice):
-    """微软的在线语音 → PCM（16 位单声道 RATE）。"""
+async def edge_synthesize(text, voice, pitch="+0Hz"):
+    """微软的在线语音 → PCM（16 位单声道 RATE）。pitch：音调，比如 "+30Hz"（服务器那边调，音质不掉）。"""
     data = bytearray()
-    communicate = edge_tts.Communicate(text, voice, connect_timeout=5, receive_timeout=EDGE_TIMEOUT_S)
+    communicate = edge_tts.Communicate(text, voice, pitch=pitch, connect_timeout=5, receive_timeout=EDGE_TIMEOUT_S)
     async for chunk in communicate.stream():
         if chunk["type"] == "audio":
             data += chunk["data"]
@@ -89,12 +89,13 @@ class Synthesizer:
         self._edge, self._sapi, self._clock = edge, sapi, clock
         self._rest_until = 0.0
 
-    async def __call__(self, text, voice):
+    async def __call__(self, text, voice, pitch="+0Hz"):
+        """pitch 只管在线语音（Windows 语音是兜底，不调）。"""
         edge, sapi = self._edge or edge_synthesize, self._sapi or sapi_synthesize
         if self._clock() >= self._rest_until:
             for attempt in range(EDGE_TRIES):
                 try:
-                    pcm = await asyncio.wait_for(edge(text, voice), EDGE_TIMEOUT_S)
+                    pcm = await asyncio.wait_for(edge(text, voice, pitch), EDGE_TIMEOUT_S)
                 except Exception as e:   # 403、没网、超时……都只记种类（不记要说的话）
                     log.info("在线语音第 %d 次没成功：%s", attempt + 1, type(e).__name__)
                     if attempt + 1 < EDGE_TRIES:

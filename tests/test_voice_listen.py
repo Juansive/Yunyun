@@ -189,7 +189,7 @@ def test_recorder_keeps_audio_in_memory_and_reports_the_level():
 
 
 def run_worker(lines, out, make_recorder, load_recognizer, players):
-    async def never(text, voice):
+    async def never(text, voice, pitch):
         raise AssertionError("这里不该合成")
 
     def make_player(on_start, on_idle):

@@ -1,4 +1,4 @@
-"""语音的设置（config.yaml 的 voice 部分）：芸芸什么时候出声回答、用哪个声音、按住说话的快捷键。
+"""语音的设置（config.yaml 的 voice 部分）：芸芸什么时候出声回答、用哪个声音和音调、按住说话的快捷键。
 芸芸和语音子进程都 import，不碰 Qt。"""
 from dataclasses import dataclass
 
@@ -18,6 +18,14 @@ VOICES = {
     "en-US-AndrewMultilingualNeural": "voice_name_andrew",
 }
 DEFAULT_VOICES = {"zh": "zh-CN-XiaoyiNeural", "en": "en-US-AvaMultilingualNeural", "ja": "ja-JP-NanamiNeural"}
+# 音调能选的几档（比原来高多少 Hz，edge-tts 合成时调，音质不掉）；默认 +30（2026-10-14 用户听试听后选的：晓伊平均 330 → 400 Hz）
+PITCHES = (0, 15, 30, 45, 60)
+DEFAULT_PITCH = 30
+
+
+def pitch_text(hz):
+    """几 Hz → edge-tts 的写法（"+30Hz"）。"""
+    return f"{hz:+d}Hz"
 
 
 @dataclass
@@ -26,6 +34,7 @@ class VoiceSettings:
     voice: str = ""        # VOICES 里的一个；空 = 跟着界面语言（DEFAULT_VOICES）
     hotkey: str = ""       # 按住说话的快捷键（Qt 的写法，比如 "Ctrl+Shift+Space"，见 pet/hotkey.py）；空 = 没设（用户自己设）
     always: bool = False   # 始终在听（7.3）：叫一声"芸芸"就能说话
+    pitch: int = DEFAULT_PITCH   # 音调：PITCHES 里的一档
 
     def voice_for(self, language):
         return self.voice if self.voice in VOICES else DEFAULT_VOICES.get(language, DEFAULT_VOICES["zh"])
@@ -39,9 +48,10 @@ def load_settings():
         saved = {}
     if not isinstance(saved, dict):
         saved = {}
-    reply, voice, hotkey = saved.get("reply"), saved.get("voice"), saved.get("hotkey")
+    reply, voice, hotkey, pitch = saved.get("reply"), saved.get("voice"), saved.get("hotkey"), saved.get("pitch")
     return VoiceSettings(reply if reply in REPLY_MODES else "voice", voice if voice in VOICES else "",
-                         hotkey if isinstance(hotkey, str) else "", saved.get("always") is True)
+                         hotkey if isinstance(hotkey, str) else "", saved.get("always") is True,
+                         pitch if pitch in PITCHES and not isinstance(pitch, bool) else DEFAULT_PITCH)
 
 
 def save_settings(settings):
@@ -50,5 +60,5 @@ def save_settings(settings):
     section = config.get("voice")
     config["voice"] = {**(section if isinstance(section, dict) else {}),
                        "reply": settings.reply, "voice": settings.voice, "hotkey": settings.hotkey,
-                       "always": bool(settings.always)}
+                       "always": bool(settings.always), "pitch": settings.pitch}
     cfg.save_config(config)
