@@ -1,11 +1,11 @@
 # 芸芸的配置示例（会提交到 Git）：说明 config.yaml 长什么样。
 #
 # 真正的 config.yaml 由芸芸自动生成和维护，不需要手动编辑：
-#   右键芸芸 → 设置… → 邮箱 / AI
-# config.yaml 不会提交到 Git（已写进 .gitignore）。
+#   右键芸芸 → 设置… → 邮箱 / AI / 助手 / 语音
+# 它在 %APPDATA%\Yunyun\Yunyun\config.yaml，不会提交到 Git（已写进 .gitignore）。
 #
 # 注意：授权码、API Key 不在这里，保存在 Windows 凭据管理器中
-#（服务名分别是 yunyun-mail、yunyun-ai）。
+#（服务名分别是 yunyun-mail、yunyun-ai、yunyun-assistant）。
 
 mail:
   accounts:
@@ -13,6 +13,30 @@ mail:
       provider: qq              # qq / 163 / gmail
       address: 123456@qq.com    # 邮箱地址
 
-ai:
-  provider: zhipu               # zhipu（智谱，默认）/ siliconflow（硅基流动）/ dashscope（通义千问）
+ai:                             # 把新邮件变成一句话提醒的 AI
+  provider: zhipu               # zhipu（智谱，默认）/ siliconflow（硅基流动）/ dashscope（通义千问）/ ollama（本机）/ custom（自定义）
   model: glm-4.7-flash          # 模型名，可在 AI 设置里修改
+  # custom_base_url: http://127.0.0.1:8000/v1   # 选 custom 时：OpenAI 兼容接口的地址
+
+privacy:                        # 这些邮箱 / 发件人的邮件不交给 AI（本地模型也不给），卡片只显示发件人和标题
+  accounts: []                  # 邮箱地址
+  senders: []                   # 发件人地址，或者 @域名
+
+assistant:                      # 助手模式（只有完整版有）
+  provider: anthropic           # anthropic（Claude 官方）/ deepseek
+  model: ""                     # 空 = 这家服务商的默认模型
+  budget_usd: 0.1               # 每次回答最多花多少美元
+  conversation_budget_usd: 0.5  # 每段对话最多花多少美元
+  compact_tokens: 40000         # 对话超过这么长（token）就自动整理；0 = 不整理
+  screenshot_ask: false         # 看屏幕前先问你
+  personality: default          # default（傲娇可爱的小精灵）/ custom（自己设定）
+  personality_text: ""          # default 时是"补充几句"，custom 时是性格本身
+  user_name: ""                 # 芸芸怎么称呼你；空 = 叫"你"
+  notebook: true                # 记事本
+  rapport: true                 # 让芸芸从相处中学习（相处笔记、回忆）
+
+voice:                          # 语音（只有完整版有）
+  reply: voice                  # 什么时候出声回答：voice（你用语音问时）/ always / never
+  hotkey: ""                    # 按住说话的快捷键，比如 Ctrl+Shift+Space；空 = 没设
+  always: false                 # 始终在听：叫一声"芸芸"就能说话
+  follow: 8                     # 她答完后几秒内接着说不用再叫名字：3 / 5 / 8
