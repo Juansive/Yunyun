@@ -50,6 +50,7 @@ class AssistantSettings:
     personality: str = "default"          # 芸芸的性格：PERSONALITIES 之一
     personality_text: str = ""            # 默认性格时是"补充几句"，自己设定时是性格本身（persona.character）
     user_name: str = ""                   # 芸芸怎么称呼你；空 = 叫"你"
+    rapport: bool = True                  # 让芸芸从相处中学习（阶段 11.3，默认开）。save_settings 不写它，见 set_rapport_enabled
 
     @property
     def info(self):
@@ -68,17 +69,18 @@ def load_settings():
         saved = {}
     workspace = _workspace(saved.get("workspace"))
     notebook = saved.get("notebook") is not False   # 没设置过 = 开着
-    personality = {"personality": _personality(saved.get("personality")),
+    common = {"personality": _personality(saved.get("personality")),
                    "personality_text": _text(saved.get("personality_text"), MAX_PERSONALITY_CHARS),
-                   "user_name": _text(saved.get("user_name"), MAX_USER_NAME_CHARS)}
+                   "user_name": _text(saved.get("user_name"), MAX_USER_NAME_CHARS),
+                   "rapport": saved.get("rapport") is not False}   # 没设置过 = 开着
     provider = saved.get("provider")
     if provider not in PROVIDERS:
-        return AssistantSettings(workspace=workspace, notebook=notebook, **personality)
+        return AssistantSettings(workspace=workspace, notebook=notebook, **common)
     return AssistantSettings(
         provider, str(saved.get("model") or ""), _budget(saved.get("budget_usd")),
         _conversation_budget(saved.get("conversation_budget_usd")), workspace,
         compact_tokens=_compact_tokens(saved.get("compact_tokens", DEFAULT_COMPACT_TOKENS)), notebook=notebook,
-        screenshot_ask=saved.get("screenshot_ask") is True, **personality,
+        screenshot_ask=saved.get("screenshot_ask") is True, **common,
     )
 
 
@@ -100,6 +102,11 @@ def save_settings(settings):
 def set_notebook_enabled(enabled):
     """设置 → 记事本的总开关（只写这一项，下一段对话开始生效）。"""
     _update_section({"notebook": bool(enabled)})
+
+
+def set_rapport_enabled(enabled):
+    """设置 → 记事本 →"让芸芸从相处中学习"（只写这一项，下一段对话开始生效）。"""
+    _update_section({"rapport": bool(enabled)})
 
 
 def _update_section(values):

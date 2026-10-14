@@ -388,6 +388,18 @@ def test_each_turn_is_recorded_in_the_ledger(session):
     assert round(ledger.summary().today, 6) == 0.012
 
 
+def test_reflection_cost_is_recorded_and_new_rapport_notes_are_announced(session):
+    """相处笔记（11.3）：子进程回想以前的对话花的钱也记账；有笔记开始生效时发 rapport_learned（不在回答时也收）。"""
+    from yunyun.assistant import ledger
+    learned = []
+    session.rapport_learned.connect(learned.append)
+    session.ask("一")
+    process = session.processes[0]
+    process.say(protocol.Ready("anthropic", "m"), protocol.TurnFinished(0.01, 0.01),
+                protocol.Reflected(0.006, 1, 0), protocol.Reflected(0.004, 0, 2))
+    assert round(ledger.summary().today, 6) == 0.02 and learned == [2]
+
+
 # ---------- 对话太长时自动整理（阶段 10） ----------
 
 def test_compaction_is_shown_on_the_turn_it_followed(session):

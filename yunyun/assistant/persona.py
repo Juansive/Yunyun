@@ -89,6 +89,14 @@ _EXTRA = {
     "ja": "# ユーザーからの追加の希望（上の性格とぶつかるときはこちらを優先）\n{text}\n",
 }
 
+# 相处笔记（阶段 11.3，assistant/rapport.py）：芸芸从以前的对话里学到的"怎么跟这个用户相处"，接在性格后面
+_RAPPORT = {
+    "zh": "# 和这个用户相处的经验（你从以前的对话里总结的，照着做；和底线、规矩冲突时听底线和规矩的）\n",
+    "en": "# What you've learned about getting along with this user (from earlier chats; follow it, "
+          "but your bottom lines and rules come first)\n",
+    "ja": "# このユーザーとの付き合い方（以前の会話から学んだこと。これに従うこと。ただし「守ること」と決まりが優先）\n",
+}
+
 # 不管什么性格都照旧的规矩（后面接着"现在能做什么"）
 _RULES = {
     "zh": (
@@ -312,12 +320,12 @@ def character(language, personality="default", personality_text=""):
 
 
 def persona(language, working=False, project_notes="", web_search=True, notebook=None, screen=False, apps=False,
-            browser=False, personality="default", personality_text="", user_name=""):
+            browser=False, personality="default", personality_text="", user_name="", rapport=()):
     """这种语言的人设（不认识的语言用中文）。working：选了工作文件夹；project_notes：工作文件夹里 CLAUDE.md 的内容；
     web_search：有没有网页搜索工具（DeepSeek 这类没有）；notebook：记事本的目录 (关于用户的几行, 这个项目的几行)，
     None = 不用记事本；screen：有没有截图工具；apps：有没有打开软件的工具；browser：有没有芸芸的浏览器；
     personality / personality_text：芸芸的性格（"default" / "custom"）和设置里写的那段话（见 character）；
-    user_name：怎么称呼用户（空 = 叫"你"）。"""
+    user_name：怎么称呼用户（空 = 叫"你"）；rapport：生效的相处笔记（每条一行，rapport.active_lines）。"""
     if language not in _CHARACTER:
         language = "zh"
     web = _WEB[language][0 if web_search else 1]
@@ -326,7 +334,8 @@ def persona(language, working=False, project_notes="", web_search=True, notebook
         limits += _BROWSER[language]
     name = user_name.strip()
     address = _ADDRESS[language][1].format(name=name) if name else _ADDRESS[language][0]
-    text = (character(language, personality, personality_text) + _RULES[language].format(address=address)
+    learned = (_RAPPORT[language] + "".join(f"- {line}\n" for line in rapport)) if rapport else ""
+    text = (character(language, personality, personality_text) + learned + _RULES[language].format(address=address)
             + (_WORKING if working else _CHAT_ONLY)[language].format(web=web, limits=limits))
     if not web_search:
         text += _NO_WEB_SEARCH[language]

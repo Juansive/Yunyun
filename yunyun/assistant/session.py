@@ -122,6 +122,7 @@ class AssistantSession(QObject):
     screenshot_requested = Signal(object)   # 大脑要看屏幕（protocol.ScreenshotRequest）：界面截好后调 answer
     open_app_requested = Signal(object)     # 大脑要打开软件（protocol.OpenAppRequest，你已同意）：打开后调 answer
     downloaded = Signal(object)             # 芸芸的浏览器下载好了一个文件（protocol.Downloaded）
+    rapport_learned = Signal(int)           # 回想以前的对话后，有几条相处笔记开始生效（11.3）：冒个气泡
 
     def __init__(self, parent=None, make_process=None):
         """make_process(语言, parent, resume=会话编号) → 和 AssistantProcess 一样的对象；不传就用 default_process。"""
@@ -366,6 +367,10 @@ class AssistantSession(QObject):
             self.browser_open = event.open
         elif isinstance(event, protocol.Downloaded):
             self.downloaded.emit(event)
+        elif isinstance(event, protocol.Reflected):   # 后台回想完一段以前的对话（11.3）：记账；有新的相处笔记生效就告诉界面
+            ledger.record(event.cost_usd)
+            if event.activated:
+                self.rapport_learned.emit(event.activated)
         elif isinstance(event, protocol.Ready):
             self._model = event.model
             self.model_changed.emit(event.model)

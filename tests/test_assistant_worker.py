@@ -92,7 +92,7 @@ def key(monkeypatch):
     monkeypatch.setattr(assistant_settings, "get_api_key", lambda provider: "sk-ant-test")
 
 
-def run(scenario, fail_kind=None):
+def run(scenario, fail_kind=None, reflect=None, resume=""):
     """跑一遍 serve：scenario(feed, events, brains) 是一个协程，负责发命令、检查结果。返回 (事件, 造出来的大脑)。"""
     feed, events, brains = Feed(), [], []
 
@@ -102,7 +102,8 @@ def run(scenario, fail_kind=None):
         return brains[0]
 
     async def main():
-        served = asyncio.create_task(worker.serve(feed, lambda data: events.append(protocol.decode(data)), "ja", make_brain))
+        served = asyncio.create_task(worker.serve(feed, lambda data: events.append(protocol.decode(data)), "ja", make_brain,
+                                                  resume=resume, reflect=reflect))
         await scenario(feed, events, brains)
         feed.close()                                   # 万一场景里没说 Quit：管道断了也会退出
         await asyncio.wait_for(served, 5)
@@ -117,6 +118,26 @@ async def until(condition, timeout=5.0):
             return True
         await asyncio.sleep(0.01)
     return condition()
+
+
+def test_reflection_runs_in_the_background_once_the_brain_is_ready(key):
+    """相处笔记（11.3）：大脑准备好以后在后台回想以前的对话，不耽误提问；退出时还没回想完就取消。"""
+    calls, release = [], asyncio.Event()
+
+    async def reflect(settings, api_key, language, emit, current=""):
+        calls.append((api_key, language, current))
+        emit(protocol.Reflected(0.006, 1, 0))
+        await release.wait()   # 一直在回想（调模型很慢）
+
+    async def scenario(feed, events, brains):
+        assert await until(lambda: protocol.Reflected(0.006, 1, 0) in events)
+        feed.send(protocol.Ask("你好"))
+        assert await until(lambda: any(isinstance(e, protocol.TurnFinished) for e in events))   # 回想着也能问
+        feed.send(protocol.Quit())
+
+    events, brains = run(scenario, reflect=reflect, resume="old-session")
+    assert calls == [("sk-ant-test", "ja", "old-session")]                          # 接着聊的那段不回想
+    assert events[0] == protocol.Ready("anthropic", "fake") and brains[0].closed
 
 
 def test_no_key_means_no_brain(monkeypatch):

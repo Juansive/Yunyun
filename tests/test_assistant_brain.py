@@ -665,6 +665,26 @@ def test_persona_personality():
         assert persona(language, user_name="  ") == default
 
 
+def test_persona_carries_the_rapport_notes_after_the_character():
+    for language, rules in (("zh", "# 规矩"), ("en", "# Rules"), ("ja", "# 決まり")):
+        text = persona(language, rapport=["累的时候先安慰", "喜欢被叫主人"])
+        assert "- 累的时候先安慰\n- 喜欢被叫主人\n" in text
+        assert text.index("累的时候先安慰") < text.index(rules)                     # 在性格后面、规矩前面
+    assert persona("zh", rapport=[]) == persona("zh")                              # 没有生效的：一个字都不提
+
+
+def test_build_options_brings_active_rapport_notes_only_when_enabled(monkeypatch):
+    from yunyun.assistant import rapport
+    monkeypatch.setattr(claude_brain, "system_proxy_env", lambda: {})
+    r = rapport.Rapport()
+    rapport.apply(r, {"add": [{"text": "喜欢被叫主人", "explicit": True}, {"text": "还在观察"}]}, "s1", "2026-10-14T19:00:00")
+    rapport.save(r)
+    append = claude_brain.build_options(AssistantSettings(), "k", "zh").system_prompt["append"]
+    assert "喜欢被叫主人" in append and "还在观察" not in append                    # 观察中的不带
+    off = claude_brain.build_options(AssistantSettings(rapport=False), "k", "zh").system_prompt["append"]
+    assert "喜欢被叫主人" not in off
+
+
 def test_build_options_passes_the_personality(monkeypatch):
     monkeypatch.setattr(claude_brain, "system_proxy_env", lambda: {})
     settings = AssistantSettings(personality="custom", personality_text="说话像诗人", user_name="主人")

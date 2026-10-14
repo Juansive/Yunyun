@@ -52,12 +52,14 @@ def start_reader(stdin, decode, commands):
     threading.Thread(target=read, name="stdin-reader", daemon=True).start()
 
 
-async def serve(stdin, write, language, make_brain, resume=""):
+async def serve(stdin, write, language, make_brain, resume="", reflect=None):
     """主循环。
 
     stdin：能一行行读的二进制流；write(bytes)：把一行发给芸芸；
     make_brain(settings, api_key, language, emit, resume=...)：造一个大脑（正式用 ClaudeBrain，测试用假的）；
-    resume：接着哪一段以前的对话聊（Claude Code 的会话编号；空 = 新对话）。
+    resume：接着哪一段以前的对话聊（Claude Code 的会话编号；空 = 新对话）；
+    reflect(settings, api_key, language, emit, current=...)：大脑准备好以后在后台回想以前的对话（reflect.reflect_recent；
+    None = 不回想，测试默认这样）。
     """
     commands = asyncio.Queue()
 
@@ -87,6 +89,10 @@ async def serve(stdin, write, language, make_brain, resume=""):
 
     turn = None     # 正在回答的一轮（答完后可能接着整理前面的对话，见 ClaudeBrain.compact）
     queued = None   # 整理时来的提问：等整理完再问
+    # 相处笔记（11.3）：后台回想上一两段对话，不耽误提问；退出时没做完就算了，下次再回想
+    reflecting = asyncio.create_task(reflect(settings, api_key, language, emit, current=resume)) if reflect else None
+    if reflecting is not None:
+        reflecting.add_done_callback(_log_failure)
 
     def running(task):
         return task is not None and not task.done()
@@ -120,12 +126,18 @@ async def serve(stdin, write, language, make_brain, resume=""):
                 else:
                     await brain.rewind(command.checkpoint)
     finally:
-        for task in (queued, turn):
+        for task in (queued, turn, reflecting):
             if running(task):
                 task.cancel()
                 with contextlib.suppress(asyncio.CancelledError, Exception):
                     await task
         await brain.close()
+
+
+def _log_failure(task):
+    """后台回想出了意外的错（正常的错 reflect 自己记了）：只记种类。"""
+    if not task.cancelled() and task.exception() is not None:
+        log.warning("回想出了意外的错：%s", type(task.exception()).__name__)
 
 
 async def _ask_after(previous, brain, text, images=()):
@@ -159,8 +171,9 @@ def main(argv=None):
             out.flush()
 
     from yunyun.assistant.claude_brain import ClaudeBrain   # 到这里才 import SDK
+    from yunyun.assistant.reflect import reflect_recent
     try:
-        asyncio.run(serve(stdin, write, args.language, ClaudeBrain, resume=args.resume))
+        asyncio.run(serve(stdin, write, args.language, ClaudeBrain, resume=args.resume, reflect=reflect_recent))
     except Exception:
         log.exception("助手子进程出现意外错误")
         with contextlib.suppress(Exception):

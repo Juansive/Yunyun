@@ -26,9 +26,9 @@ def test_shared_assistant_modules_import_neither_qt_nor_sdk():
     modules = top_level(modules_after(
         "import yunyun.assistant.protocol, yunyun.assistant.settings, yunyun.assistant.providers, "
         "yunyun.assistant.permissions, yunyun.assistant.transcripts, yunyun.assistant.environment, "
-        "yunyun.assistant.check, yunyun.assistant.memory"))
+        "yunyun.assistant.check, yunyun.assistant.memory, yunyun.assistant.rapport, yunyun.assistant.reflect"))
     assert "claude_agent_sdk" not in modules
-    assert "anthropic" not in modules        # check.py 到真的测试连接时才 import 官方 SDK
+    assert "anthropic" not in modules        # check.py / reflect.py 到真的调用时才 import 官方 SDK
     assert "PySide6" not in modules
 
 

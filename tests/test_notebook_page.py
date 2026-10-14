@@ -91,6 +91,45 @@ def test_switch_saves_only_the_notebook_setting(page):
     assert not assistant_settings.load_settings().notebook
 
 
+def test_rapport_notes_are_listed_last_and_can_be_edited_deleted_and_cleared(page, monkeypatch):
+    """相处笔记（11.3）：放最后一组，在用的在前、观察中的灰色写"观察中"；改、删、全部清空都管它。"""
+    from yunyun.assistant import rapport
+    r = rapport.Rapport()
+    rapport.apply(r, {"add": [{"text": "喜欢被叫主人", "explicit": True}, {"text": "偶尔开实验室的玩笑"}]}, "s1",
+                  "2026-10-14T19:00:00")
+    rapport.save(r)
+    page.refresh()
+    group = page._tree.topLevelItem(2)
+    assert tree(page)[2] == ("相处笔记（1 条在用，1 条观察中）", ["喜欢被叫主人", "偶尔开实验室的玩笑"])
+    assert group.child(1).text(1) == "观察中" and group.child(0).toolTip(0) == "你明确说过的"
+    assert group.child(1).foreground(0).color() == notebook_page.WAITING_COLOR
+
+    class FakeDialog:
+        def __init__(self, entry, parent=None, details=True):
+            assert entry.title == "偶尔开实验室的玩笑" and not details              # 只有一句话
+        exec = lambda self: QDialog.DialogCode.Accepted
+        values = lambda self: ("偶尔开实验室的玩笑她会笑", "")
+
+    monkeypatch.setattr(notebook_page, "NotebookEditDialog", FakeDialog)
+    page._tree.setCurrentItem(group.child(1))
+    group.child(1).setSelected(True)
+    assert page.selected_is_rapport and page.selected_id == "r2"
+    page._edit()
+    assert [n.text for n in rapport.load().notes] == ["喜欢被叫主人", "偶尔开实验室的玩笑她会笑"]
+    select(page, "r1")
+    page._delete()
+    assert [n.id for n in rapport.load().notes] == ["r2"] and len(memory.load()) == 3   # 记事本没动
+    monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.StandardButton.Yes)
+    page._clear()
+    assert rapport.load().notes == [] and memory.load() == [] and page._tree.isHidden()
+
+
+def test_rapport_switch_is_on_by_default_and_saved(page):
+    assert page._rapport.isChecked()
+    page._rapport.setChecked(False)
+    assert not assistant_settings.load_settings().rapport and assistant_settings.load_settings().notebook
+
+
 def test_edit_dialog_needs_a_title(qapp):
     dialog = notebook_page.NotebookEditDialog(memory.Memory("m1", memory.USER, "标题", "细节"))
     assert dialog.values() == ("标题", "细节")

@@ -142,6 +142,27 @@ def test_download_finished_is_said_in_a_bubble(world, monkeypatch):
     assert '下载好了：报告.pdf（在"下载"文件夹里）' in bubbles(pet)
 
 
+def test_new_rapport_notes_are_said_once_a_day(world, monkeypatch):
+    """相处笔记（11.3）：回想后有新的生效，芸芸冒个气泡（一天最多一次；自己设定的性格换一句不傲娇的）。"""
+    from PySide6.QtCore import QSettings
+    from yunyun.pet.assistant_mode import RAPPORT_SAID_KEY
+    pet, _, processes = world
+    has_key(monkeypatch)
+    pet.open_assistant()
+    process = processes[0]
+    learned = i18n.tr("assistant_rapport_learned")
+    process.say(protocol.Ready("anthropic", "m"), protocol.Reflected(0.006, 1, 0))
+    assert learned not in bubbles(pet)                                             # 只是加了观察中的：不说
+    process.say(protocol.Reflected(0.006, 0, 1))
+    assert bubbles(pet).count(learned) == 1
+    process.say(protocol.Reflected(0.006, 0, 1))
+    assert bubbles(pet).count(learned) == 1                                        # 今天说过了
+    QSettings().remove(RAPPORT_SAID_KEY)
+    assistant_settings.save_settings(assistant_settings.AssistantSettings(personality="custom", personality_text="温柔"))
+    process.say(protocol.Reflected(0.006, 0, 1))
+    assert i18n.tr("assistant_rapport_learned_plain") in bubbles(pet)
+
+
 def test_failed_open_app_tells_the_brain(world, monkeypatch):
     from yunyun.assistant import apps
     pet, _, processes = world

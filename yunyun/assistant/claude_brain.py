@@ -22,7 +22,7 @@ from claude_agent_sdk import (
     UserMessage,
 )
 
-from yunyun.assistant import apps, memory, permissions, proctree, protocol, transcripts
+from yunyun.assistant import apps, memory, permissions, proctree, protocol, rapport, transcripts
 from yunyun.assistant.browser import Browser
 from yunyun.assistant.environment import (   # noqa: F401（clean_environment、hide_child_consoles 也从这里用）
     clean_environment, hide_child_consoles, prepare_process, system_proxy_env,
@@ -135,6 +135,7 @@ def build_options(settings, api_key, language, stderr=None, gate=None, resume=""
     tools = usable_tools(provider, wanted_tools(settings))
     # 记事本（阶段 10）：目录接在人设后面（这段对话里不变，命中缓存），细节和写入用芸芸自己的工具（进程内 MCP）
     notebook = memory.index_lines(memory.load(), settings.workspace) if settings.notebook else None
+    learned = rapport.active_lines(rapport.load()) if settings.rapport else ()   # 相处笔记（11.3）：生效的接在性格后面
     server = yunyun_server(settings.workspace, notebook=settings.notebook, bridge=bridge, screen=screen,
                            browser=browser)
     return ClaudeAgentOptions(
@@ -156,7 +157,7 @@ def build_options(settings, api_key, language, stderr=None, gate=None, resume=""
                                          screen=screen, apps=bridge is not None, browser=browser is not None,
                                          personality=settings.personality,
                                          personality_text=settings.personality_text,
-                                         user_name=settings.user_name)},
+                                         user_name=settings.user_name, rapport=learned)},
         include_partial_messages=True,    # 逐字显示
         # 每段对话的上限：Claude Code 按整段对话累计算；但它只认 Claude 的价格，自己算钱的服务商由 TurnState 管。
         # 每次回答的上限都由 TurnState 估算

@@ -191,6 +191,30 @@ TEXTS = {
               "作業フォルダーでだけ使われます。メモ帳はパソコンだけに保存され、会話の始めに目次が選んだプロバイダーに送られます。"
               "変更は次の会話から有効です。",
     },
+    "rapport_enabled": {"zh": "让芸芸从相处中学习（每段新对话开始时回想一下上一段，一般不到 1 美分）",
+                        "en": "Let Yunyun learn from your chats (she looks back at the last chat when a new one starts; "
+                              "usually under 1¢)",
+                        "ja": "芸芸に付き合いの中から学ばせる（新しい会話のたびに前の会話を振り返る。ふつう 1 セント未満）"},
+    "rapport_hint": {
+        "zh": "相处笔记：芸芸只记\"怎么跟你相处\"（称呼、语气、玩笑尺度、你累的时候希望她怎么做），接在她的性格后面。"
+              "她自己观察到的要在两段对话里都出现才会用上，只出现一次的是\"观察中\"（30 天没再出现就扔掉）；"
+              "你明确说过的马上用上。回想时你和她的问答会发给你选的服务商（用最便宜的模型），笔记只存在你的电脑上。",
+        "en": "Rapport notes: Yunyun only notes how to get along with you (how to address you, tone, humor, what helps "
+              "when you're tired), added after her personality. What she notices herself is used only after it shows "
+              "up in two chats; seen once, it stays \"observing\" (dropped after 30 days). Things you ask for directly "
+              "apply right away. When she looks back, your questions and her answers are sent to your provider (its "
+              "cheapest model); the notes stay on this PC.",
+        "ja": "付き合いメモ：芸芸は「あなたとの付き合い方」（呼び方・口調・冗談の加減・疲れたときにどうしてほしいか）だけを記録し、"
+              "性格のあとに付け加えます。自分で気づいたことは 2 つの会話で出てきてから使い、1 回だけのものは「観察中」"
+              "（30 日出てこなければ消します）。あなたがはっきり頼んだことはすぐ使います。振り返るときは、あなたの質問と芸芸の回答を"
+              "選んだプロバイダー（いちばん安いモデル）に送ります。メモはこの PC にだけ保存されます。",
+    },
+    "rapport_group": {"zh": "相处笔记（{} 条在用，{} 条观察中）", "en": "Rapport notes ({} in use, {} observing)",
+                      "ja": "付き合いメモ（使用中 {} 件、観察中 {} 件）"},
+    "rapport_waiting": {"zh": "观察中", "en": "observing", "ja": "観察中"},
+    "rapport_explicit": {"zh": "你明确说过的", "en": "You asked for this", "ja": "あなたがはっきり頼んだこと"},
+    "rapport_seen": {"zh": "在 {} 段对话里出现过", "en": "Seen in {} chat(s)", "ja": "{} つの会話で出てきた"},
+    "rapport_edit_title": {"zh": "编辑相处笔记", "en": "Edit rapport note", "ja": "付き合いメモを編集"},
     "notebook_about_you": {"zh": "关于你（{}）", "en": "About you ({})", "ja": "あなたについて（{}）"},
     "notebook_project": {"zh": "项目：{}（{}）", "en": "Project: {} ({})", "ja": "プロジェクト：{}（{}）"},
     "notebook_empty": {
@@ -841,6 +865,11 @@ TEXTS = {
     "assistant_tool_browser_download": {"zh": "正在下载……", "en": "Downloading…", "ja": "ダウンロードしています…"},
     "assistant_downloaded_said": {"zh": "下载好了：{}（在\"下载\"文件夹里）", "en": "Downloaded: {} (in your Downloads folder)",
                                   "ja": "ダウンロードしたよ：{}（「ダウンロード」フォルダーにあります）"},
+    # 相处笔记（阶段 11.3）：回想以前的对话后，有新的开始生效（一天最多一次；自己设定性格时用 _plain）
+    "assistant_rapport_learned": {"zh": "哼……我好像更了解你一点了。", "en": "Hmph... I think I know you a little better now.",
+                                  "ja": "ふん……ちょっとだけ、あなたのことが分かってきた気がする。"},
+    "assistant_rapport_learned_plain": {"zh": "我好像更了解你一点了。", "en": "I think I know you a little better now.",
+                                        "ja": "あなたのこと、少し分かってきた気がする。"},
     # 打开软件（阶段 6）：打开后气泡说一声
     "assistant_open_app_said": {"zh": "帮你打开「{}」啦", "en": "Opened “{}” for you", "ja": "「{}」を開いたよ"},
     # 看屏幕（阶段 5）：截之前气泡说一声；操作记录里截的是哪里
