@@ -17,13 +17,14 @@ from datetime import datetime
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QCheckBox, QDialog, QDialogButtonBox, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMessageBox, QPlainTextEdit,
+    QDialog, QDialogButtonBox, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMessageBox, QPlainTextEdit,
     QPushButton, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
 )
 
 from yunyun import i18n
 from yunyun.assistant import memory
 from yunyun.assistant import settings as assistant_settings
+from yunyun.pet.theme import Toggle
 from yunyun.pet.widgets import note
 
 log = logging.getLogger(__name__)
@@ -42,7 +43,7 @@ class NotebookPage(QWidget):
         super().__init__(parent)
         tr = i18n.tr
         layout = QVBoxLayout(self)
-        self._enabled = QCheckBox(tr("notebook_enabled"))
+        self._enabled = Toggle(tr("notebook_enabled"))
         self._enabled.setChecked(assistant_settings.load_settings().notebook)
         self._enabled.toggled.connect(assistant_settings.set_notebook_enabled)
         layout.addWidget(self._enabled)

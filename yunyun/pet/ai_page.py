@@ -21,6 +21,7 @@ from yunyun.ai.client import AIError, ask, pull_ollama
 from yunyun.ai.providers import PROVIDERS, is_local_url, normalize_base_url
 from yunyun.ai.settings import AISettings
 from yunyun.pet.privacy_box import PrivacyBox
+from yunyun.pet.theme import primary
 from yunyun.pet.widgets import StatusLabel, button_row, note
 
 
@@ -83,7 +84,7 @@ class AISettingsPage(QWidget):
         self._status = StatusLabel()
         layout.addWidget(self._status)
 
-        self._save_button = QPushButton(tr("mail_test_and_save"))
+        self._save_button = primary(QPushButton(tr("mail_test_and_save")))
         self._save_button.clicked.connect(self._test_and_save)
         self._download_button = QPushButton(tr("ai_download_model"))   # 只在"本地还没有这个模型"时出现
         self._download_button.clicked.connect(self._download)

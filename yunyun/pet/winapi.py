@@ -17,6 +17,9 @@ IS_WINDOWS = sys.platform == "win32"
 # ---- Windows API 常量（数值来自微软官方文档）----
 GW_HWNDPREV = 3                     # GetWindow：取 Z 序中"上面一个"窗口
 GWL_EXSTYLE = -20                   # GetWindowLong：读扩展样式
+GWL_STYLE = -16                     # GetWindowLong：读普通样式
+WS_SYSMENU, WS_MINIMIZEBOX = 0x00080000, 0x00020000
+WS_EX_APPWINDOW = 0x00040000        # 扩展样式：一定有任务栏按钮（从属窗口默认没有）
 WS_EX_TOPMOST = 0x00000008          # 扩展样式：置顶窗口
 WS_EX_TRANSPARENT = 0x00000020      # 扩展样式：鼠标穿透（通常是透明的悬浮层）
 DWMWA_EXTENDED_FRAME_BOUNDS = 9     # DWM：窗口实际看得见的边框范围
@@ -52,6 +55,7 @@ if IS_WINDOWS:
         (user32.IsIconic, BOOL, [HWND]),   # 是否最小化
         (user32.GetWindowRect, BOOL, [HWND, ctypes.POINTER(wintypes.RECT)]),
         (user32.GetWindowLongW, wintypes.LONG, [HWND, INT]),
+        (user32.SetWindowLongW, wintypes.LONG, [HWND, INT, wintypes.LONG]),
         (user32.GetWindowThreadProcessId, wintypes.DWORD, [HWND, ctypes.POINTER(wintypes.DWORD)]),
         (user32.SetWindowPos, BOOL, [HWND, HWND, INT, INT, INT, INT, wintypes.UINT]),
         # 这两个返回 HRESULT：0 = 成功
@@ -272,6 +276,15 @@ def _covering_rect(hwnd):
     if r.right <= r.left or r.bottom <= r.top:
         return None
     return (r.left, r.top, r.right, r.bottom)
+
+
+def make_app_window(hwnd):
+    """没有系统边框的从属窗口也要能最小化：给它一个任务栏按钮（WS_EX_APPWINDOW），
+    再加上系统菜单和最小化框（点任务栏按钮能最小化 / 还原、Win+↓ 也行）。要在窗口第一次显示前调。"""
+    if not IS_WINDOWS:
+        return
+    user32.SetWindowLongW(hwnd, GWL_EXSTYLE, user32.GetWindowLongW(hwnd, GWL_EXSTYLE) | WS_EX_APPWINDOW)
+    user32.SetWindowLongW(hwnd, GWL_STYLE, user32.GetWindowLongW(hwnd, GWL_STYLE) | WS_SYSMENU | WS_MINIMIZEBOX)
 
 
 def _is_cloaked(hwnd):

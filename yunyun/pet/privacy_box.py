@@ -11,12 +11,13 @@
 邮箱页增删邮箱后，设置窗口会调 refresh() 重新列出邮箱。
 """
 from PySide6.QtWidgets import (
-    QCheckBox, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QListWidget, QPushButton, QVBoxLayout,
+    QGroupBox, QHBoxLayout, QLabel, QLineEdit, QListWidget, QPushButton, QVBoxLayout,
 )
 
 from yunyun import i18n
 from yunyun.ai import privacy
 from yunyun.mail import accounts
+from yunyun.pet.theme import Toggle
 from yunyun.pet.widgets import StatusLabel, note
 
 
@@ -56,7 +57,7 @@ class PrivacyBox(QGroupBox):
             old.deleteLater()
         mailboxes = accounts.load_accounts()
         for account in mailboxes:
-            box = QCheckBox(f"{i18n.tr(f'provider_{account.provider}')} · {account.address}")
+            box = Toggle(f"{i18n.tr(f'provider_{account.provider}')} · {account.address}")
             box.setChecked(account.address.strip().lower() in self._rules.accounts)
             box.toggled.connect(lambda on, address=account.address: self._set_account(address, on))
             self._accounts.addWidget(box)

@@ -23,7 +23,7 @@ from yunyun.pet import winapi
 from yunyun.pet.badge import Badge
 from yunyun.pet.bubble import BubbleStack
 from yunyun.pet.card_deck import CardDeck, MailCard, mailbox_label
-from yunyun.pet.menu import FancyAction, KeepOpenMenu
+from yunyun.pet.menu import DANGER, FancyAction, Icon, KeepOpenMenu, glyph_icon
 from yunyun.pet.sprites import Sprites
 from yunyun.pet.state import PetState
 from yunyun.pet.sway import Sway
@@ -759,7 +759,8 @@ class PetWindow(QWidget):
         menu = KeepOpenMenu(self)
         if self._new_version is not None:   # 有新版本：放最上面，一直在，直到更新（打开 GitHub 的下载页，自己选节能版 / 完整版）
             version, url = self._new_version
-            menu.addAction(tr("menu_update", version), lambda: QDesktopServices.openUrl(QUrl(url)))
+            menu.addAction(glyph_icon(Icon.DOWNLOAD), tr("menu_update", version),
+                           lambda: QDesktopServices.openUrl(QUrl(url)))
             menu.addSeparator()
         # "✦ 助手模式"：第一项、蓝紫渐变的字，要醒目（2026-10-07 用户要求）；开着时下面多一项"退出助手模式"，
         # 芸芸在干活时再多一项"停止助手"（紧急停止：输入框收起着也能停）
@@ -768,35 +769,36 @@ class PetWindow(QWidget):
             assistant = FancyAction(tr("menu_assistant"), menu)
             assistant.triggered.connect(self.open_assistant)
             menu.addAction(assistant)
-            menu.addAction(tr("menu_assistant_history"), self.open_assistant_history)   # 以前的对话，可以接着聊
+            menu.addAction(glyph_icon(Icon.HISTORY), tr("menu_assistant_history"), self.open_assistant_history)   # 以前的对话，可以接着聊
             if self._assistant is not None and self._assistant.last_answer:   # 语音：再读一遍（2026-10-13 用户要的）
-                menu.addAction(tr("menu_assistant_read_again"), self._assistant.read_again)
+                menu.addAction(glyph_icon(Icon.SPEAK), tr("menu_assistant_read_again"), self._assistant.read_again)
             if self._assistant is not None:
                 if self._assistant.busy:
-                    menu.addAction(tr("menu_assistant_stop"), self.stop_assistant)
+                    menu.addAction(glyph_icon(Icon.STOP, DANGER), tr("menu_assistant_stop"), self.stop_assistant)
                 if self._assistant.speaking:   # 正在出声回答（阶段 7）：叫它别说了
-                    menu.addAction(tr("menu_assistant_hush"), self._assistant.hush)
+                    menu.addAction(glyph_icon(Icon.MUTE), tr("menu_assistant_hush"), self._assistant.hush)
                 watch = menu.addAction(tr("menu_assistant_watch"), self._assistant.toggle_watch)   # 始终在听（7.3）
                 watch.setCheckable(True)
                 watch.setChecked(self._assistant.always_listening)
                 if self._assistant.cards_shown:   # 卡片常亮：要收起就在这里（左键芸芸再唤出）
-                    menu.addAction(tr("menu_assistant_hide_cards"), self._assistant.hide_cards)
+                    menu.addAction(glyph_icon(Icon.HIDE), tr("menu_assistant_hide_cards"), self._assistant.hide_cards)
                 if self._assistant.has_custom_place:
-                    menu.addAction(tr("menu_assistant_reset_place"), self._assistant.reset_place)
-                menu.addAction(tr("menu_assistant_exit"), self.close_assistant)
+                    menu.addAction(glyph_icon(Icon.PLACE), tr("menu_assistant_reset_place"), self._assistant.reset_place)
+                menu.addAction(glyph_icon(Icon.CLOSE), tr("menu_assistant_exit"), self.close_assistant)
             menu.addSeparator()
         # "设置…"：所有设置都在设置窗口里（"…"表示点了会打开一个窗口，这是桌面软件的惯例）
-        menu.addAction(tr("menu_settings"), self.open_settings)
+        menu.addAction(glyph_icon(Icon.SETTINGS), tr("menu_settings"), self.open_settings)
         # 刚才的邮件：把最近一批卡片重新展开（没有历史、或正在处理邮件时变灰）
-        recent = menu.addAction(tr("menu_recent_mail"), self.show_recent_mail)
+        recent = menu.addAction(glyph_icon(Icon.MAIL), tr("menu_recent_mail"), self.show_recent_mail)
         recent.setEnabled(self.history is not None and not self.history.is_empty() and not self._mail_processing)
 
-        dismiss = menu.addAction(tr("menu_dismiss_mail"), self._dismiss_mail)
+        dismiss = menu.addAction(glyph_icon(Icon.ACCEPT), tr("menu_dismiss_mail"), self._dismiss_mail)
         dismiss.setEnabled(self._mail_count > 0)  # 没有待处理邮件时变灰
-        menu.addAction(tr("menu_resume") if self._user_paused else tr("menu_pause"), self._toggle_pause)
+        menu.addAction(glyph_icon(Icon.PLAY if self._user_paused else Icon.PAUSE),
+                       tr("menu_resume") if self._user_paused else tr("menu_pause"), self._toggle_pause)
         menu.addSeparator()
 
-        exit_action = menu.addAction(tr("menu_quit"))
+        exit_action = menu.addAction(glyph_icon(Icon.POWER, DANGER), tr("menu_quit"))
         exit_action.triggered.connect(lambda: self.request_exit(menu))
         menu.keep_open_action = exit_action
         return menu
@@ -815,6 +817,8 @@ class PetWindow(QWidget):
             self._settings_window.show_centered()
         else:
             self._settings_window.show_page(page)
+            if self._settings_window.isMinimized():   # 最小化着：先还原
+                self._settings_window.showNormal()
             self._settings_window.raise_()
             self._settings_window.activateWindow()
 
@@ -921,15 +925,20 @@ class PetWindow(QWidget):
         self.say(i18n.tr("onboarding_ai"), 8000)  # 话比较长，多显示一会儿
         self.open_ai_settings()
 
+    @property
+    def avatar(self):
+        """芸芸的小头像（托盘图标那张）：快捷方式、设置窗口左上角用。"""
+        return self._sprites.tray
+
     def create_desktop_shortcut(self):
         """在桌面创建快捷方式。"""
-        icon, description = self._sprites.tray, i18n.tr("shortcut_description")
+        icon, description = self.avatar, i18n.tr("shortcut_description")
         self._run_in_background(lambda: shortcut.create_desktop_shortcut(icon, description),
                                 i18n.tr("shortcut_created"), "shortcut_failed")
 
     def set_autostart(self, enabled):
         """开机时启动：在"启动"文件夹里放 / 删芸芸的快捷方式。"""
-        icon, description = self._sprites.tray, i18n.tr("shortcut_description")
+        icon, description = self.avatar, i18n.tr("shortcut_description")
         self._run_in_background(lambda: shortcut.set_autostart(enabled, icon, description),
                                 i18n.tr("autostart_on" if enabled else "autostart_off"), "autostart_failed")
 

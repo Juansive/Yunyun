@@ -99,6 +99,10 @@ TEXTS = {
 
     # ---- 设置窗口 ----
     "settings_title": {"zh": "芸芸 · 设置", "en": "Yunyun · Settings", "ja": "芸芸 · 設定"},
+    "window_minimize": {"zh": "最小化", "en": "Minimize", "ja": "最小化"},
+    "window_maximize": {"zh": "最大化", "en": "Maximize", "ja": "最大化"},
+    "window_restore": {"zh": "向下还原", "en": "Restore", "ja": "元に戻す"},
+    "window_close": {"zh": "关闭", "en": "Close", "ja": "閉じる"},
     "page_general": {"zh": "通用", "en": "General", "ja": "一般"},
     "page_mail": {"zh": "邮箱", "en": "Mail", "ja": "メール"},
     "page_ai": {"zh": "AI", "en": "AI", "ja": "AI"},

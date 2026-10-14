@@ -18,11 +18,12 @@ suspend_hotkey(bool)（录快捷键的时候先放开芸芸注册着的那个，
 from PySide6.QtCore import QEvent
 from PySide6.QtGui import QKeySequence
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QFormLayout, QHBoxLayout, QKeySequenceEdit, QLabel, QProgressBar, QPushButton, QVBoxLayout, QWidget,
+    QComboBox, QFormLayout, QHBoxLayout, QKeySequenceEdit, QLabel, QProgressBar, QPushButton, QVBoxLayout, QWidget,
 )
 
 from yunyun import i18n
 from yunyun.pet import hotkey
+from yunyun.pet.theme import Toggle
 from yunyun.pet.widgets import StatusLabel, note
 from yunyun.voice import models
 from yunyun.voice import settings as voice_settings
@@ -72,7 +73,7 @@ class VoicePage(QWidget):
         self._key_status = StatusLabel()
         form.addRow(tr("voice_hotkey_label"), _row(self._key, self._clear_key))
         form.addRow("", self._key_status)
-        self._watch = QCheckBox(tr("voice_watch"))   # 始终在听（7.3）
+        self._watch = Toggle(tr("voice_watch"))   # 始终在听（7.3）
         self._watch.setChecked(saved.always)
         self._watch.toggled.connect(self._watch_toggled)
         form.addRow("", self._watch)

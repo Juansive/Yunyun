@@ -6,6 +6,7 @@ from yunyun import __version__, i18n
 from yunyun.pet.settings_window import PAGES
 from yunyun.pet.sprites import load_sprites
 from yunyun.pet.window import PetWindow
+from helpers import wait
 
 
 @pytest.fixture
@@ -115,3 +116,93 @@ def test_history_page_without_history(qapp, pet):
     pet.open_settings("history")                   # 没有设置历史对象（比如测试里）：不出错
     page = pet.settings_window.history_page
     assert page._tree.topLevelItem(0).text(0) == "（还没有历史记录）"
+
+
+def test_toggle_slides_when_clicked_and_snaps_when_set(qapp):
+    from PySide6.QtCore import QPoint, QVariantAnimation
+    from yunyun.pet.theme import Toggle
+    from helpers import wait_until
+    toggle = Toggle("始终在上")
+    toggle.resize(toggle.sizeHint())
+    seen = []
+    toggle.toggled.connect(seen.append)
+    toggle.click()                                 # 用户点：滑过去，信号照常
+    assert toggle.isChecked() and seen == [True]
+    assert toggle._slide.state() == QVariantAnimation.State.Running
+    wait_until(qapp, lambda: toggle._slide.state() == QVariantAnimation.State.Stopped)
+    assert toggle._slide.currentValue() == 1.0
+    toggle.setChecked(False)                       # 程序里改（refresh）：直接到位，不播动画
+    assert toggle._slide.state() == QVariantAnimation.State.Stopped and seen == [True, False]
+    assert toggle.hitButton(QPoint(toggle.width() - 3, toggle.height() // 2))   # 点文字也算
+
+
+def test_sidebar_pill_slides_and_hover_glow_fades(qapp):
+    from PySide6.QtCore import QVariantAnimation
+    from yunyun.pet.theme import Sidebar
+    from helpers import wait_until
+    bar = Sidebar()
+    bar.addItems(["通用", "邮箱", "AI", "关于"])
+    bar.setCurrentRow(0)                           # 还没显示：直接到位
+    assert bar._slide.state() == QVariantAnimation.State.Stopped
+    bar.show()
+    bar.setCurrentRow(3)                           # 换页：渐变块滑过去
+    assert bar._slide.state() == QVariantAnimation.State.Running
+    wait_until(qapp, lambda: bar._slide.state() == QVariantAnimation.State.Stopped)
+    assert bar.pill_rect() == bar._row_rect(3)
+
+    trail = bar.trail
+    trail.set_hover(1)                             # 鼠标经过第 2 项：亮起来，到位后定时器停
+    wait_until(qapp, lambda: not trail.active)
+    assert trail.levels == {1: 1.0}
+    trail.set_hover(2)                             # 移到下一项：上一项慢慢淡掉
+    wait(qapp, 0.05)
+    assert 0 < trail.levels[1] < 1 and trail.levels[2] > 0
+    trail.set_hover(None)                          # 离开：全部淡掉，定时器停
+    wait_until(qapp, lambda: not trail.active)
+    assert trail.levels == {}
+    bar.grab()                                     # 画得出来（不报错）
+
+
+def test_menu_has_icons_and_hover_glow(qapp, pet):
+    from PySide6.QtCore import QPoint
+    from helpers import wait_until
+    menu = pet._build_menu()
+    settings = next(a for a in menu.actions() if a.text() == "设置…")
+    assert not settings.icon().isNull() and not menu.keep_open_action.icon().isNull()
+    menu.popup(QPoint(300, 300))
+    menu.setActiveAction(settings)                 # 鼠标经过：底色亮起来
+    wait_until(qapp, lambda: menu.trail.levels.get(settings) == 1.0)
+    menu.setActiveAction(menu.keep_open_action)    # 移到"退出"：浅红底
+    assert menu._glow_color(menu.keep_open_action) != menu._glow_color(settings)
+    menu.grab()                                    # 画得出来（不报错）
+    menu.close()
+
+
+def test_settings_window_has_own_frame_buttons(qapp, pet):
+    from PySide6.QtCore import QPointF
+    from PySide6.QtGui import QGuiApplication
+    pet.open_settings()
+    w = pet.settings_window
+    assert [b.toolTip() for b in (w._minimize, w._maximize, w._close)] == ["最小化", "最大化", "关闭"]
+    assert w._in_drag_bar(QPointF(w.width() / 2, w.SHADOW + 10)) and not w._in_drag_bar(QPointF(5, 5))
+    assert w._edges(QPointF(w.SHADOW + 1, w.height() / 2))      # 左边缘：能拖着改大小
+    normal = w.geometry()
+    w._maximize.click()                            # 最大化：铺满可用区域，没有阴影边
+    available = (w.screen() or QGuiApplication.primaryScreen()).availableGeometry()
+    assert w.maximized and w.geometry() == available and w._maximize.toolTip() == "向下还原"
+    assert w.layout().contentsMargins().left() == w.PAD
+    w._maximize.click()                            # 还原
+    assert not w.maximized and w.geometry() == normal
+    w._minimize.click()
+    assert w.isMinimized()
+    pet.open_settings("about")                     # 再从右键菜单打开：还原出来
+    assert not w.isMinimized() and w.current_page == "about"
+    w._close.click()
+    assert not w.isVisible()
+
+
+def test_settings_style_icons_exist():
+    from PySide6.QtGui import QImage
+    from yunyun.paths import resource_path
+    for name in ("chevron-down.svg", "chevron-up.svg"):
+        assert not QImage(str(resource_path("assets", "ui", name))).isNull()

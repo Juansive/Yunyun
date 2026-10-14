@@ -72,7 +72,11 @@ def _sprites():
     load_sprites(ASSISTANT_DIR, base=sprites)   # 助手模式的形象也能读（没画的组用平时的）
     frames = len(sprites.idle) + len(sprites.working_down) + len(sprites.excited) + len(sprites.thinking)
     own = len(list(ASSISTANT_DIR.glob("*.png")))
-    return f"{ASSET_DIR}（{frames}+ 张图；助手模式自己的 {own} 张），界面风格 {app.style().name()}"
+    from PySide6.QtGui import QImage
+    from yunyun.paths import resource_path
+    if QImage(str(resource_path("assets", "ui", "chevron-down.svg"))).isNull():   # 设置窗口的下拉箭头（要 Qt 的 svg 插件）
+        raise RuntimeError("读不了 assets/ui 的 svg 图标")
+    return f"{ASSET_DIR}（{frames}+ 张图；助手模式自己的 {own} 张；svg 图标），界面风格 {app.style().name()}"
 
 
 def _qt_translation():

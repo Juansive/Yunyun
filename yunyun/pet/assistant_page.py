@@ -12,7 +12,7 @@ import logging
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QDoubleSpinBox, QFormLayout, QHBoxLayout, QLineEdit, QMessageBox, QPushButton, QVBoxLayout,
+    QComboBox, QDoubleSpinBox, QFormLayout, QHBoxLayout, QLineEdit, QMessageBox, QPushButton, QVBoxLayout,
     QWidget,
 )
 
@@ -27,6 +27,7 @@ from yunyun.assistant.settings import (
 )
 from yunyun.pet import assistant_history
 from yunyun.pet.assistant_deck import token_amount
+from yunyun.pet.theme import Toggle, primary
 from yunyun.pet.widgets import StatusLabel, button_row, note
 
 log = logging.getLogger(__name__)
@@ -70,7 +71,7 @@ class AssistantSettingsPage(QWidget):
         self._budget = _money_box(MIN_BUDGET_USD, MAX_BUDGET_USD, 0.05)                         # 每次回答
         self._conversation_budget = _money_box(MIN_CONVERSATION_BUDGET_USD, MAX_CONVERSATION_BUDGET_USD, 0.1)   # 每段对话
         self._compact = QComboBox()   # 对话超过多长自动整理（阶段 10）
-        self._screenshot_ask = QCheckBox(tr("assistant_screenshot_ask"))   # 截图前先问我（阶段 5，默认不问）
+        self._screenshot_ask = Toggle(tr("assistant_screenshot_ask"))   # 截图前先问我（阶段 5，默认不问）
         form.addRow(tr("assistant_provider"), self._provider)
         form.addRow(tr("assistant_model"), self._model)
         form.addRow("", self._custom_model)
@@ -105,7 +106,7 @@ class AssistantSettingsPage(QWidget):
         self._status = StatusLabel()
         layout.addWidget(self._status)
 
-        self._save_button = QPushButton(tr("mail_test_and_save"))
+        self._save_button = primary(QPushButton(tr("mail_test_and_save")))
         self._save_button.clicked.connect(self._test_and_save)
         layout.addLayout(button_row(self._save_button))
         layout.addStretch()   # 内容靠上，多余的空间留在下面

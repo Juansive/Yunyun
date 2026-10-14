@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 from yunyun import i18n
 from yunyun.mail import accounts
 from yunyun.mail.imap_client import PROVIDERS, MailAccount, MailError, check_login, provider_for
+from yunyun.pet.theme import primary
 from yunyun.pet.widgets import StatusLabel, button_row, note
 
 # 授权码说明里能点的链接：去哪里开 IMAP、拿授权码（Gmail 的应用专用密码在菜单里常常找不到，直接给页面）
@@ -75,7 +76,7 @@ class MailAccountsPage(QWidget):
         # ---- 状态 + 按钮 ----
         self._status = StatusLabel()
         layout.addWidget(self._status)
-        self._save_button = QPushButton(tr("mail_test_and_save"))
+        self._save_button = primary(QPushButton(tr("mail_test_and_save")))
         self._save_button.clicked.connect(self._test_and_save)
         layout.addLayout(button_row(self._save_button))
         layout.addStretch()  # 内容靠上，多余的空间留在下面

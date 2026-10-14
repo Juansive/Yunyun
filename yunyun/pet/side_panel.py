@@ -54,6 +54,19 @@ def text_view(style, margin=None):
     return view
 
 
+def draw_card(p, rect, radius, border):
+    """白底圆角 + 柔和的阴影（往下偏一点）；四周要留出约 6 像素给阴影。侧面板、右键菜单共用。"""
+    for i in range(6, 0, -1):
+        shadow = QPainterPath()
+        shadow.addRoundedRect(rect.adjusted(-i, -i + 3, i, i + 3), radius + i, radius + i)
+        p.fillPath(shadow, QColor(30, 40, 70, int(8 * (7 - i) / 6)))
+    body = QPainterPath()
+    body.addRoundedRect(rect, radius, radius)
+    p.fillPath(body, QColor(255, 255, 255, 252))
+    p.setPen(QColor(border))
+    p.drawPath(body)
+
+
 def divider():
     """一条浅灰的横线（标题和正文之间）。"""
     line = QFrame()
@@ -231,13 +244,5 @@ class SidePanel(QWidget):
     def paintEvent(self, event):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        rect = QRectF(self.rect()).adjusted(self.MARGIN, self.MARGIN, -self.MARGIN, -self.MARGIN)
-        for i in range(6, 0, -1):   # 柔和的阴影
-            shadow = QPainterPath()
-            shadow.addRoundedRect(rect.adjusted(-i, -i + 3, i, i + 3), 14 + i, 14 + i)
-            p.fillPath(shadow, QColor(30, 40, 70, int(8 * (7 - i) / 6)))
-        body = QPainterPath()
-        body.addRoundedRect(rect, 14, 14)
-        p.fillPath(body, QColor(255, 255, 255, 252))
-        p.setPen(self.border_color)
-        p.drawPath(body)
+        draw_card(p, QRectF(self.rect()).adjusted(self.MARGIN, self.MARGIN, -self.MARGIN, -self.MARGIN), 14,
+                  self.border_color)

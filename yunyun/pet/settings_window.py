@@ -13,10 +13,10 @@
 - 切换语言后，窗口自己也立刻换成新语言（整个窗口内容重建一遍）。
 - 窗口是芸芸的从属窗口：芸芸置顶时它也在最上面。
 """
-from PySide6.QtCore import QEvent, Qt, QTime, QUrl, Signal
-from PySide6.QtGui import QDesktopServices, QFontMetrics, QGuiApplication
+from PySide6.QtCore import QEvent, Qt, QTime, QUrl, QVariantAnimation, Signal
+from PySide6.QtGui import QDesktopServices, QFontMetrics, QGuiApplication, QIcon
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QDialog, QFormLayout, QHBoxLayout, QLabel, QListWidget, QPushButton, QSlider,
+    QComboBox, QFormLayout, QFrame, QGraphicsOpacityEffect, QHBoxLayout, QLabel, QPushButton, QSlider,
     QStackedWidget, QTimeEdit, QVBoxLayout, QWidget,
 )
 
@@ -29,6 +29,9 @@ from yunyun.pet.mail_page import MailAccountsPage
 from yunyun.pet.notebook_page import NotebookPage
 from yunyun.pet.voice_page import VoicePage
 from yunyun.pet.watch_page import WatchPage
+from yunyun.pet.bubble import animate
+from yunyun.pet.frame import FramedDialog
+from yunyun.pet.theme import SETTINGS_STYLE, Sidebar, Toggle
 from yunyun.pet.widgets import StatusLabel, note
 
 # 页面顺序；open_settings(page) 用这些名字。"旁观"（阶段 8）和助手模式无关，打包版也有
@@ -36,16 +39,22 @@ PAGES = ["general", "mail", "ai", "assistant", "notebook", "voice", "watch", "hi
 ASSISTANT_PAGES = ("assistant", "notebook", "voice")   # 助手模式的页：这个版本没有助手模式时藏起来
 
 
-class SettingsWindow(QDialog):
+class SettingsWindow(FramedDialog):
+    """边框、右上角三个按钮、拖动和改大小都在 FramedDialog（frame.py）。"""
     accounts_changed = Signal()   # 邮箱页添加 / 删除了邮箱
     account_added = Signal()      # 邮箱页成功添加了一个邮箱
 
     def __init__(self, pet):
         super().__init__(pet)  # parent = 芸芸：和芸芸同一层
         self._pet = pet
-        self.setMinimumSize(640, 470)
+        self.setMinimumSize(640 + 2 * self.SHADOW, 470 + 2 * self.SHADOW)
+        self.setWindowIcon(QIcon(pet.avatar))   # 任务栏按钮上的图标
+        self.setStyleSheet(SETTINGS_STYLE)   # 各页的控件都跟着换样子
+        self._page_fade = QVariantAnimation(self, duration=180, valueChanged=self._set_page_opacity,
+                                            finished=self._page_shown)
         pet.language_changed.connect(self._retranslate)
         self._root = QHBoxLayout(self)
+        self._root.setContentsMargins(*self.content_margins())
         self._build()
 
     # ---------- 对外接口 ----------
@@ -71,14 +80,8 @@ class SettingsWindow(QDialog):
         tr = i18n.tr
         self.setWindowTitle(tr("settings_title"))
 
-        self._sidebar = QListWidget()
-        self._sidebar.setFixedWidth(130)
+        self._sidebar = Sidebar()   # 选中块会滑、鼠标经过的底色会弹出来（theme.py）
         self._sidebar.setFocusPolicy(Qt.FocusPolicy.NoFocus)  # 不要选中项外面那圈蓝色的焦点框
-        self._sidebar.setStyleSheet(
-            "QListWidget { border: none; background: transparent; font-size: 11pt; outline: 0; }"
-            "QListWidget::item { padding: 9px 12px; border-radius: 6px; }"
-            "QListWidget::item:selected { background: #E3ECF7; color: #1A4E8A; }"
-        )
         for page in PAGES:
             self._sidebar.addItem(tr(f"page_{page}"))
             # 这个版本没有助手模式（打包版要到阶段 9）：藏起这一项，页面序号不变
@@ -106,11 +109,68 @@ class SettingsWindow(QDialog):
         for widget in (self.general_page, self.mail_page, self.ai_page, self.assistant_page, self.notebook_page,
                        self.voice_page, self.watch_page, self.history_page, self.about_page):
             self._stack.addWidget(widget)
-        self._sidebar.currentRowChanged.connect(self._stack.setCurrentIndex)
-        self._sidebar.setCurrentRow(0)
+        # 左栏：浅蓝紫渐变的面板，上面芸芸的头像和名字，中间页面列表，最下面版本号
+        self._panel = QFrame(objectName="sidebarPanel")
+        self._panel.setFixedWidth(150)
+        panel = QVBoxLayout(self._panel)
+        panel.setContentsMargins(10, 18, 10, 12)
+        panel.setSpacing(0)
+        avatar = QLabel(alignment=Qt.AlignmentFlag.AlignCenter)
+        avatar.setPixmap(self._avatar(56))
+        panel.addWidget(avatar)
+        panel.addWidget(QLabel(tr("app_name"), objectName="appName", alignment=Qt.AlignmentFlag.AlignCenter))
+        panel.addSpacing(14)
+        panel.addWidget(self._sidebar, 1)
+        panel.addWidget(QLabel(f"v{__version__}", objectName="version", alignment=Qt.AlignmentFlag.AlignCenter))
 
-        self._root.addWidget(self._sidebar)
-        self._root.addWidget(self._stack, 1)  # 1：多余的宽度都给内容区
+        # 右边：大标题 + 一小段渐变线 + 页面
+        self._content = QWidget()
+        content = QVBoxLayout(self._content)
+        margin = self.general_page.layout().contentsMargins().left()   # 标题和页面里的内容左边对齐
+        content.setContentsMargins(0, 6, 0, 0)
+        content.setSpacing(0)
+        self._title = QLabel(objectName="pageTitle")
+        self._title.setContentsMargins(margin, 0, 0, 4)
+        content.addWidget(self._title)
+        line = QFrame(objectName="titleLine")
+        line.setFixedSize(36, 4)
+        line_row = QHBoxLayout()
+        line_row.addSpacing(margin)
+        line_row.addWidget(line)
+        line_row.addStretch()
+        content.addLayout(line_row)
+        content.addSpacing(6)
+        content.addWidget(self._stack, 1)
+
+        self._sidebar.currentRowChanged.connect(self._on_page)
+        self._sidebar.setCurrentRow(0)
+        self._root.addWidget(self._panel)
+        self._root.addWidget(self._content, 1)  # 1：多余的宽度都给内容区
+
+    def _avatar(self, size):
+        """芸芸的小头像（托盘图标那张），按屏幕缩放比例缩得清楚。"""
+        ratio = self.devicePixelRatioF()
+        pixmap = self._pet.avatar.scaled(round(size * ratio), round(size * ratio), Qt.AspectRatioMode.KeepAspectRatio,
+                                         Qt.TransformationMode.SmoothTransformation)
+        pixmap.setDevicePixelRatio(ratio)
+        return pixmap
+
+    def _on_page(self, row):
+        """换页：标题跟着换，新的一页淡入（窗口还没显示时直接换）。"""
+        self._stack.setCurrentIndex(row)
+        self._title.setText(i18n.tr(f"page_{PAGES[row]}"))
+        if self.isVisible():
+            page = self._stack.currentWidget()
+            page.setGraphicsEffect(QGraphicsOpacityEffect(page, opacity=0.0))
+            animate(self._page_fade, 0, 1)
+
+    def _set_page_opacity(self, value):
+        effect = self._stack.currentWidget().graphicsEffect()
+        if effect is not None:
+            effect.setOpacity(value)
+
+    def _page_shown(self):
+        self._stack.currentWidget().setGraphicsEffect(None)   # 淡入完就拿掉：带着它每次重画都要多绕一道
 
     def _test_watch(self):
         """设置 → 旁观的"发一条测试提醒"：假装 Claude Code 做完了（你正看着设置窗口，照样提醒）。"""
@@ -122,10 +182,11 @@ class SettingsWindow(QDialog):
     def _retranslate(self):
         """切换了语言：把窗口内容整个重建一遍，所有文字就都是新语言了，停在原来那一页。"""
         page = self.current_page
-        for widget in (self._sidebar, self._stack):
+        for widget in (self._panel, self._content):
             self._root.removeWidget(widget)
             widget.deleteLater()
         self._build()
+        self._retranslate_buttons()   # 右上角按钮的提示文字
         self.show_page(page)
 
     def changeEvent(self, event):
@@ -165,11 +226,11 @@ class GeneralPage(QWidget):
         size_row.addWidget(self._size_reset)
         form.addRow(tr("pet_size"), size_row)
 
-        self._on_top = QCheckBox(tr("menu_always_on_top"))
-        self._autostart = QCheckBox(tr("menu_autostart"))
+        self._on_top = Toggle(tr("menu_always_on_top"))
+        self._autostart = Toggle(tr("menu_autostart"))
         form.addRow(self._on_top)
         form.addRow(self._autostart)
-        self._auto_update = QCheckBox(tr("setting_auto_update"))   # 新版本提醒（pet.updates 可能是 None，比如测试里）
+        self._auto_update = Toggle(tr("setting_auto_update"))   # 新版本提醒（pet.updates 可能是 None，比如测试里）
         self._auto_update.setToolTip(tr("setting_auto_update_tip"))
         if pet.updates is not None:
             form.addRow(self._auto_update)
@@ -184,7 +245,7 @@ class GeneralPage(QWidget):
 
         # 免打扰：[✓] 免打扰  23:00 至 08:00
         self._quiet = pet.quiet_hours  # 可能是 None（比如测试里没有设置）
-        self._quiet_check = QCheckBox(tr("quiet_label"))
+        self._quiet_check = Toggle(tr("quiet_label"))
         self._quiet_start = QTimeEdit()
         self._quiet_end = QTimeEdit()
         for edit in (self._quiet_start, self._quiet_end):

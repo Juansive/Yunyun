@@ -6,7 +6,7 @@
 from PySide6.QtWidgets import QSystemTrayIcon
 
 from yunyun import i18n
-from yunyun.pet.menu import KeepOpenMenu
+from yunyun.pet.menu import DANGER, Icon, KeepOpenMenu, glyph_icon
 
 
 class PetTray(QSystemTrayIcon):
@@ -37,7 +37,7 @@ class PetTray(QSystemTrayIcon):
         on_top.triggered.connect(self._pet.set_always_on_top)  # triggered 会带上勾选后的 True/False
         menu.addSeparator()
 
-        quit_action = menu.addAction(i18n.tr("menu_quit"))
+        quit_action = menu.addAction(glyph_icon(Icon.POWER, DANGER), i18n.tr("menu_quit"))
         quit_action.triggered.connect(lambda: self._pet.request_exit(menu))
         menu.keep_open_action = quit_action
 
