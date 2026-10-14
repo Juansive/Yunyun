@@ -11,9 +11,10 @@ import html
 import logging
 
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import (
-    QComboBox, QDoubleSpinBox, QFormLayout, QHBoxLayout, QLineEdit, QMessageBox, QPushButton, QVBoxLayout,
-    QWidget,
+    QComboBox, QDoubleSpinBox, QFormLayout, QHBoxLayout, QLineEdit, QMessageBox, QPlainTextEdit, QPushButton,
+    QVBoxLayout, QWidget,
 )
 
 from yunyun import i18n
@@ -23,7 +24,8 @@ from yunyun.assistant.process import KeyCheck
 from yunyun.assistant.providers import PROVIDERS
 from yunyun.assistant.settings import (
     DEFAULT_COMPACT_TOKENS, HISTORY_KEEP_DAYS, LOW_BUDGET_USD, MAX_BUDGET_USD, MAX_CONVERSATION_BUDGET_USD,
-    MIN_BUDGET_USD, MIN_CONVERSATION_BUDGET_USD, AssistantSettings,
+    MAX_PERSONALITY_CHARS, MAX_USER_NAME_CHARS, MIN_BUDGET_USD, MIN_CONVERSATION_BUDGET_USD, PERSONALITIES,
+    AssistantSettings,
 )
 from yunyun.pet import assistant_history
 from yunyun.pet.assistant_deck import token_amount
@@ -72,6 +74,14 @@ class AssistantSettingsPage(QWidget):
         self._conversation_budget = _money_box(MIN_CONVERSATION_BUDGET_USD, MAX_CONVERSATION_BUDGET_USD, 0.1)   # 每段对话
         self._compact = QComboBox()   # 对话超过多长自动整理（阶段 10）
         self._screenshot_ask = Toggle(tr("assistant_screenshot_ask"))   # 截图前先问我（阶段 5，默认不问）
+        # 芸芸的性格（阶段 11）：怎么称呼你；默认 / 自己设定，文字框在默认时是"补充几句"，自己设定时是性格本身
+        self._user_name = QLineEdit(maxLength=MAX_USER_NAME_CHARS, placeholderText=tr("assistant_user_name_placeholder"))
+        self._personality = QComboBox()
+        for code in PERSONALITIES:
+            self._personality.addItem(tr(f"assistant_personality_{code}"), code)
+        self._personality_text = QPlainTextEdit()
+        self._personality_text.setFixedHeight(64)
+        self._personality_hint = note()
         form.addRow(tr("assistant_provider"), self._provider)
         form.addRow(tr("assistant_model"), self._model)
         form.addRow("", self._custom_model)
@@ -80,6 +90,10 @@ class AssistantSettingsPage(QWidget):
         form.addRow(tr("assistant_conversation_budget"), self._conversation_budget)
         form.addRow(tr("assistant_compact"), self._compact)
         form.addRow("", self._screenshot_ask)
+        form.addRow(tr("assistant_user_name"), self._user_name)
+        form.addRow(tr("assistant_personality"), self._personality)
+        form.addRow("", self._personality_text)
+        form.addRow("", self._personality_hint)
         layout.addLayout(form)
 
         layout.addWidget(note(tr("assistant_budget_hint")))
@@ -119,6 +133,12 @@ class AssistantSettingsPage(QWidget):
         self._conversation_budget.setValue(saved.conversation_budget_usd)
         self._fill_compact(saved.compact_tokens)
         self._screenshot_ask.setChecked(saved.screenshot_ask)
+        self._user_name.setText(saved.user_name)
+        self._personality.setCurrentIndex(self._personality.findData(saved.personality))
+        self._personality_text.setPlainText(saved.personality_text)
+        self._update_personality_texts()
+        self._personality.currentIndexChanged.connect(self._update_personality_texts)
+        self._personality_text.textChanged.connect(self._limit_personality_text)
         self._budget.valueChanged.connect(self._update_budget_warning)
         self._conversation_budget.valueChanged.connect(self._update_budget_warning)
         self._update_budget_warning()
@@ -227,6 +247,18 @@ class AssistantSettingsPage(QWidget):
         self._budget_warning.setText("\n".join(warnings))
         self._budget_warning.setVisible(bool(warnings))
 
+    def _update_personality_texts(self):
+        kind = "custom" if self._personality.currentData() == "custom" else "extra"
+        self._personality_text.setPlaceholderText(i18n.tr(f"assistant_personality_{kind}_placeholder"))
+        self._personality_hint.setText(i18n.tr(f"assistant_personality_{kind}_hint", MAX_PERSONALITY_CHARS))
+
+    def _limit_personality_text(self):
+        """性格那段话最多 MAX_PERSONALITY_CHARS 个字（每一问都带着）：多出来的打不进去。"""
+        text = self._personality_text.toPlainText()
+        if len(text) > MAX_PERSONALITY_CHARS:
+            self._personality_text.setPlainText(text[:MAX_PERSONALITY_CHARS])
+            self._personality_text.moveCursor(QTextCursor.MoveOperation.End)
+
     def _on_clear_history(self):
         """清空历史对话：卡片、Claude Code 自己的对话记录、撤销用的备份都删掉（先问一句）。"""
         answer = QMessageBox.question(self, self.window().windowTitle(), i18n.tr("assistant_history_confirm"))
@@ -252,7 +284,10 @@ class AssistantSettingsPage(QWidget):
         self._pending = (AssistantSettings(info.code, model, round(self._budget.value(), 2),
                                            round(self._conversation_budget.value(), 2),
                                            compact_tokens=self._compact.currentData(),
-                                           screenshot_ask=self._screenshot_ask.isChecked()), typed_key)
+                                           screenshot_ask=self._screenshot_ask.isChecked(),
+                                           personality=self._personality.currentData(),
+                                           personality_text=self._personality_text.toPlainText(),
+                                           user_name=self._user_name.text()), typed_key)
         self._set_busy(True)
         self._status.show_text(i18n.tr("assistant_testing"))
         self._check = self._make_check(info.code, model, key)
@@ -283,7 +318,8 @@ class AssistantSettingsPage(QWidget):
 
     def _set_busy(self, busy):
         for widget in (self._save_button, self._provider, self._model, self._custom_model, self._key, self._budget,
-                       self._conversation_budget, self._compact, self._screenshot_ask):
+                       self._conversation_budget, self._compact, self._screenshot_ask, self._user_name,
+                       self._personality, self._personality_text):
             widget.setEnabled(not busy)
 
     def _fill_compact(self, current):

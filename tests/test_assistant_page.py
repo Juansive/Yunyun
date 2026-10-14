@@ -132,6 +132,28 @@ def test_screenshot_ask_checkbox_is_saved(qapp, keys):
     assert assistant_settings.load_settings().screenshot_ask
 
 
+def test_personality_is_saved(qapp, keys, monkeypatch):
+    monkeypatch.setattr(i18n, "_current", "zh")
+    page = make_page()
+    assert page._personality.currentData() == "default" and page._personality_text.toPlainText() == ""
+    assert "补充几句" in page._personality_text.placeholderText() and "300" in page._personality_hint.text()
+    page._personality.setCurrentIndex(page._personality.findData("custom"))
+    assert "温柔的大姐姐" in page._personality_text.placeholderText() and "替换" in page._personality_hint.text()
+    page._personality_text.setPlainText("长" * 400)
+    assert page._personality_text.toPlainText() == "长" * 300          # 多出来的打不进去
+    page._user_name.setText("主人")
+    page._key.setText("sk-ant-new")
+    saved = []
+    page.settings_saved.connect(lambda: saved.append(True))
+    page._test_and_save()
+    assert wait_until(qapp, lambda: saved)
+    settings = assistant_settings.load_settings()
+    assert (settings.personality, settings.personality_text, settings.user_name) == ("custom", "长" * 300, "主人")
+    again = make_page()                                                  # 再打开设置：填好上次的
+    assert again._personality.currentData() == "custom" and again._personality_text.toPlainText() == "长" * 300
+    assert again._user_name.text() == "主人"
+
+
 def test_unusual_saved_compact_limit_is_listed(qapp, keys):
     assistant_settings.save_settings(AssistantSettings(compact_tokens=50_000))   # 改过配置文件
     page = make_page()

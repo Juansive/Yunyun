@@ -219,6 +219,18 @@ def test_screenshot_ask_is_off_by_default_and_saved(fake_keyring):
     assert load_settings().screenshot_ask
 
 
+def test_personality_defaults_and_odd_values(fake_keyring):
+    def saved():
+        s = load_settings()
+        return s.personality, s.personality_text, s.user_name
+
+    assert saved() == ("default", "", "")
+    cfg.save_config({"assistant": {"personality": "evil", "personality_text": ["not", "text"], "user_name": 3}})
+    assert saved() == ("default", "", "")                                      # 改坏了的配置
+    save_settings(AssistantSettings(personality="custom", personality_text="  " + "字" * 400, user_name=" 主人 "))
+    assert saved() == ("custom", "字" * 300, "主人")
+
+
 def test_compact_limit_defaults_to_40k_and_is_saved(fake_keyring):
     cfg.save_config({"assistant": {"provider": "anthropic"}})
     assert load_settings().compact_tokens == 40_000

@@ -31,6 +31,10 @@ HISTORY_KEEP_DAYS = 30   # 历史对话（卡片、Claude Code 的对话记录�
 # Claude Code 自己的数据（在 claude_brain.CONFIG_DIR 里）中，按天数清理 / 清空历史时删掉的文件夹：对话记录、撤销用的备份……
 # backups（它的设置备份）不动。芸芸进程（清空历史）和子进程（按天数清理）都用，所以放这里（不 import SDK）
 SESSION_DATA_DIRS = ("projects", "file-history", "sessions", "session-env", "shell-snapshots")
+# 芸芸的性格（阶段 11）：默认（傲娇可爱，后面可以补充几句）/ 自己设定；那段话最多多少字（每一问都带着）
+PERSONALITIES = ("default", "custom")
+MAX_PERSONALITY_CHARS = 300
+MAX_USER_NAME_CHARS = 20   # 芸芸怎么称呼你
 
 
 @dataclass
@@ -43,6 +47,9 @@ class AssistantSettings:
     compact_tokens: int = DEFAULT_COMPACT_TOKENS   # 对话超过这么长（token）就自动整理；0 = 不整理
     notebook: bool = True                 # 用不用记事本（阶段 10 的 B）。save_settings 不写它，见 set_notebook_enabled
     screenshot_ask: bool = False          # 截图前先问我（阶段 5；默认不问，2026-10-06 用户定）
+    personality: str = "default"          # 芸芸的性格：PERSONALITIES 之一
+    personality_text: str = ""            # 默认性格时是"补充几句"，自己设定时是性格本身（persona.character）
+    user_name: str = ""                   # 芸芸怎么称呼你；空 = 叫"你"
 
     @property
     def info(self):
@@ -61,14 +68,17 @@ def load_settings():
         saved = {}
     workspace = _workspace(saved.get("workspace"))
     notebook = saved.get("notebook") is not False   # 没设置过 = 开着
+    personality = {"personality": _personality(saved.get("personality")),
+                   "personality_text": _text(saved.get("personality_text"), MAX_PERSONALITY_CHARS),
+                   "user_name": _text(saved.get("user_name"), MAX_USER_NAME_CHARS)}
     provider = saved.get("provider")
     if provider not in PROVIDERS:
-        return AssistantSettings(workspace=workspace, notebook=notebook)
+        return AssistantSettings(workspace=workspace, notebook=notebook, **personality)
     return AssistantSettings(
         provider, str(saved.get("model") or ""), _budget(saved.get("budget_usd")),
         _conversation_budget(saved.get("conversation_budget_usd")), workspace,
         compact_tokens=_compact_tokens(saved.get("compact_tokens", DEFAULT_COMPACT_TOKENS)), notebook=notebook,
-        screenshot_ask=saved.get("screenshot_ask") is True,
+        screenshot_ask=saved.get("screenshot_ask") is True, **personality,
     )
 
 
@@ -81,6 +91,9 @@ def save_settings(settings):
         "conversation_budget_usd": _conversation_budget(settings.conversation_budget_usd),
         "compact_tokens": _compact_tokens(settings.compact_tokens),
         "screenshot_ask": bool(settings.screenshot_ask),
+        "personality": _personality(settings.personality),
+        "personality_text": _text(settings.personality_text, MAX_PERSONALITY_CHARS),
+        "user_name": _text(settings.user_name, MAX_USER_NAME_CHARS),
     })
 
 
@@ -147,6 +160,14 @@ def _compact_tokens(value):
     except (TypeError, ValueError, OverflowError):
         return DEFAULT_COMPACT_TOKENS
     return int(_clamp(value, DEFAULT_COMPACT_TOKENS, MIN_COMPACT_TOKENS, MAX_COMPACT_TOKENS))
+
+
+def _personality(value):
+    return value if value in PERSONALITIES else "default"
+
+
+def _text(value, limit):
+    return value.strip()[:limit] if isinstance(value, str) else ""
 
 
 def _clamp(value, default, low, high):

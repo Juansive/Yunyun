@@ -646,6 +646,31 @@ def test_persona_languages():
     assert "上网搜索" not in persona("zh", working=True, web_search=False)
 
 
+def test_persona_personality():
+    """默认傲娇可爱（可以补充几句）；自己设定的换掉默认性格；没写就还用默认的；规矩和能做什么不管哪种都在。"""
+    for language, tsundere, honest in (("zh", "傲娇", "不要编造"), ("en", "tsundere", "Never make things up"),
+                                       ("ja", "ツンデレ", "作り話はしない")):
+        default = persona(language)
+        assert tsundere in default and honest in default
+        extra = persona(language, personality_text="  多用类比 {x}  ")
+        assert tsundere in extra and "多用类比 {x}\n" in extra and honest in extra   # 花括号原样留着
+        custom = persona(language, personality="custom", personality_text="温柔的大姐姐")
+        assert tsundere not in custom and "温柔的大姐姐" in custom and honest in custom
+        assert persona(language, working=True, personality="custom", personality_text="X") != persona(language, True)
+        assert persona(language, personality="custom", personality_text="  ") == default
+        named = persona(language, user_name=" 小明{0} ")                  # 怎么称呼你（花括号也原样留着）
+        assert "小明{0}" in named and "小明" not in default and named != persona(language, user_name="  ")
+        assert persona(language, user_name="  ") == default
+
+
+def test_build_options_passes_the_personality(monkeypatch):
+    monkeypatch.setattr(claude_brain, "system_proxy_env", lambda: {})
+    settings = AssistantSettings(personality="custom", personality_text="说话像诗人", user_name="主人")
+    append = claude_brain.build_options(settings, "k", "zh").system_prompt["append"]
+    assert append == persona("zh", notebook=([], []), personality="custom", personality_text="说话像诗人",
+                             user_name="主人")
+
+
 def test_tool_detail_shows_paths_inside_the_work_folder_relatively(tmp_path):
     from yunyun.assistant.transcripts import tool_detail
     inside, outside = str(tmp_path / "src" / "a.py"), "Z:\\other\\b.py"

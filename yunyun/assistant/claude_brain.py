@@ -146,7 +146,10 @@ def build_options(settings, api_key, language, stderr=None, gate=None, resume=""
         strict_mcp_config=True,           # 不加载别处配置的 MCP 服务器
         system_prompt={"type": "preset", "preset": "claude_code",
                        "append": persona(language, working, notes, web_search="WebSearch" in tools, notebook=notebook,
-                                         screen=screen, apps=bridge is not None, browser=browser is not None)},
+                                         screen=screen, apps=bridge is not None, browser=browser is not None,
+                                         personality=settings.personality,
+                                         personality_text=settings.personality_text,
+                                         user_name=settings.user_name)},
         include_partial_messages=True,    # 逐字显示
         # 每段对话的上限：Claude Code 按整段对话累计算；但它只认 Claude 的价格，自己算钱的服务商由 TurnState 管。
         # 每次回答的上限都由 TurnState 估算

@@ -708,6 +708,37 @@ TEXTS = {
     },
     "assistant_screenshot_ask": {"zh": "截图前先问我", "en": "Ask me before taking a screenshot",
                                  "ja": "スクリーンショットの前に確認する"},
+    # 芸芸的性格（阶段 11）
+    "assistant_user_name": {"zh": "怎么称呼你", "en": "What to call you", "ja": "あなたの呼び方"},
+    "assistant_user_name_placeholder": {"zh": "空着就叫\"你\"，比如\"小明\"\"主人\"",
+                                        "en": "Leave empty for \"you\", e.g. \"Alex\", \"Master\"",
+                                        "ja": "空欄なら名前で呼びません。例：「たろう」「ご主人さま」"},
+    "assistant_personality": {"zh": "芸芸的性格", "en": "Yunyun's personality", "ja": "芸芸の性格"},
+    "assistant_personality_default": {"zh": "傲娇可爱（默认）", "en": "Tsundere and cute (default)",
+                                      "ja": "ツンデレでかわいい（デフォルト）"},
+    "assistant_personality_custom": {"zh": "自己设定", "en": "Write my own", "ja": "自分で設定"},
+    "assistant_personality_extra_placeholder": {
+        "zh": "补充几句（可不填），比如\"多用类比讲解\"",
+        "en": "Add a few words (optional), e.g. \"Explain things with analogies\"",
+        "ja": "補足（任意）。例：「たとえ話で説明して」",
+    },
+    "assistant_personality_custom_placeholder": {
+        "zh": "写芸芸是什么性格、怎么说话，比如\"温柔的大姐姐，说话慢条斯理\"",
+        "en": "Describe Yunyun's personality and way of talking, e.g. \"a gentle big sister who speaks calmly\"",
+        "ja": "芸芸の性格や話し方を書いてください。例：「おっとりした優しいお姉さん」",
+    },
+    "assistant_personality_extra_hint": {
+        "zh": "最多 {} 字，新开的对话生效。",
+        "en": "Up to {} characters. Takes effect in new chats.",
+        "ja": "{} 文字まで。新しい会話から反映されます。",
+    },
+    "assistant_personality_custom_hint": {
+        "zh": "替换默认性格；\"不编造\"和能做什么的说明照旧保留。最多 {} 字，新开的对话生效。",
+        "en": "Replaces the default personality; the rules (such as never making things up) stay. "
+              "Up to {} characters. Takes effect in new chats.",
+        "ja": "デフォルトの性格の代わりになります。「作り話をしない」などの決まりはそのまま残ります。"
+              "{} 文字まで。新しい会話から反映されます。",
+    },
     "assistant_testing": {"zh": "正在测试连接（不会花钱）……", "en": "Testing the connection (free)…", "ja": "接続をテスト中（無料）…"},
     "assistant_saved": {"zh": "连接成功，已保存！", "en": "Connected and saved!", "ja": "接続できました。保存しました！"},
     "assistant_empty_key": {"zh": "请先粘贴 API Key。", "en": "Please paste your API key first.", "ja": "まず API キーを貼り付けてください。"},
