@@ -12,7 +12,8 @@ anthropic>=1.11,<2
 playwright>=1.63,<2
 # 语音（阶段 7）：只在语音子进程里 import。edge-tts = 微软的在线语音（免费）；miniaudio = 放音、解 mp3（一个库全包）；
 # pywin32 = 在线语音连不上时用 Windows 自带语音（SAPI）。
-edge-tts>=7.2,<8
+# edge-tts 要跟着微软改接口升级：2026-10-14 起 7.2.8 一律 403（只能用 Windows 语音，很生硬），7.3.1 好了。
+edge-tts>=7.3.1,<8
 # sherpa-onnx = 本地语音识别（SenseVoice 模型第一次用时下载，见 yunyun/voice/models.py）；不需要 numpy。
 sherpa-onnx>=1.13,<2
 miniaudio>=1.61
