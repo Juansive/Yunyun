@@ -18,3 +18,5 @@ edge-tts>=7.3.1,<8
 sherpa-onnx>=1.13,<2
 miniaudio>=1.61
 pywin32>=310
+# 操作桌面软件（阶段 11.6）：用 Windows 自带的 UI 自动化（UIAutomationCore）读窗口里的按钮、输入框；纯 Python，约 1 MB。
+comtypes>=1.4.17,<2
