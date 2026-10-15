@@ -13,7 +13,7 @@
 </p>
 
 Yunyun keeps you company while you type, watches your inbox, and tells you in one sentence what each new email is about.
-Turn on Assistant mode and she can also chat, look things up, edit code, look at your screen, open apps, and browse the web for you.
+Turn on Assistant mode and she can also chat, look things up, edit code, look at your screen, open and operate apps, and browse the web for you.
 
 > The character art is still a placeholder — the real artwork is on its way.
 
@@ -130,7 +130,8 @@ Her "brain" is Claude (Anthropic) by default, or the cheaper **DeepSeek**. **Bot
 | Let her see your screen | Say "look at this error on my screen": she says "Let me take a look at your screen", captures the window you were just using (the whole screen if needed) and answers. Her own windows are never captured. No confirmation by default; tick "Ask me before taking a screenshot" in Settings → Assistant to be asked each time |
 | Have her remind you | Say "remind me in 25 minutes", "remind me to drink water every day at 3 pm", "remind me of the meeting at 9 on weekdays": no confirmation needed; at that time she shows a bubble and a Windows notification (and says it aloud if assistant mode is open). If she wasn't running, she tells you about missed ones next time. See or delete them in Settings → "Reminders"; when there are some, the right-click menu has "Reminders (N)…" |
 | Clipboard and windows | "Put this on my clipboard": no confirmation, you paste it yourself; "look at what I just copied": she asks you every time (it may hold a password). "Which windows do I have open", "switch to WeChat", "minimize Word": listing / switching / minimizing / restoring needs no confirmation (window titles are sent to your provider); she never closes your windows |
-| Have her open an app | Say "open Calculator": she finds it in the Start menu by name and asks you first (the card shows the app's name). You can allow that one app for the rest of the chat. She can only open apps that are in the Start menu, and doesn't operate them |
+| Have her open an app | Say "open Calculator": she finds it in the Start menu by name and asks you first (the card shows the app's name). You can allow that one app for the rest of the chat. She can only open apps that are in the Start menu |
+| Have her operate an app | Say "use Calculator to work out 7+8" or "click Save in Notepad": she first reads the window's buttons and text boxes (no confirmation; like a screenshot, it's sent to your provider), and asks you before pressing a button, typing or pressing a shortcut (the card shows the app and the button / text). You can allow that app for the rest of the chat. Sending, deleting, paying, closing and Enter are confirmed every time and marked red. In chat apps (WeChat, QQ …) she only types, never sends; she never touches password fields, terminals, the Run box or security settings, and never moves your mouse. Some apps draw their own interface (like the new WeChat): she can't read inside them and takes a screenshot instead |
 | Have her use a browser | Say "take a look at xxx website": she opens her own Edge window (you can see it) and answers after reading. It's separate from your own browser; sites you log into there stay logged in next time; password and card-number fields are never shown to her. While the browser is open the background isn't released; it uses 0.4–1+ GB depending on the pages, so **close that window when you're done** |
 | Have her act on a web page | Say "search for cats on Bilibili" or "fill in this form for me": she asks before every click, typing or dropdown choice (the card shows the site and the button / text), and you can allow everything on that site for this chat. Submitting, ordering, paying, sending, deleting and downloading are always asked and shown in red; searching doesn't count. She never fills in passwords, card numbers or verification codes — type those yourself in the window |
 | Have her download a file | She always asks first; files go to your Downloads folder (name clashes become "name (1).zip", nothing is overwritten). Downloads you start yourself in her browser window go there too, and she tells you when they finish |
@@ -152,7 +153,7 @@ Her "brain" is Claude (Anthropic) by default, or the cheaper **DeepSeek**. **Bot
   though small details may be lost). "Chat 23k/40k" at the bottom of the cards is the current length; change the length or turn it off in Settings → Assistant → "Tidy up long chats".
 - **Memory use**: only while Assistant mode is open, about 360 MB more (Claude Code is ~300 MB of that); it's all given back when you exit.
 - Without a working folder she can only chat and search the web. If the working folder has a `CLAUDE.md` (project instructions), she follows it; settings in `.claude\` are not loaded — what needs your approval is decided by Yunyun alone.
-- She can open apps from the Start menu but can't operate inside them (clicking buttons, typing) yet — maybe in a later version.
+- Inside apps she only presses buttons, types and presses keys — she doesn't move the mouse. Apps that draw their own interface (like the new WeChat, or games) can't be read; she can only take a screenshot.
 
 ## Watch mode: let Yunyun keep an eye on your Claude Code
 
