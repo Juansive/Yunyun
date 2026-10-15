@@ -102,10 +102,11 @@ def test_interruption(heard, saying, whole, expected):
 # ---------- 语音子进程 ----------
 
 class FakeSegmenter:
-    """假的 VAD：喂进来的每一块（除了 b"-" 静音）都当成说完的一句。"""
+    """假的 VAD：喂进来的每一块（除了 b"-" 静音）都当成说完的一句。speaking：你正在说话（测试里直接设）。"""
 
     def __init__(self):
         self.resets = 0
+        self.speaking = False
 
     def feed(self, pcm):
         return [] if pcm == b"-" else [pcm]
@@ -138,8 +139,15 @@ def start_worker(lines, out, recorders, players, segmenters, load_segmenter=None
                                             load_segmenter or segmenter))
 
 
+def quick_gaps(monkeypatch):
+    """一问说完以后等多久才发出去（GAP_S）：测试里改短。"""
+    monkeypatch.setattr(worker, "GAP_S", 0.1)
+    monkeypatch.setattr(worker, "MIN_GAP_S", 0.05)
+
+
 def test_worker_only_passes_on_what_was_said_to_yunyun(monkeypatch):
     monkeypatch.setattr(worker, "ECHO_TAIL_S", 0.05)
+    quick_gaps(monkeypatch)
 
     async def scenario():
         lines, out, recorders, players, segmenters = Lines(), [], [], [], []
@@ -149,9 +157,12 @@ def test_worker_only_passes_on_what_was_said_to_yunyun(monkeypatch):
         stream = recorders[0]
         await asyncio.sleep(0.05)   # 识别模型、VAD 在线程里加载
         called = lambda: [e.text for e in out if isinstance(e, protocol.Called)]   # noqa: E731
-        for chunk in (b"a", b"-", b"b"):
+        stream.on_chunk(b"a")
+        await until(lambda: called() == ["开灯"])   # 停够了才发出去
+        for chunk in (b"-", b"b"):   # 发出去以后没叫名字的：不算
             stream.on_chunk(chunk)
-        await until(lambda: called() == ["开灯"])
+        await asyncio.sleep(0.2)
+        assert called() == ["开灯"]
         stream.on_chunk(b"c")        # 只叫了名字
         await until(lambda: called() == ["开灯", ""])
         stream.on_chunk(b"d")        # 紧接着的下一句不用再叫名字
@@ -182,8 +193,10 @@ def test_worker_only_passes_on_what_was_said_to_yunyun(monkeypatch):
 
 def test_worker_opens_a_follow_up_window_after_the_answer_is_said(monkeypatch):
     """7.9：回答都送过来了（Follow）→ 说完（和回声的一小会儿）以后才开窗口，这期间说的话不用叫名字；
-    只有"嗯"的不算（她问了你一句时算）；发出去一问、Hush、到点都会关窗口。"""
+    只有"嗯"的不算（她问了你一句时算）；发出去一问、Hush、到点都会关窗口。
+    听到一问先换成短的倒数（GAP_S），停够了才发出去、窗口关掉（2026-10-16）。"""
     monkeypatch.setattr(worker, "ECHO_TAIL_S", 0.05)
+    quick_gaps(monkeypatch)
 
     async def scenario():
         lines, out, recorders, players, segmenters = Lines(), [], [], [], []
@@ -211,13 +224,13 @@ def test_worker_opens_a_follow_up_window_after_the_answer_is_said(monkeypatch):
         assert called() == []
         stream.on_chunk(b"d")        # 不用叫名字
         await until(lambda: called() == ["打开记事本"])
-        assert windows() == [5, 0]   # 发出去一问就关
+        assert windows() == [5, 0.1, 0]   # 听到一问：短的倒数，停够了发出去、窗口关掉
         stream.on_chunk(b"d")
         await asyncio.sleep(0.05)
         assert len(called()) == 1
 
         lines.send(protocol.Follow(5, asks=True))   # 没出声的回答：马上开；她问了你一句，"嗯"就是回答
-        await until(lambda: windows() == [5, 0, 5])
+        await until(lambda: windows() == [5, 0.1, 0, 5])
         stream.on_chunk(b"e")
         await until(lambda: called() == ["打开记事本", "嗯。"])
 
@@ -228,10 +241,10 @@ def test_worker_opens_a_follow_up_window_after_the_answer_is_said(monkeypatch):
         players[0].playing = False
         await asyncio.sleep(0.1)
         stream.on_chunk(b"-")
-        assert windows() == [5, 0, 5, 0]
+        assert windows() == [5, 0.1, 0, 5, 0.1, 0]
 
         lines.send(protocol.Follow(0.1))   # 到点自己关
-        await until(lambda: windows() == [5, 0, 5, 0, 0.1, 0])
+        await until(lambda: windows() == [5, 0.1, 0, 5, 0.1, 0, 0.1, 0])
         await asyncio.sleep(0.05)    # Windows 上定时器能早到十几毫秒
         stream.on_chunk(b"d")
         await asyncio.sleep(0.05)
@@ -240,6 +253,54 @@ def test_worker_opens_a_follow_up_window_after_the_answer_is_said(monkeypatch):
         stream.on_chunk(b"f")        # "芸芸，嗯"：当成只叫了名字，开 FOLLOW_S 秒的窗口
         await until(lambda: called()[-1] == "" and windows()[-1] == worker.FOLLOW_S)
         lines.send(protocol.Watch(False))   # 不听了：窗口关掉
+        await until(lambda: windows()[-1] == 0)
+        lines.end()
+        await asyncio.wait_for(task, 3)
+    asyncio.run(scenario())
+
+
+def test_talking_holds_the_countdown_and_pauses_do_not_cut_you_off(monkeypatch):
+    """2026-10-16 用户提的：叫了"芸芸"以后，你一开口绿条就停在满格（停下来才接着减）；中间停一下接着说的都算同一问，
+    停够了才连起来发出去（原来停 0.6 秒就把前半句发出去、后半句被扔掉）。"""
+    monkeypatch.setattr(worker, "ECHO_TAIL_S", 0.05)
+    quick_gaps(monkeypatch)
+
+    async def scenario():
+        lines, out, recorders, players, segmenters = Lines(), [], [], [], []
+        task = start_worker(lines, out, recorders, players, segmenters)
+        lines.send(protocol.Watch(True))
+        await until(lambda: recorders and recorders[0].recording and segmenters)
+        stream, vad = recorders[0], segmenters[0]
+        await asyncio.sleep(0.05)
+        called = lambda: [e.text for e in out if isinstance(e, protocol.Called)]   # noqa: E731
+        windows = lambda: [e.seconds for e in out if isinstance(e, protocol.Following)]   # noqa: E731
+
+        stream.on_chunk(b"c")                       # 只叫了名字：开 8 秒的窗口
+        await until(lambda: called() == [""] and windows() == [worker.FOLLOW_S])
+        vad.speaking = True                         # 开口了：绿条停在满格
+        stream.on_chunk(b"-")
+        assert windows()[-1] == protocol.HOLD_S
+        vad.speaking = False                        # 说完一段（"打开记事本"）：先收着，短的倒数
+        stream.on_chunk(b"d")
+        await until(lambda: windows()[-1] == 0.1)
+        vad.speaking = True                         # 想了一下又接着说：又停在满格，没发出去
+        stream.on_chunk(b"-")
+        assert windows()[-1] == protocol.HOLD_S
+        await asyncio.sleep(0.2)
+        assert called() == [""]
+        vad.speaking = False                        # 说完后半句（"随便聊聊"）
+        stream.on_chunk(b"b")
+        await until(lambda: len(called()) == 2)
+        assert called()[-1] == "打开记事本随便聊聊" and windows()[-1] == 0   # 连成一问发出去，窗口关掉
+
+        stream.on_chunk(b"c")                       # 又只叫了名字；咳了一声（说话但识别出来不算）：窗口接着减
+        await until(lambda: windows()[-1] == worker.FOLLOW_S)
+        vad.speaking = True
+        stream.on_chunk(b"-")
+        vad.speaking = False
+        stream.on_chunk(b"-")
+        assert windows()[-2:] == [protocol.HOLD_S, pytest.approx(worker.FOLLOW_S, abs=0.5)]
+        lines.send(protocol.Hush())                 # 别说了：窗口关掉
         await until(lambda: windows()[-1] == 0)
         lines.end()
         await asyncio.wait_for(task, 3)

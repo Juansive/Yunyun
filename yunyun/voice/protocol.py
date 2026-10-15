@@ -7,6 +7,7 @@ from yunyun.assistant.protocol import decode as _decode
 _TYPES = {}
 _message = registry(_TYPES)
 NAME_FOLLOW_S = 8.0   # 只叫了"芸芸"：这么久之内说的下一句不用再叫名字（两边都用）
+HOLD_S = -1.0         # Following(HOLD_S)：你正在说话，绿条停在满格（停下来才接着倒数，2026-10-16）
 
 
 def decode(line):
@@ -126,8 +127,9 @@ class Interrupt:
 
 @_message
 class Following:
-    """"接着说"的窗口开了（seconds 秒，7.9：回答说完了、或者只叫了名字）/ 关了（0）。
-    芸芸那边换"在听"的样子、麦克风标记外面一圈绿条倒数。到点关的那一刻还在说的那句照样算。"""
+    """"接着说"的窗口开了（seconds 秒，7.9：回答说完了、或者只叫了名字）/ 关了（0）/ 你在说话、绿条停在满格（HOLD_S）。
+    芸芸那边换"在听"的样子、麦克风标记外面一圈绿条倒数。到点关的那一刻还在说的那句照样算。
+    你说了一段停下来：绿条换成短的倒数（还在等你接着说，停够了才把这一问发出去）。"""
     TYPE: ClassVar[str] = "following"
     seconds: float
 

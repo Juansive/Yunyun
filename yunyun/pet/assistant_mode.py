@@ -116,6 +116,7 @@ class AssistantMode(QObject):
     DOWNLOADED_SAY_MS = 5000      # "下载好了：xxx（在"下载"文件夹里）"说多久
     RAPPORT_SAY_MS = 4000         # "我好像更了解你一点了"说多久（11.3）
     MOUSE_BACK_SAY_MS = 6000      # "鼠标还你啦"说多久（11.6c）
+    HOLD_SAFETY_MS = 30000        # "接着说"时你在说话、绿条停着：语音子进程这么久没动静就收起来
     LISTEN_MAX_MS = 60_000        # 按着快捷键最多听多久（再长就当松开了）
     MIN_HOLD_MS = 300             # 按得比这短：当作手滑，不听（提醒一句要按住）
     LEVEL_CELLS = 10              # 气泡里音量条有几格
@@ -830,11 +831,12 @@ class AssistantMode(QObject):
             self.listening_changed.emit(look)
 
     def _on_following(self, seconds):
-        """"接着说"的窗口开了（seconds 秒）/ 关了（0）：换"在听"的样子，麦克风标记外面一圈绿条倒数（2026-10-14 用户定）。"""
-        following = seconds > 0 and self._watch_on and not (self._listening or self._recognizing)
+        """"接着说"的窗口开了（seconds 秒）/ 关了（0）：换"在听"的样子，麦克风标记外面一圈绿条倒数（2026-10-14 用户定）；
+        你正在说话（HOLD_S）：绿条停在满格（2026-10-16）。"""
+        following = seconds != 0 and self._watch_on and not (self._listening or self._recognizing)
         self._following = following
-        if following:
-            self._follow_timer.start(int(seconds * 1000) + 1000)
+        if following:   # 语音子进程没了的话靠这个收起来（你在说话时多等一会儿）
+            self._follow_timer.start(int(seconds * 1000) + 1000 if seconds > 0 else self.HOLD_SAFETY_MS)
         else:
             self._follow_timer.stop()
         self._pet.mic_countdown(seconds if following else 0)

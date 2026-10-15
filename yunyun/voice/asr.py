@@ -156,6 +156,11 @@ class Segmenter:
             return samples
         return self._recent[max(0, first - pad):first + len(samples) + pad]
 
+    @property
+    def speaking(self):
+        """你正在说话（听到人声、还没停够 SILENCE_S）："接着说"的绿条据此停住（2026-10-16）。"""
+        return self._vad.is_speech_detected()
+
     def reset(self):
         """前面听了一半的扔掉（按住快捷键、不听了的时候）。"""
         self._vad.reset()

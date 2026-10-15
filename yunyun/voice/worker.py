@@ -10,10 +10,12 @@
 import asyncio
 import contextlib
 import logging
+import math
 import os
 import sys
 import threading
 import time
+from functools import reduce
 
 from yunyun import logs
 from yunyun.assistant.worker import start_reader
@@ -28,6 +30,10 @@ ECHO_TAIL_S = 0.5      # 芸芸说完以后再等这么久才算她说完了（�
 PEEK_S = 3.0           # 芸芸说话时：每 PEEK_EVERY_S 秒识别一次最近 PEEK_S 秒，听你有没有叫她 / 说"别说了"（7.9 ②）
 PEEK_EVERY_S = 1.0
 MERGE_CHARS = 150      # 已经在说了：排着的几句合在一起合成，最多这么多字（太长的话第一个字要等更久）
+# 一问说到一半停下来想一想：停不到这么久都算同一问（2026-10-16 用户定"约 1.5 秒"；VAD 自己先等了 SILENCE_S 才切出一段，
+# 切出来以后再等剩下的，绿条这时换成这一小段倒数）。原来停 0.6 秒就把前半句发出去、后半句没叫名字被扔掉
+GAP_S = 1.5
+MIN_GAP_S = 0.3
 
 
 class Listener:
@@ -39,6 +45,8 @@ class Listener:
       她的声音会进麦克风（外放），所以拿听到的和她在说的比（speech_text.interruption），还每秒看一眼最近几秒（_peek）——
       外放时 VAD 会把她的话和你的连成一大段，等她说完才切得出来。
       "接着说"的窗口（7.9）：只叫了名字、或者回答说完了（Follow），几秒内开始说的话不用叫名字；只有语气词的扔掉。
+      你一开口绿条就停在满格（HOLD_S），停下来才接着减；说了一段先收着（_pieces），停够 GAP_S 才连成一问发出去，
+      中间接着说的都算这一问（2026-10-16 用户提的：原来说久一点、中间一停就被截断）。
     识别模型、VAD 第一次要用时在线程里加载（和录音同时进行），之后一直留着。
     make_recorder(on_level, on_chunk=None) → asr.Recorder；load_recognizer() → recognize(声音) → 文字；
     load_segmenter() → asr.Segmenter；is_playing() → 芸芸是不是正在说话；is_saying() → 还有没说完的（在合成、排着、在放）；
@@ -59,6 +67,10 @@ class Listener:
         self._follow_from = self._follow_until = 0.0   # "接着说"的窗口：这期间开始说的话不用叫名字
         self._window = None        # 窗口到点关的定时器（开着时有）
         self._window_asks = False  # 窗口是回答完开的、回答最后问了你一句："嗯"也算回答
+        self._pieces = []          # 这一问已经听到的几段（你中间停了一下）：停够 GAP_S 才连起来发出去
+        self._gap = None           # 停够了就发出去的定时器（绿条这时是这一小段倒数）
+        self._held = None          # 你在说话、窗口的绿条停着：原来还剩几秒（None = 没停着）
+        self._speaking = False     # VAD 说你正在说话
         self._hear_after = 0.0     # 芸芸在说话、刚说完：这之前开始说的话只当成打断她
         self._recent = bytearray() # 最近 PEEK_S 秒录到的（芸芸说话时每秒看一眼）
         self._next_peek = 0.0
@@ -166,6 +178,10 @@ class Listener:
             started = (now - len(sentence) / SAMPLE_RATE - getattr(segmenter, "SILENCE_S", 0.0)
                        + 2 * getattr(segmenter, "PAD_S", 0.0))
             self._spawn(self._recognize_called(sentence, started, during=started < self._hear_after))
+        speaking = bool(getattr(segmenter, "speaking", False)) and now >= self._hear_after   # 她说话时的不算
+        if speaking != self._speaking:
+            self._speaking = speaking
+            self._speech_changed(speaking)
 
     # ---------- 接着说（7.9） ----------
 
@@ -175,8 +191,11 @@ class Listener:
         self._poll_follow()
 
     def end_follow(self):
-        """不等了（Hush、按住快捷键、不听了）：要开的不开，开着的关掉。"""
+        """不等了（Hush、按住快捷键、不听了）：要开的不开，开着的关掉，收着一半的一问也不要了。"""
         self._follow_after = None
+        if self._pieces:
+            log.info("收着的一问不要了（%d 段）", len(self._pieces))
+        self._pieces = []
         self._close_window()
 
     def _poll_follow(self):
@@ -186,14 +205,60 @@ class Listener:
 
     def _open_window(self, seconds, asks=False):
         """开窗口，告诉芸芸那边（换"在听"的样子、麦克风标记外面的绿条倒数）。"""
-        if self._window is not None:
-            self._window.cancel()
         # 开窗口前就开始说的（多半混着她的声音）不算；她刚说完你马上接话（回声的那一小会儿里开口）的算
         self._follow_from = time.monotonic() - ECHO_TAIL_S - 0.5
-        self._follow_until = time.monotonic() + seconds
         self._window_asks = asks
+        self._run_window(seconds)
+
+    def _run_window(self, seconds):
+        """窗口倒数 seconds 秒（新开的，或者你说完一段不算数的话、绿条接着减）。"""
+        if self._window is not None:
+            self._window.cancel()
+        self._held = None
+        self._follow_until = time.monotonic() + seconds
         self._window = asyncio.get_running_loop().call_later(seconds, self._window_ended)
         self._emit(protocol.Following(seconds))
+
+    def _speech_changed(self, speaking):
+        """你开始 / 停下说话了：窗口开着、或者正收着一问时，说着的时候绿条停在满格，停下来才接着减。"""
+        if speaking:
+            if self._window is not None:   # 窗口在倒数：停住，记下还剩几秒；这期间开口的都算
+                self._held = max(self._window.when() - asyncio.get_running_loop().time(), MIN_GAP_S)
+                self._window.cancel()
+                self._window, self._follow_until = None, math.inf
+            elif not (self._pieces or self._held is not None):
+                return
+            if self._gap is not None:
+                self._gap.cancel()
+                self._gap = None
+            self._emit(protocol.Following(protocol.HOLD_S))
+        elif self._pieces:            # 说了一段：停够了才发出去
+            self._start_gap()
+        elif self._held is not None:  # 说的不算（咳嗽、语气词）或者还在识别：窗口接着减
+            self._run_window(self._held)
+
+    def _collect(self, question):
+        """听到这一问的一段：先收着。你没在说话就开始等（停够 GAP_S 发出去），还在说就等你停下来。"""
+        self._pieces.append(question)
+        if self._window is not None:
+            self._window.cancel()
+        self._window, self._held, self._follow_until = None, None, math.inf   # 收着一问：接着说的都算这一问
+        if not self._speaking:
+            self._start_gap()
+
+    def _start_gap(self):
+        if self._gap is not None:
+            self._gap.cancel()
+        wait = max(MIN_GAP_S, GAP_S - getattr(_result(self._segmenter), "SILENCE_S", 0.0))
+        self._gap = asyncio.get_running_loop().call_later(wait, self._send_question)
+        self._emit(protocol.Following(wait))
+
+    def _send_question(self):
+        """停够了：收着的几段连成一问，发出去。"""
+        pieces, self._pieces = self._pieces, []
+        self._close_window()
+        log.info("一问说完了（%d 段）", len(pieces))
+        self._emit(protocol.Called(reduce(speech_text.join, pieces)))
 
     def _window_ended(self):
         """到点了：绿条走完。_follow_until 留着——到点前开口、还没说完的那句照样算。"""
@@ -202,10 +267,14 @@ class Listener:
 
     def _close_window(self):
         """提前关（发出去了一问、Hush、按住快捷键、不听了）：之后说的都要叫名字。"""
+        showing = self._window is not None or self._gap is not None or self._held is not None
         self._follow_until = 0.0
-        if self._window is not None:
-            self._window.cancel()
-            self._window_ended()
+        for timer in (self._window, self._gap):
+            if timer is not None:
+                timer.cancel()
+        self._window = self._gap = self._held = None
+        if showing:
+            self._emit(protocol.Following(0))
 
     # ---------- 识别 ----------
 
@@ -283,10 +352,11 @@ class Listener:
         if during and (self._interrupt(text, whole=True) or speech_text.is_echo(text, self._saying())):
             return   # 打断了她 / 她还在说 / 是她刚说完那句的回声
         question = speech_text.after_wake_word(text)
-        if question is None:   # 没叫名字：只有窗口里开始说的才算，光是语气词的不算（除非她刚问了你一句）
+        if question is None:   # 没叫名字：窗口里开始说的、接着正收着的一问的才算；光是语气词的不算（除非她刚问了你一句）
             question = speech_text.heard_text(text)
             filler = speech_text.is_filler(question) and not self._window_asks
-            if not self._follow_from <= started < self._follow_until or not question or filler:
+            in_window = bool(self._pieces) or self._follow_from <= started < self._follow_until
+            if not in_window or not question or filler:
                 log.info("听到一句（%.1f 秒），没叫芸芸%s：扔掉", len(sentence) / SAMPLE_RATE, "（语气词）" if filler else "")
                 return
             log.info("接着说的一句：%d 个字", len(question))
@@ -295,10 +365,10 @@ class Listener:
                 question = ""
             log.info("叫了芸芸：%d 个字", len(question))
         if question:
-            self._close_window()
-        else:
+            self._collect(question)   # 先收着：停够 GAP_S 才发出去（中间接着说的都算这一问）
+        elif not self._pieces:
             self._open_window(FOLLOW_S)
-        self._emit(protocol.Called(question))
+            self._emit(protocol.Called(""))
 
     def _spawn(self, coroutine):
         task = asyncio.create_task(coroutine)
@@ -309,8 +379,9 @@ class Listener:
         self._watching = False
         self.cancel()
         self._close_stream()
-        if self._window is not None:
-            self._window.cancel()
+        for timer in (self._window, self._gap):
+            if timer is not None:
+                timer.cancel()
         for task in self._tasks:
             task.cancel()
 

@@ -31,9 +31,9 @@ class MicMark(QWidget):
         self.move(center - QPoint(self.width() // 2, self.height() // 2))
 
     def countdown(self, seconds):
-        """开始倒数 seconds 秒（绿条从满圈慢慢变短）；0 = 停下、绿条收起。"""
+        """开始倒数 seconds 秒（绿条从满圈慢慢变短）；0 = 停下、绿条收起；负的 = 满圈停着不动（你在说话）。"""
         self._countdown.stop()
-        self._tick(1.0 if seconds > 0 else 0.0)
+        self._tick(1.0 if seconds != 0 else 0.0)
         if seconds > 0:
             self._countdown.setDuration(int(seconds * 1000))
             self._countdown.start()
