@@ -14,3 +14,14 @@ def wait_until(qapp, condition, timeout=10.0):
 def wait(qapp, seconds):
     """处理 Qt 事件 seconds 秒（等定时器、动画走完）。"""
     wait_until(qapp, lambda: False, seconds)
+
+
+def menu_actions(menu):
+    """菜单里的全部项（连子菜单里的一起，按出现的顺序；分隔线和子菜单本身那一项不算）。"""
+    found = []
+    for action in menu.actions():
+        if action.menu() is not None:
+            found += menu_actions(action.menu())
+        elif not action.isSeparator():
+            found.append(action)
+    return found

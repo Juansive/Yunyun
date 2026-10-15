@@ -763,44 +763,53 @@ class PetWindow(QWidget):
             menu.addAction(glyph_icon(Icon.DOWNLOAD), tr("menu_update", version),
                            lambda: QDesktopServices.openUrl(QUrl(url)))
             menu.addSeparator()
-        # "✦ 助手模式"：第一项、蓝紫渐变的字，要醒目（2026-10-07 用户要求）；开着时下面多一项"退出助手模式"，
-        # 芸芸在干活时再多一项"停止助手"（紧急停止：输入框收起着也能停）
-        # （这个版本没有助手模式就不显示：打包版要到阶段 9 才带上 Claude Code）
+        # "✦ 助手模式"：蓝紫渐变的字，要醒目（2026-10-07 用户要求）。
+        # 助手模式开着时（2026-10-16 用户嫌菜单太长，选的推荐项）：急用的（停止、别说了，只在用得上时出现）放最上面；
+        # 第一层只留 助手模式 / 历史对话 / 始终在听 / "助手 ▸"，其余（提醒、再读一遍、忽略刚才那句、隐藏卡片、卡片复位、
+        # 退出助手模式）收进"助手 ▸"，邮件三项收进"邮件 ▸"。没开时（节能模式）邮件是主要功能，照旧放第一层。
+        # （这个版本没有助手模式就不显示：节能版不带 Claude Code）
+        assistant_on = assistant_available() and self._assistant is not None
+        if assistant_on and (self._assistant.busy or self._assistant.speaking):
+            if self._assistant.busy:   # 紧急停止：输入框收起着也能停
+                menu.addAction(glyph_icon(Icon.STOP, DANGER), tr("menu_assistant_stop"), self.stop_assistant)
+            if self._assistant.speaking:   # 正在出声回答（阶段 7）：叫它别说了
+                menu.addAction(glyph_icon(Icon.MUTE), tr("menu_assistant_hush"), self._assistant.hush)
+            menu.addSeparator()
         if assistant_available():
             assistant = FancyAction(tr("menu_assistant"), menu)
             assistant.triggered.connect(self.open_assistant)
             menu.addAction(assistant)
             menu.addAction(glyph_icon(Icon.HISTORY), tr("menu_assistant_history"), self.open_assistant_history)   # 以前的对话，可以接着聊
             pending = len(reminders.load())   # 提醒（11.5）：有的话放一项，打开设置 → 提醒
-            if pending:
-                menu.addAction(glyph_icon(Icon.CLOCK), tr("menu_reminders", pending), lambda: self.open_settings("reminders"))
-            if self._assistant is not None and self._assistant.withdrawable is not None:   # 语音误收了（7.9 ⑤）
-                menu.addAction(glyph_icon(Icon.UNDO), tr("menu_assistant_withdraw"), self._assistant.withdraw)
-            if self._assistant is not None and self._assistant.last_answer:   # 语音：再读一遍（2026-10-13 用户要的）
-                menu.addAction(glyph_icon(Icon.SPEAK), tr("menu_assistant_read_again"), self._assistant.read_again)
-            if self._assistant is not None:
-                if self._assistant.busy:
-                    menu.addAction(glyph_icon(Icon.STOP, DANGER), tr("menu_assistant_stop"), self.stop_assistant)
-                if self._assistant.speaking:   # 正在出声回答（阶段 7）：叫它别说了
-                    menu.addAction(glyph_icon(Icon.MUTE), tr("menu_assistant_hush"), self._assistant.hush)
+            more = menu
+            if assistant_on:
                 watch = menu.addAction(tr("menu_assistant_watch"), self._assistant.toggle_watch)   # 始终在听（7.3）
                 watch.setCheckable(True)
                 watch.setChecked(self._assistant.always_listening)
+                more = self._submenu(menu, Icon.MORE, tr("menu_assistant_more"))
+            if pending:
+                more.addAction(glyph_icon(Icon.CLOCK), tr("menu_reminders", pending), lambda: self.open_settings("reminders"))
+            if assistant_on:
+                if self._assistant.last_answer:   # 语音：再读一遍（2026-10-13 用户要的；阅读框里也有）
+                    more.addAction(glyph_icon(Icon.SPEAK), tr("menu_assistant_read_again"), self._assistant.read_again)
+                if self._assistant.withdrawable is not None:   # 语音误收了（7.9 ⑤；阅读框里也有）
+                    more.addAction(glyph_icon(Icon.UNDO), tr("menu_assistant_withdraw"), self._assistant.withdraw)
                 if self._assistant.cards_shown:   # 卡片常亮：要收起就在这里（左键芸芸再唤出）
-                    menu.addAction(glyph_icon(Icon.HIDE), tr("menu_assistant_hide_cards"), self._assistant.hide_cards)
+                    more.addAction(glyph_icon(Icon.HIDE), tr("menu_assistant_hide_cards"), self._assistant.hide_cards)
                 if self._assistant.has_custom_place:
-                    menu.addAction(glyph_icon(Icon.PLACE), tr("menu_assistant_reset_place"), self._assistant.reset_place)
-                menu.addAction(glyph_icon(Icon.CLOSE), tr("menu_assistant_exit"), self.close_assistant)
+                    more.addAction(glyph_icon(Icon.PLACE), tr("menu_assistant_reset_place"), self._assistant.reset_place)
+                more.addAction(glyph_icon(Icon.CLOSE), tr("menu_assistant_exit"), self.close_assistant)
             menu.addSeparator()
         # "设置…"：所有设置都在设置窗口里（"…"表示点了会打开一个窗口，这是桌面软件的惯例）
         menu.addAction(glyph_icon(Icon.SETTINGS), tr("menu_settings"), self.open_settings)
+        mail = self._submenu(menu, Icon.MAIL, tr("menu_mail")) if assistant_on else menu
         # 刚才的邮件：把最近一批卡片重新展开（没有历史、或正在处理邮件时变灰）
-        recent = menu.addAction(glyph_icon(Icon.MAIL), tr("menu_recent_mail"), self.show_recent_mail)
+        recent = mail.addAction(glyph_icon(Icon.MAIL), tr("menu_recent_mail"), self.show_recent_mail)
         recent.setEnabled(self.history is not None and not self.history.is_empty() and not self._mail_processing)
 
-        dismiss = menu.addAction(glyph_icon(Icon.ACCEPT), tr("menu_dismiss_mail"), self._dismiss_mail)
+        dismiss = mail.addAction(glyph_icon(Icon.ACCEPT), tr("menu_dismiss_mail"), self._dismiss_mail)
         dismiss.setEnabled(self._mail_count > 0)  # 没有待处理邮件时变灰
-        menu.addAction(glyph_icon(Icon.PLAY if self._user_paused else Icon.PAUSE),
+        mail.addAction(glyph_icon(Icon.PLAY if self._user_paused else Icon.PAUSE),
                        tr("menu_resume") if self._user_paused else tr("menu_pause"), self._toggle_pause)
         menu.addSeparator()
 
@@ -808,6 +817,15 @@ class PetWindow(QWidget):
         exit_action.triggered.connect(lambda: self.request_exit(menu))
         menu.keep_open_action = exit_action
         return menu
+
+    @staticmethod
+    def _submenu(menu, icon, title):
+        """右键菜单里的子菜单（"助手 ▸""邮件 ▸"）：和菜单一样的圆角卡片。"""
+        sub = KeepOpenMenu(menu)
+        sub.setTitle(title)
+        sub.setIcon(glyph_icon(icon))
+        menu.addMenu(sub)
+        return sub
 
     def open_settings(self, page="general"):
         """打开设置窗口并翻到某一页；已经打开了就翻页并提到前面。"""

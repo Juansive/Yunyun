@@ -25,7 +25,7 @@ from yunyun.pet.menu import FancyAction
 from yunyun.pet.sprites import load_sprites
 from yunyun.pet.state import PetState, StateMachine
 from yunyun.pet.window import PetWindow
-from helpers import wait_until
+from helpers import menu_actions, wait_until
 
 FAKE_WORKER = Path(__file__).with_name("fake_assistant_worker.py")
 
@@ -73,6 +73,12 @@ def ask(pet, text):
 
 
 def menu_texts(pet):
+    """右键菜单里的每一项（连子菜单里的）。"""
+    return [a.text() for a in menu_actions(pet._build_menu())]
+
+
+def top_texts(pet):
+    """右键菜单第一层（子菜单只算它自己那一项）。"""
     return [a.text() for a in pet._build_menu().actions() if not a.isSeparator()]
 
 
@@ -219,8 +225,13 @@ def test_menu_puts_assistant_first_and_fancy(world, monkeypatch):
     assert "退出助手模式" not in menu_texts(pet)
     has_key(monkeypatch)
     pet.open_assistant()
-    texts = menu_texts(pet)
-    assert texts[1:5] == ["历史对话…", i18n.tr("menu_assistant_watch"), "隐藏卡片", "退出助手模式"]   # 后三项开着时才有
+    # 开着时（2026-10-16 精简）：第一层 助手模式 / 历史对话 / 始终在听 / 助手 ▸ / 设置 / 邮件 ▸ / 退出；
+    # 隐藏卡片、退出助手模式在"助手 ▸"里，邮件三项在"邮件 ▸"里
+    assert top_texts(pet) == ["✦ 助手模式", "历史对话…", i18n.tr("menu_assistant_watch"), "助手", "设置…", "邮件", "退出"]
+    more = next(a.menu() for a in pet._build_menu().actions() if a.text() == "助手")
+    assert [a.text() for a in more.actions()] == ["隐藏卡片", "退出助手模式"]
+    mail = next(a.menu() for a in pet._build_menu().actions() if a.text() == "邮件")
+    assert [a.text() for a in mail.actions()] == ["刚才的邮件", "全部标为已看", "暂停"]
 
 
 def test_without_key_opens_settings_and_says_so(world, monkeypatch):
@@ -383,7 +394,7 @@ def test_hide_cards_from_the_menu_and_summon_brings_the_reader_back(qapp, world,
     mode._open_card(mode.cards[-1])
     assert wait_until(qapp, lambda: mode.reader.is_open)
     assert "隐藏卡片" in menu_texts(pet)
-    next(a for a in pet._build_menu().actions() if a.text() == "隐藏卡片").trigger()
+    next(a for a in menu_actions(pet._build_menu()) if a.text() == "隐藏卡片").trigger()
     assert wait_until(qapp, lambda: not mode.deck.isVisible() and not mode.reader.isVisible()
                       and not mode.input.isVisible())
     assert "隐藏卡片" not in menu_texts(pet) and pet.assistant is mode
@@ -1055,8 +1066,8 @@ def test_emergency_stop_from_the_menu_even_when_collapsed(qapp, working):
     assert wait_until(qapp, lambda: mode.confirm.is_open)
     mode.input.collapse()                                          # 收起着也能停
     assert wait_until(qapp, lambda: not mode.input.isVisible())
-    texts = menu_texts(pet)
-    assert texts[1:6] == ["历史对话…", "■ 停止助手", i18n.tr("menu_assistant_watch"), "隐藏卡片", "退出助手模式"]   # 停止：干活时才有
+    texts = top_texts(pet)
+    assert texts[:5] == ["■ 停止助手", "✦ 助手模式", "历史对话…", i18n.tr("menu_assistant_watch"), "助手"]   # 停止：干活时才有，放最上面
     stop = next(a for a in pet._build_menu().actions() if a.text() == "■ 停止助手")
     stop.trigger()
     assert process.interrupts == 1 and mode.session.pending_permissions == []

@@ -36,6 +36,9 @@ TEXTS = {
     "menu_assistant_reset_place": {"zh": "卡片回到芸芸旁边", "en": "Put cards back next to Yunyun",
                                    "ja": "カードを芸芸のそばに戻す"},
     "menu_assistant_exit": {"zh": "退出助手模式", "en": "Exit assistant mode", "ja": "アシスタントモードを終了"},
+    # 助手模式开着时的两个子菜单（2026-10-16 精简右键菜单）
+    "menu_assistant_more": {"zh": "助手", "en": "Assistant", "ja": "アシスタント"},
+    "menu_mail": {"zh": "邮件", "en": "Mail", "ja": "メール"},
     "menu_language": {"zh": "语言", "en": "Language", "ja": "言語"},
     "pet_size": {"zh": "芸芸大小", "en": "Size", "ja": "芸芸の大きさ"},   # 设置 → 通用的滑块
     "pet_size_reset": {"zh": "恢复默认", "en": "Reset", "ja": "元に戻す"},

@@ -487,7 +487,8 @@ def voice_world(qapp, monkeypatch):
 
 
 def menu_texts(pet):
-    return [a.text() for a in pet._build_menu().actions() if not a.isSeparator()]
+    from helpers import menu_actions
+    return [a.text() for a in menu_actions(pet._build_menu())]
 
 
 def test_reminders_are_said_aloud_unless_voice_is_off(voice_world):
@@ -568,7 +569,8 @@ def test_read_the_answer_again_from_the_reader_or_the_menu(voice_world, qapp):
     pet.assistant.reader._read.click()
     voices[0].say(protocol.Ready(), protocol.Speaking(1))
     assert voices[0].said == ["第一句。", "第二句。"]
-    menu = next(a for a in pet._build_menu().actions() if a.text() == i18n.tr("menu_assistant_read_again"))
+    from helpers import menu_actions
+    menu = next(a for a in menu_actions(pet._build_menu()) if a.text() == i18n.tr("menu_assistant_read_again"))
     menu.trigger()   # 正在读：先停下，从头再读
     assert voices[0].sent[2] == protocol.Hush() and voices[0].said == ["第一句。", "第二句。"] * 2
 

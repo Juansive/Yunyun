@@ -526,7 +526,8 @@ def test_not_meant_for_her(watch_world, qapp):
     second.say(assistant_protocol.Ready("anthropic", "m"))
     voices[0].say(protocol.Called("今晚吃什么"))   # 还在回答时就撤回
     assert mode.busy and mode.withdrawable is not None
-    next(a for a in pet._build_menu().actions() if a.text() == i18n.tr("menu_assistant_withdraw")).trigger()
+    from helpers import menu_actions
+    next(a for a in menu_actions(pet._build_menu()) if a.text() == i18n.tr("menu_assistant_withdraw")).trigger()
     assert not mode.busy and mode.cards == [typed] and second.stopped
     assert mode.session.process.withdraw == transcripts.question_digest("今晚吃什么")
 

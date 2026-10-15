@@ -23,6 +23,7 @@ class Icon:
     HISTORY, SPEAK, STOP, MUTE, HIDE, PLACE, CLOSE, DOWNLOAD = 0xE81C, 0xE767, 0xE71A, 0xE74F, 0xED1A, 0xE81D, 0xE711, 0xE896
     CLOCK = 0xE823   # 提醒（11.5）：钟面
     UNDO = 0xE7A7    # 忽略刚才那句（7.9 ⑤）
+    MORE = 0xE712    # "助手 ▸"子菜单（三个点）
 
 
 DANGER = "#E5484D"
