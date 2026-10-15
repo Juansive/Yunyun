@@ -116,9 +116,11 @@ def no_real_assistant(monkeypatch, tmp_path):
     monkeypatch.setattr(browser, "start_playwright", no_browser)
     monkeypatch.setattr(browser, "PROFILE_DIR", tmp_path / "assistant_browser")
     # 操作桌面软件（11.6b）：绝不用真的 UI 自动化读 / 点你的窗口、不发真的按键（假的见 tests/fake_desktop.py）
-    from fake_desktop import FakeDesktopBackend
+    import fake_desktop
     from yunyun.assistant import desktop
-    monkeypatch.setattr(desktop, "_Backend", FakeDesktopBackend)
+    monkeypatch.setattr(desktop, "_Backend", fake_desktop.FakeDesktopBackend)
+    monkeypatch.setitem(fake_desktop.CURSOR, "pos", (500, 500))   # 鼠标（11.6c）：假光标，绝不动你真的鼠标
+    monkeypatch.setattr(desktop, "_cursor_pos", lambda: fake_desktop.CURSOR["pos"])
     # 下载（6.2c）：不往你真的"下载"文件夹里放东西
     from yunyun import paths
     monkeypatch.setattr(paths, "downloads_dir", lambda: tmp_path / "Downloads")

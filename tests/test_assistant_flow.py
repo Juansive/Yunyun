@@ -179,6 +179,24 @@ def test_new_rapport_notes_are_said_once_a_day(world, monkeypatch):
     assert i18n.tr("assistant_rapport_learned_plain") in bubbles(pet)
 
 
+def test_mouse_notice_and_bubble_when_you_take_the_mouse_back(world, monkeypatch):
+    """芸芸用你的鼠标（11.6c）：角落一直有"芸芸在用鼠标"的小条；你动了鼠标拿回去，小条收起、她冒个气泡（自己设定的性格换一句）。"""
+    pet, _, processes = world
+    has_key(monkeypatch)
+    pet.open_assistant()
+    process = processes[0]
+    notice = pet.assistant.mouse_notice
+    process.say(protocol.Ready("anthropic", "m"), protocol.MouseControl(True))
+    assert notice.isVisible() and notice.kind == "mouse" and notice.text == i18n.tr("assistant_mouse_notice")
+    process.say(protocol.MouseControl(False))                                  # 正常答完：只收起，不说话
+    assert not notice.isVisible() and i18n.tr("assistant_mouse_back") not in bubbles(pet)
+    process.say(protocol.MouseControl(True), protocol.MouseControl(False, True))
+    assert not notice.isVisible() and i18n.tr("assistant_mouse_back") in bubbles(pet)
+    assistant_settings.save_settings(assistant_settings.AssistantSettings(personality="custom", personality_text="温柔"))
+    process.say(protocol.MouseControl(True), protocol.MouseControl(False, True))
+    assert i18n.tr("assistant_mouse_back_plain") in bubbles(pet)
+
+
 def test_failed_open_app_tells_the_brain(world, monkeypatch):
     from yunyun.assistant import apps
     pet, _, processes = world

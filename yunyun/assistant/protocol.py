@@ -307,6 +307,15 @@ class WindowRequest:
 
 
 @_message
+class MouseControl:
+    """芸芸开始 / 不再用你的鼠标（11.6c）：active 时本体在角落显示"芸芸在用鼠标……"；taken_back：是你动了鼠标拿回去的
+    （本体冒气泡"鼠标还你啦"）。"""
+    TYPE: ClassVar[str] = "mouse_control"
+    active: bool
+    taken_back: bool = False
+
+
+@_message
 class RemindersChanged:
     """助手加了 / 取消了提醒（11.5）：芸芸重新读提醒、排下一次响的时间。"""
     TYPE: ClassVar[str] = "reminders_changed"

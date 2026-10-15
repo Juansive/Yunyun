@@ -911,6 +911,15 @@ TEXTS = {
     "assistant_tool_browser_select": {"zh": "正在网页上选择……", "en": "Choosing on the page…",
                                       "ja": "ページで選んでいます…"},
     "assistant_tool_browser_download": {"zh": "正在下载……", "en": "Downloading…", "ja": "ダウンロードしています…"},
+    # 芸芸用你的鼠标时（11.6c）：角落小条；你动了鼠标、她交还时的气泡（自己设定性格时用 _plain）
+    "assistant_mouse_notice": {"zh": "芸芸在用鼠标……动一下鼠标就还给你", "en": "Yunyun is using the mouse… move it to take it back",
+                               "ja": "芸芸がマウスを使っています…動かせば返します"},
+    "assistant_mouse_back": {"zh": "哼，鼠标还你啦～要继续就跟我说一声。",
+                             "en": "Hmph, the mouse is yours again~ Tell me if you want me to continue.",
+                             "ja": "ふん、マウスは返したよ～続けてほしかったら言ってね。"},
+    "assistant_mouse_back_plain": {"zh": "鼠标还你啦～要继续就跟我说一声。",
+                                   "en": "The mouse is yours again~ Tell me if you want me to continue.",
+                                   "ja": "マウスは返したよ～続けてほしかったら言ってね。"},
     # 操作桌面软件（阶段 11.6b）
     "assistant_tool_ui_read": {"zh": "正在看软件窗口……", "en": "Reading the app window…",
                                "ja": "ソフトのウィンドウを読んでいます…"},

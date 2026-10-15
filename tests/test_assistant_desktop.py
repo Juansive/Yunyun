@@ -163,8 +163,9 @@ def test_render_lists_what_can_be_seen_and_operated():
         '- checkbox "自动换行" [ref=u5] (unchecked)',
         '- button "灰色的" (disabled)',                       # 灰的没有编号
         '- edit "密码" [ref=u6] value=(hidden)',              # 密码框的值不给
+        '- custom "画出来的按钮" [ref=u7]',                   # 只能用鼠标点的也有编号（11.6c）
     ]                                                           # 屏幕外的标签页、滚动条连同里面的都不列
-    assert offscreen == 1 and list(refs) == ["u1", "u2", "u3", "u4", "u5", "u6"] and refs["u3"].name == "保存"
+    assert offscreen == 1 and list(refs) == ["u1", "u2", "u3", "u4", "u5", "u6", "u7"] and refs["u3"].name == "保存"
 
 
 def test_render_keeps_named_groups_as_headings():
@@ -229,15 +230,15 @@ def test_click_presses_without_the_mouse_and_reports_new_windows():
     desk = new_desktop()
     run(desk.read())
     backend = desk._backend
-    view = run(desk.click("u3"))                                             # 保存 → 开了"另存为"
+    view = run(desk.click("u3", None))                                       # 保存 → 开了"另存为"（按一下，不用切窗口）
     assert backend.done == [("press", "保存")]
     assert "Pressed u3 (invoke)." in view.note and "A new window opened: w205 · Notepad.exe · 另存为" in view.note
     assert view.window == "w201"                                              # 交回的还是这个窗口
-    view = run(desk.click("u5"))                                             # 复选框：读回来的是新状态
+    view = run(desk.click("u5", None))                                       # 复选框：读回来的是新状态
     assert '- checkbox "自动换行" [ref=u5] (checked)' in view.snapshot
     run(desk.read("w205"))
     assert run(desk.facts(CLICK, {"ref": "u1"})).context == "文件名已存在，要替换它吗？"
-    view = run(desk.click("u2"))                                             # 否 → 对话框关了
+    view = run(desk.click("u2", None))                                       # 否 → 对话框关了
     assert "That window is closed now." in view.note
     assert run(desk.facts(CLICK, {"ref": "u1"})).problem.startswith("Read a window")
 
@@ -288,6 +289,89 @@ def test_closed_window_is_explained():
     run(desk.read())
     desk._backend.list = [w for w in desk._backend.list if w.hwnd != 201]
     assert "has been closed" in run(desk.facts(CLICK, {"ref": "u3"})).problem
+
+
+# ---------- 用鼠标点、交还鼠标（11.6c） ----------
+
+import fake_desktop  # noqa: E402
+
+from yunyun.assistant.desktop import TAKEN_BACK  # noqa: E402
+
+
+def holding_desktop():
+    """读了记事本、带着"芸芸本体"（切窗口）和 on_control 记录的 Desktop。"""
+    told = []
+    desk = Desktop(own_pids={OWN_PID}, on_control=lambda active, taken_back: told.append((active, taken_back)))
+
+    async def bring_to_front(window):
+        desk._backend.front = window.pid
+    return desk, told, bring_to_front
+
+
+def test_mouse_click_brings_the_window_front_and_holds_the_mouse():
+    desk, told, front = holding_desktop()
+
+    async def main():
+        await desk.read()
+        view = await desk.click("u7", front)                                  # 自己画的按钮：用鼠标点它的中间
+        assert desk._backend.done[-1] == ("mouse", 120, 210) and "clicked with the mouse" in view.note
+        assert told == [(True, False)]                                         # 告诉本体：芸芸拿着鼠标
+        await desk.click("u3", front)                                          # 拿着的时候按别的：不再说一遍
+        assert told == [(True, False)]
+        await desk.release()                                                   # 这一问答完了：光标放回原处
+        assert desk._backend.done[-1] == ("move", 500, 500) and told[-1] == (False, False)
+    run(main())
+
+
+def test_moving_the_mouse_takes_it_back_for_the_rest_of_the_turn():
+    desk, told, front = holding_desktop()
+
+    async def main():
+        await desk.read()
+        await desk.click("u7", front)
+        await asyncio.sleep(0.15)
+        assert told == [(True, False)]                                         # 光标没动：还拿着
+        fake_desktop.CURSOR["pos"] = (900, 40)                                  # 你动了鼠标
+        await asyncio.sleep(0.15)
+        assert told[-1] == (False, True) and desk.taken_back
+        assert ("move", 500, 500) not in desk._backend.done                    # 你拿回去的：不把光标挪回去
+        assert (await desk.facts(CLICK, {"ref": "u3"})).problem == TAKEN_BACK   # 剩下的都不做（权限规则据此拒绝）
+        assert (await desk.facts(KEY, {"keys": "tab"})).problem == TAKEN_BACK
+        assert not (await desk.facts(READ, {})).problem                         # 读还可以
+        for action in (desk.click("u3", front), desk.type("u2", "x", front), desk.key("tab", "", front)):
+            with pytest.raises(DesktopError, match="took control back"):
+                await action
+        desk.new_turn()                                                        # 你说"继续"：新的一问又能做了
+        assert not (await desk.facts(CLICK, {"ref": "u3"})).problem
+    run(main())
+
+
+def test_no_mouse_click_on_a_covered_spot_or_a_window_behind():
+    desk, told, front = holding_desktop()
+
+    async def stays_behind(window):
+        pass
+
+    async def main():
+        await desk.read()
+        with pytest.raises(DesktopError, match="isn't in front"):
+            await desk.click("u7", stays_behind)
+        desk._backend.cover = 999                                              # 那一点被别的窗口挡着
+        with pytest.raises(DesktopError, match="covering"):
+            await desk.click("u7", front)
+        assert not [d for d in desk._backend.done if d[0] == "mouse"] and not told
+    run(main())
+
+
+def test_mouse_control_reaches_yunyun(session):
+    told = []
+    session.mouse_control.connect(lambda active, taken_back: told.append((active, taken_back)))
+    session.ask("帮我点一下")
+    process = session.processes[0]
+    process.say(protocol.Ready("anthropic", "m"), protocol.MouseControl(True), protocol.MouseControl(False, True))
+    assert told == [(True, False), (False, True)]
+    session.close()
+    assert told[-1] == (False, False)                                          # 子进程没了：小条也收起来
 
 
 def test_tests_never_use_real_ui_automation():

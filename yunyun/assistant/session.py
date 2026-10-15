@@ -134,6 +134,7 @@ class AssistantSession(QObject):
     downloaded = Signal(object)             # 芸芸的浏览器下载好了一个文件（protocol.Downloaded）
     rapport_learned = Signal(int)           # 回想以前的对话后，有几条相处笔记开始生效（11.3）：冒个气泡
     reminders_changed = Signal()            # 助手加了 / 取消了提醒（11.5）：芸芸重新排下一次响的时间
+    mouse_control = Signal(bool, bool)      # 芸芸开始 / 不再用你的鼠标、是不是你拿回去的（11.6c）：角落小条、气泡
 
     def __init__(self, parent=None, make_process=None):
         """make_process(语言, parent, resume=会话编号) → 和 AssistantProcess 一样的对象；不传就用 default_process。"""
@@ -329,6 +330,7 @@ class AssistantSession(QObject):
         """不再用这个子进程了：浏览器跟着它关了，等着的撤销、整理都当没做成。返回原来的子进程。"""
         process, self._process = self._process, None
         self.browser_open = False
+        self.mouse_control.emit(False, False)   # 子进程没了：它拿着的鼠标也就不拿了（角落小条收起来）
         self._abandon_rewind()
         self._abandon_compact()
         return process
@@ -394,6 +396,8 @@ class AssistantSession(QObject):
             self.downloaded.emit(event)
         elif isinstance(event, protocol.RemindersChanged):   # 助手加了 / 取消了提醒（11.5）：芸芸重新排时间
             self.reminders_changed.emit()
+        elif isinstance(event, protocol.MouseControl):
+            self.mouse_control.emit(event.active, event.taken_back)
         elif isinstance(event, protocol.Reflected):   # 后台回想完一段以前的对话（11.3）：记账；有新的相处笔记生效就告诉界面
             ledger.record(event.cost_usd)
             if event.activated:

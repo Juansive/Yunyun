@@ -2,10 +2,13 @@
 
 几个假窗口和里面的控件；点 / 输入 / 按键只记在 done 里（再改一下假控件的样子）；按"保存"会开一个"另存为"窗口。
 foreground()：最前面的窗口属于哪个进程——默认谁都不是，测试里切窗口时设 front。
+鼠标（11.6c）：光标在 CURSOR["pos"]（conftest 让 desktop._cursor_pos 读它；测试里改它 = 你动了鼠标）；
+window_at()：那一点上是哪个窗口——默认是最后读的那个，cover 设了就是被它挡着。
 """
 from yunyun.assistant.desktop import Node, Window
 
 OWN_PID = 0   # 测试里当作芸芸自己的进程（Desktop(own_pids={OWN_PID})）
+CURSOR = {"pos": (500, 500)}   # 假光标（conftest 每个测试开始时放回 (500, 500)）
 
 
 def fake_windows():
@@ -34,7 +37,8 @@ def fake_controls():
               Node("edit", "密码", 2, ("value",), password=True),
               Node("text", "", 2),
               Node("scrollbar", "垂直", 1),
-              Node("button", "上一行", 2, ("invoke",))],
+              Node("button", "上一行", 2, ("invoke",)),
+              Node("custom", "画出来的按钮", 1, ("mouse",), rect=(100, 200, 140, 220))],
         202: [Node("window", "计算器", 0), Node("text", "显示为 0", 1), Node("button", "七", 1, ("invoke",)),
               Node("button", "加", 1, ("invoke",))],
         203: [Node("window", "运行", 0), Node("combobox", "打开(O):", 1, ("value", "expand"), state="collapsed"),
@@ -53,6 +57,8 @@ class FakeDesktopBackend:
         self.front = None    # 最前面的窗口属于哪个进程（None = 不是任何一个假窗口）
         self.done = []       # 做过的：("press", 名字) / ("value", 名字, 字) / ("focus", 名字) / ("keys", 修饰键, 键) / ("text", 字)
         self.reads = 0
+        self.cover = None    # window_at() 时挡在那一点上的窗口
+        self.last_read = None
 
     def windows(self):
         return list(self.list)
@@ -62,8 +68,9 @@ class FakeDesktopBackend:
 
     def read(self, hwnd):
         self.reads += 1
+        self.last_read = hwnd
         return [Node(n.role, n.name, n.depth, n.actions, n.enabled, n.offscreen, n.password, n.value, n.state,
-                     handle=(hwnd, i)) for i, n in enumerate(self.controls[hwnd])]
+                     handle=(hwnd, i), rect=n.rect) for i, n in enumerate(self.controls[hwnd])]
 
     def _real(self, node):
         hwnd, i = node.handle
@@ -92,3 +99,17 @@ class FakeDesktopBackend:
 
     def send_text(self, text):
         self.done.append(("text", text))
+
+    def cursor(self):
+        return CURSOR["pos"]
+
+    def move_to(self, x, y):
+        self.done.append(("move", x, y))
+        CURSOR["pos"] = (x, y)
+
+    def window_at(self, x, y):
+        return self.cover or self.last_read
+
+    def click_at(self, x, y):
+        self.done.append(("mouse", x, y))
+        CURSOR["pos"] = (x, y)

@@ -28,9 +28,10 @@ READ_SCHEMA = {
 }
 _ASKS = "Yunyun asks the user first (they can allow an app for this chat). Returns the window afterwards."
 _REF = {"type": "string", "description": "The control's ref from the latest ui_read, like u5"}
-CLICK = ("Press a control in the window you read last (button, checkbox, list item, tab, menu …) without moving the "
-         "mouse. Irreversible ones (send, delete, pay, close …) are confirmed every time; in chat apps Yunyun never "
-         "presses send. " + _ASKS)
+CLICK = ("Press a control in the window you read last (button, checkbox, list item, tab, menu …), without the mouse "
+         "when the control allows it, otherwise by clicking it with the mouse (the user sees a notice and can take "
+         "the mouse back by moving it). Irreversible ones (send, delete, pay, close …) are confirmed every time; in "
+         "chat apps Yunyun never presses send. " + _ASKS)
 CLICK_SCHEMA = {"type": "object", "properties": {"ref": _REF}, "required": ["ref"]}
 TYPE = ("Put text into a text box in the window you read last (replaces what's there when the box allows it, "
         "otherwise types at the cursor). Never presses Enter: new lines stay new lines, nothing gets sent. Never "
@@ -82,7 +83,7 @@ def desktop_tools(desktop, bridge):
 
     @tool("ui_click", CLICK, CLICK_SCHEMA)
     async def ui_click(args):
-        return await run(lambda: desktop.click(str(args.get("ref") or "")))
+        return await run(lambda: desktop.click(str(args.get("ref") or ""), bring_to_front))
 
     @tool("ui_type", TYPE, TYPE_SCHEMA)
     async def ui_type(args):

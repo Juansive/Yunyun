@@ -247,22 +247,27 @@ _DESKTOP_UI = {
           "ui_click 按按钮、ui_type 往输入框里放字、ui_key 按键或快捷键（都要芸芸先问用户，用户可以\"这个软件都允许\"）。"
           "用最新一次 ui_read 的编号（比如 u5），每次读编号都会变。发送、删除、付款、关闭这类撤不回的每次都问；"
           "聊天软件（微信、QQ……）里只打字、不发送，打好了告诉用户自己按发送。密码框不碰，终端、\"运行\"框、"
-          "系统安全设置也不碰。有的软件自己画界面，读不到东西，这时用截图看。",
+          "系统安全设置也不碰。按不下去的按钮芸芸会用鼠标点（用户看得到提示）；用户一动鼠标就是拿回去了，"
+          "这一问别再操作，简单说做到哪了、等用户说继续。有的软件自己画界面，读不到东西，这时用截图看。",
     "en": "\n- You can operate inside desktop apps: ui_read reads a window's buttons, text boxes and lists (no need to "
           "ask; faster and cheaper than a screenshot, so prefer it), ui_click presses a button, ui_type puts text "
           "into a text box, ui_key presses a key or shortcut (Yunyun asks the user first; they can allow an app for "
           "this chat). Use refs from the latest ui_read (like u5); they change every time. Irreversible things "
           "(send, delete, pay, close) are confirmed every time. In chat apps (WeChat, QQ …) only type, never send: "
           "tell the user it's ready so they press send themselves. Password fields, terminals, the Run box and "
-          "security settings are off-limits. Some apps draw their own interface and show nothing; take a "
-          "screenshot then.",
+          "security settings are off-limits. Buttons that can't be pressed directly are clicked with the mouse "
+          "(the user sees a notice); if the user moves the mouse they've taken it back: stop operating, say "
+          "briefly how far you got and wait for them to say continue. Some apps draw their own interface and "
+          "show nothing; take a screenshot then.",
     "ja": "\n- デスクトップのソフトの中も操作できます：ui_read でウィンドウのボタン・入力欄・リストを読み（確認不要。"
           "スクリーンショットより速くて安いので優先してください）、ui_click でボタンを押し、ui_type で入力欄に文字を入れ、"
           "ui_key でキーやショートカットを押します（芸芸が先にユーザーに確認します。「このソフトは全部許可」もできます）。"
           "最新の ui_read の番号（例えば u5）を使ってください。読むたびに番号は変わります。送信・削除・支払い・閉じるなど"
           "取り消せないものは毎回確認します。チャットソフト（WeChat、QQ など）では入力だけで送信はせず、"
           "準備できたらユーザーに送信ボタンを押してもらってください。パスワード欄、ターミナル、「ファイル名を指定して実行」、"
-          "セキュリティ設定には触れません。独自の画面を描くソフトは何も読めないので、そのときはスクリーンショットで見てください。",
+          "セキュリティ設定には触れません。直接押せないボタンはマウスでクリックします（ユーザーには表示が出ます）。"
+          "ユーザーがマウスを動かしたら取り返したということなので、操作をやめ、どこまでやったかを短く伝えて"
+          "「続けて」と言われるのを待ってください。独自の画面を描くソフトは何も読めないので、そのときはスクリーンショットで見てください。",
 }
 # 打开软件那句里"打开以后不能操作里面"：有 _DESKTOP_UI 时去掉
 _APPS_NO_INSIDE = {   # (原来的, 换成)

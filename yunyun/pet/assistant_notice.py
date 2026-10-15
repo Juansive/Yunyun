@@ -12,8 +12,8 @@ from PySide6.QtWidgets import QWidget
 
 from yunyun.pet.badge import Badge, corner_point
 
-COLORS = {"confirm": "#E07A2E", "done": "#2E9E8F"}
-ICONS = {"confirm": "?", "done": "✓"}
+COLORS = {"confirm": "#E07A2E", "done": "#2E9E8F", "mouse": "#6E62E5"}
+ICONS = {"confirm": "?", "done": "✓", "mouse": "🖱"}   # mouse：芸芸在用你的鼠标（11.6c，不管芸芸挡没挡住都显示）
 
 
 class AssistantNotice(QWidget):

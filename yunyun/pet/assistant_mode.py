@@ -115,6 +115,7 @@ class AssistantMode(QObject):
     OPEN_APP_SAY_MS = 3000        # "帮你打开「计算器」啦"说多久
     DOWNLOADED_SAY_MS = 5000      # "下载好了：xxx（在"下载"文件夹里）"说多久
     RAPPORT_SAY_MS = 4000         # "我好像更了解你一点了"说多久（11.3）
+    MOUSE_BACK_SAY_MS = 6000      # "鼠标还你啦"说多久（11.6c）
     LISTEN_MAX_MS = 60_000        # 按着快捷键最多听多久（再长就当松开了）
     MIN_HOLD_MS = 300             # 按得比这短：当作手滑，不听（提醒一句要按住）
     LEVEL_CELLS = 10              # 气泡里音量条有几格
@@ -142,6 +143,7 @@ class AssistantMode(QObject):
         self.confirm = AssistantConfirm(pet)
         self.history = AssistantHistoryPanel(pet)
         self.notice = AssistantNotice()   # 芸芸被挡住时的角落小条（独立窗口，见 _update_notice）
+        self.mouse_notice = AssistantNotice(stack=2)   # "芸芸在用鼠标"（11.6c；旁观模式的小条是第 1 层）
         self._done_notice = ""    # 芸芸被挡着时答完了：小条要说的（你看到芸芸 / 点了 / 又问了就清掉）
         self._confirm_count = 0   # 上次看到有几个等确认（多了才提醒）
         self._last_turn = (None, None)   # 最近答完的一轮和它的卡片（整理前面的对话时更新这张卡片的底行）
@@ -221,6 +223,7 @@ class AssistantMode(QObject):
         self.session.downloaded.connect(self._on_downloaded)
         self.session.rapport_learned.connect(self._on_rapport_learned)
         self.session.reminders_changed.connect(self._on_reminders_changed)
+        self.session.mouse_control.connect(self._on_mouse_control)
         self.session.error_occurred.connect(self._on_error)
         self.notice.clicked.connect(self._on_notice_clicked)
         pet.cover_checked.connect(self._update_notice)   # 芸芸被挡住 / 露出来（约每 0.5 秒检查一次）
@@ -488,8 +491,9 @@ class AssistantMode(QObject):
         self._pet.end_live(0)
         for widget in widgets:
             widget.deleteLater()
-        self.notice.hide()
-        self.notice.deleteLater()   # 没有主人的独立窗口：要自己删
+        for notice in (self.notice, self.mouse_notice):
+            notice.hide()
+            notice.deleteLater()   # 没有主人的独立窗口：要自己删
         self.closed.emit()
 
     # ---------- 内部 ----------
@@ -935,6 +939,18 @@ class AssistantMode(QObject):
         clock = getattr(self._pet, "reminder_clock", None)
         if clock is not None:
             clock.check()
+
+    def _on_mouse_control(self, active, taken_back):
+        """芸芸开始 / 不再用你的鼠标（11.6c）：用着的时候角落一直有小条（她挡没挡住都显示）；
+        是你动了鼠标拿回去的，冒个气泡告诉你、要继续就说一声。"""
+        if active:
+            self.mouse_notice.show_message("mouse", i18n.tr("assistant_mouse_notice"))
+        else:
+            self.mouse_notice.hide()
+        if taken_back:
+            custom = assistant_settings.load_settings().personality == "custom"   # 自己设定的性格不一定傲娇
+            self._pet.say(i18n.tr("assistant_mouse_back_plain" if custom else "assistant_mouse_back"),
+                          self.MOUSE_BACK_SAY_MS)
 
     def _on_rapport_learned(self, count):
         """回想以前的对话后，有相处笔记开始生效（11.3）：冒个气泡，一天最多一次，不说内容（想看去设置 → 记事本）。

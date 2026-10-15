@@ -4,7 +4,12 @@
 - 读：一次跨进程拿整个窗口（CacheRequest + 子树，11.6a 实测几十到一两百毫秒），交给模型的是一行一个控件，
   能操作的带编号 [ref=u5]（像浏览器的快照）；没名字的框框不列（里面的往上提一层）；屏幕外的只报个数
   （Win11 记事本会恢复上次的几十个标签页）；密码框的值不读。
-- 点：用控件自己的"按一下"（Invoke / Toggle / 选中 / 展开），不动鼠标；都没有就说做不到（用鼠标点在 11.6c）。
+- 点：用控件自己的"按一下"（Invoke / Toggle / 选中 / 展开），不动鼠标；都没有的（自己画的按钮）用真的鼠标点它的中间（11.6c）：
+  先把窗口切到前面、看那个点是不是被别的窗口挡着（挡着就不点）。
+- 交还鼠标（11.6c，2026-10-15 用户定的）：第一次用鼠标起芸芸就"拿着鼠标"，直到这一问答完（角落小条"芸芸在用鼠标"，on_control 告诉本体）；
+  拿着的时候每 0.05 秒看一眼光标，不在她放的地方 = 你动了鼠标 → 马上还给你（本体冒气泡），这一问剩下的点 / 输入 / 按键都不做，
+  她说做到哪了、等你说"继续"。用看光标位置而不是全局鼠标钩子：简单，也不会因为钩子慢拖累你的鼠标；只漏掉"不动就点"，几乎没有。
+  正常答完时光标放回你原来的地方。
 - 输入：输入框支持就直接把字放进去（替换原来的）；不支持的先把焦点放进去，再一个字一个字地发——换行用 Shift+回车，
   **不按真的回车**（2026-10-15 定的：免得在聊天软件里打着打着就发出去了）。
 - 按键：发给最后读的那个窗口。先请芸芸本体把它切到前面（只有前台程序能切窗口，tools/desktop.py 走 Bridge），
@@ -34,7 +39,11 @@ CONTEXT_CHARS = 400     # 窗口里的说明文字留多少（点"确定 / 是"�
 MAX_NODES = 3000        # 一个窗口最多读这么多个控件（再多的多半是超长列表）
 MAX_DEPTH = 60
 HIDDEN = "(hidden)"
-INPUT_TAG = 0x59554E59  # 芸芸发的按键都带这个记号（"YUNY"）：11.6c 分辨鼠标键盘是芸芸动的还是你动的
+INPUT_TAG = 0x59554E59  # 芸芸发的按键、鼠标都带这个记号（"YUNY"），以后要分辨是谁动的可以用
+WATCH_S = 0.05          # 拿着鼠标时多久看一眼光标
+MOVE_PIXELS = 3         # 光标离她放的地方超过这么多（看的那条线程的坐标）算你动了
+TAKEN_BACK = ("The user moved the mouse and took control back. Stop operating apps now: tell the user briefly what "
+              "you did and what's left, and wait for them to say continue.")
 
 
 class DesktopError(Exception):
@@ -57,13 +66,15 @@ class Node:
     name: str = ""
     depth: int = 0          # 在窗口里第几层（窗口本身是 0）
     actions: tuple = ()     # 能怎么操作："invoke" / "toggle" / "select" / "expand" / "value"（能直接放字进去）/
-                            # "focus"（不能直接放字、但能把焦点放进去一个个打的编辑框，比如自己画的编辑器）
+                            # "focus"（不能直接放字、但能把焦点放进去一个个打的编辑框，比如自己画的编辑器）/
+                            # "mouse"（什么都不支持的按钮、列表项……只能用鼠标点，11.6c）
     enabled: bool = True
     offscreen: bool = False
     password: bool = False
     value: str = ""         # 输入框里的字（密码框一律是空的）
     state: str = ""         # "checked" / "unchecked" / "expanded" / "collapsed" / "selected"
     handle: object = field(default=None, repr=False, compare=False)   # 真的控件（_Backend 自己用）
+    rect: tuple = ()        # 在屏幕上的位置 (左, 上, 右, 下)，真实像素（用鼠标点时点它的中间）
 
 
 @dataclass
@@ -149,14 +160,64 @@ def context_text(nodes):
 # ---------- 给助手用的（asyncio；UI 自动化在专门的线程里） ----------
 
 class Desktop:
-    def __init__(self, own_pids=None):
-        """own_pids：芸芸自己的进程（本体 + 助手子进程），它们的窗口一律不碰。"""
+    def __init__(self, own_pids=None, on_control=None):
+        """own_pids：芸芸自己的进程（本体 + 助手子进程），它们的窗口一律不碰；
+        on_control(拿着鼠标, 是你拿回去的)：开始 / 不再用你的鼠标时告诉本体（角落小条、气泡）。"""
         self.own_pids = set(own_pids) if own_pids is not None else {os.getpid(), os.getppid()}
+        self.on_control = on_control or (lambda active, taken_back: None)
         self._executor = None
         self._backend = None
         self._window = None     # 最后读的窗口（Window）
         self._refs = {}         # 那次读出来的编号 → Node
         self._context = ""
+        self._control = None    # 拿着鼠标时：home（你的光标原来在哪，UI 自动化线程的坐标）、last（光标该在哪）、moving、task
+        self.taken_back = False  # 这一问里你把鼠标拿回去了：剩下的点 / 输入 / 按键都不做
+
+    # ---- 拿着鼠标 / 还给你（11.6c） ----
+
+    def new_turn(self):
+        """新的一问：上一问里你拿回去的不再算（你说"继续"了）。"""
+        self.taken_back = False
+
+    async def _hold(self):
+        if self._control is not None:
+            return
+        home = await self._run(lambda b: b.cursor())
+        self._control = {"home": home, "last": _cursor_pos(), "moving": False}
+        self._control["task"] = asyncio.get_running_loop().create_task(self._watch())
+        log.info("芸芸拿着鼠标")
+        self.on_control(True, False)
+
+    async def _watch(self):
+        """拿着鼠标时盯着光标：不在她放的地方就是你动了。"""
+        while self._control is not None:
+            await asyncio.sleep(WATCH_S)
+            control = self._control
+            if control is None or control["moving"]:
+                continue
+            x, y = _cursor_pos()
+            if abs(x - control["last"][0]) > MOVE_PIXELS or abs(y - control["last"][1]) > MOVE_PIXELS:
+                log.info("你动了鼠标：还给你")
+                await self.release(taken_back=True)
+                return
+
+    async def release(self, taken_back=False):
+        """不再用你的鼠标（这一问答完了 / 停下了 / 你拿回去了）。正常还的时候把光标放回你原来的地方。"""
+        control, self._control = self._control, None
+        if control is None:
+            return
+        task = control.get("task")
+        if task is not None and task is not asyncio.current_task():
+            task.cancel()
+        if taken_back:
+            self.taken_back = True
+        else:
+            try:
+                await self._run(lambda b: b.move_to(*control["home"]))
+            except DesktopError as e:
+                log.info("光标没放回去：%s", e)
+        log.info("鼠标还给你了%s", "（你拿回去的）" if taken_back else "")
+        self.on_control(False, taken_back)
 
     async def _run(self, func):
         """在 UI 自动化的线程里做 func(backend)。"""
@@ -176,6 +237,7 @@ class Desktop:
             raise DesktopError(explain(e)) from e
 
     def close(self):
+        """关掉 UI 自动化的线程（先 await release()，鼠标才会好好还给你）。"""
         if self._executor is not None:
             self._executor.shutdown(wait=False, cancel_futures=True)
             self._executor = None
@@ -235,6 +297,8 @@ class Desktop:
             if tool == UI_READ_TOOL:
                 window = await self._target(str(tool_input.get("window") or ""))
             else:
+                if self.taken_back:   # 你这一问里把鼠标拿回去了：都不做（读还可以）
+                    raise DesktopError(TAKEN_BACK)
                 window = await self._current()
                 ref = str(tool_input.get("ref") or "")
                 node = self._node(ref) if ref or tool != UI_KEY_TOOL else None
@@ -265,15 +329,39 @@ class Desktop:
         log.info("读窗口：%s，%d 个控件、%d 个能操作", window.app or "?", len(nodes), len(refs))
         return UiView(window_id(window.hwnd), window.app, window.title, text, "\n".join(notes))
 
-    async def click(self, ref):
+    async def click(self, ref, bring_to_front):
+        """能"按一下"的直接按（不动鼠标）；只能用鼠标点的（"mouse"）：切到前面、拿着鼠标、点它的中间。"""
+        if self.taken_back:
+            raise DesktopError(TAKEN_BACK)
         window = await self._current()
         node = self._node(ref)
         before = await self._hwnds()
-        how = await self._run(lambda b: b.press(node))
+        if "mouse" in node.actions:
+            await self._mouse_click(window, node, bring_to_front)
+            how = "clicked with the mouse"
+        else:
+            how = await self._run(lambda b: b.press(node))
         return await self._after(window, before, f"Pressed {ref} ({how}).")
+
+    async def _mouse_click(self, window, node, bring_to_front):
+        left, top, right, bottom = node.rect
+        x, y = (left + right) // 2, (top + bottom) // 2
+        await self._to_front(window, bring_to_front)
+        if await self._run(lambda b: b.window_at(x, y)) != window.hwnd:
+            raise DesktopError("Another window is covering that spot, so Yunyun didn't click. Read the window again, "
+                               "or ask the user.")
+        await self._hold()
+        control = self._control
+        control["moving"] = True
+        try:
+            await self._run(lambda b: b.click_at(x, y))
+        finally:
+            control["last"], control["moving"] = _cursor_pos(), False
 
     async def type(self, ref, text, bring_to_front):
         """bring_to_front(window)：请芸芸本体把窗口切到前面（不能直接放字时，要一个字一个字地发）。"""
+        if self.taken_back:
+            raise DesktopError(TAKEN_BACK)
         window = await self._current()
         node = self._node(ref)
         if node.password:   # 权限规则已经挡过，这里兜底
@@ -293,6 +381,8 @@ class Desktop:
         parsed = parse_keys(keys)
         if parsed is None:
             raise DesktopError(f"Unknown keys {keys!r}.")
+        if self.taken_back:
+            raise DesktopError(TAKEN_BACK)
         window = await self._current()
         node = self._node(ref) if ref else None
         before = await self._hwnds()
@@ -372,10 +462,27 @@ if sys.platform == "win32":
         (user32.GetClassNameW, ctypes.c_int, [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]),
         (user32.FindWindowExW, wintypes.HWND, [wintypes.HWND, wintypes.HWND, wintypes.LPCWSTR, wintypes.LPCWSTR]),
         (user32.SetThreadDpiAwarenessContext, ctypes.c_void_p, [ctypes.c_void_p]),
+        (user32.GetCursorPos, wintypes.BOOL, [ctypes.POINTER(wintypes.POINT)]),   # 11.6c：鼠标
+        (user32.SetCursorPos, wintypes.BOOL, [ctypes.c_int, ctypes.c_int]),
+        (user32.WindowFromPoint, wintypes.HWND, [wintypes.POINT]),
+        (user32.GetAncestor, wintypes.HWND, [wintypes.HWND, wintypes.UINT]),
+        (user32.GetSystemMetrics, ctypes.c_int, [ctypes.c_int]),
     ):
         _func.restype, _func.argtypes = _restype, _argtypes
 
+
+def _cursor_pos():
+    """光标在哪（调用的线程是什么 DPI 模式就是什么坐标；盯光标只和自己上一次比，不跨线程比）。测试里换成假的。"""
+    point = wintypes.POINT()
+    user32.GetCursorPos(ctypes.byref(point))
+    return point.x, point.y
+
+
 INPUT_KEYBOARD, KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP, KEYEVENTF_UNICODE = 1, 0x1, 0x2, 0x4
+INPUT_MOUSE, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP = 0, 2, 4, 8, 16
+GA_ROOT, SM_SWAPBUTTON = 2, 23
+MOUSE_ROLES = {"button", "splitbutton", "menuitem", "listitem", "tabitem", "treeitem", "dataitem", "hyperlink",
+               "checkbox", "radiobutton", "image", "custom"}   # 什么都不支持时，这几种给编号、用鼠标点
 TYPING_ROLES = {"edit", "document", "custom"}   # 没有 Value 时，能拿到焦点的这几种也给编号（一个个打字）
 EXTENDED_KEYS = {"up", "down", "left", "right", "home", "end", "insert", "delete", "pageup", "pagedown", "menu"}
 FRAME_HOST = "applicationframehost.exe"   # 商店应用的外框：里面真正的程序在 CoreWindow 子窗口里
@@ -390,7 +497,7 @@ def _key_input(vk=0, scan=0, flags=0):
 def _send(items):
     array = (_INPUT * len(items))(*items)
     if user32.SendInput(len(items), array, ctypes.sizeof(_INPUT)) != len(items):
-        raise DesktopError("Windows blocked the key presses (the app may run as administrator).")
+        raise DesktopError("Windows blocked the input (the app may run as administrator).")
 
 
 def _class_name(hwnd):
@@ -430,6 +537,7 @@ class _Backend:
         for prop in (uia.UIA_ControlTypePropertyId, uia.UIA_NamePropertyId, uia.UIA_IsEnabledPropertyId,
                      uia.UIA_IsOffscreenPropertyId, uia.UIA_IsPasswordPropertyId, uia.UIA_ValueValuePropertyId,
                      uia.UIA_IsKeyboardFocusablePropertyId, uia.UIA_ProcessIdPropertyId,
+                     uia.UIA_BoundingRectanglePropertyId,
                      uia.UIA_ValueIsReadOnlyPropertyId, uia.UIA_ToggleToggleStatePropertyId,
                      uia.UIA_ExpandCollapseExpandCollapseStatePropertyId, uia.UIA_SelectionItemIsSelectedPropertyId,
                      *(prop for _, prop in self.patterns)):
@@ -491,8 +599,14 @@ class _Backend:
         if "value" in actions and get(uia.UIA_ValueIsReadOnlyPropertyId) is True:
             actions.remove("value")
         role = self.roles.get(get(uia.UIA_ControlTypePropertyId), "custom")
+        name = get(uia.UIA_NamePropertyId)
+        name = name if isinstance(name, str) else ""
+        r = element.CachedBoundingRectangle
+        rect = (r.left, r.top, r.right, r.bottom) if r.right > r.left and r.bottom > r.top else ()
         if not actions and role in TYPING_ROLES and get(uia.UIA_IsKeyboardFocusablePropertyId) is True:
             actions.append("focus")
+        if not actions and role in MOUSE_ROLES and rect and name.strip():   # 自己画的按钮：只能用鼠标点（11.6c）
+            actions.append("mouse")                                         # 没名字的框框不算（不然满屏都是编号）
         password = get(uia.UIA_IsPasswordPropertyId) is True
         value = get(uia.UIA_ValueValuePropertyId)
         state = ""
@@ -503,10 +617,9 @@ class _Backend:
                 get(uia.UIA_ExpandCollapseExpandCollapseStatePropertyId), "")
         elif "select" in actions and get(uia.UIA_SelectionItemIsSelectedPropertyId) is True:
             state = "selected"
-        name = get(uia.UIA_NamePropertyId)
-        return Node(role, name if isinstance(name, str) else "", depth, tuple(actions),
+        return Node(role, name, depth, tuple(actions),
                     get(uia.UIA_IsEnabledPropertyId) is not False, get(uia.UIA_IsOffscreenPropertyId) is True,
-                    password, "" if password or not isinstance(value, str) else value, state, element)
+                    password, "" if password or not isinstance(value, str) else value, state, element, rect)
 
     # ---- 点、输入、按键 ----
 
@@ -539,6 +652,28 @@ class _Backend:
             raise
         raise DesktopError("This element can't be pressed through UI Automation (Yunyun can't click with the mouse "
                            "yet). Try a keyboard shortcut with ui_key, or ask the user.")
+
+    def cursor(self):
+        return _cursor_pos()   # 这条线程认得缩放：真实像素
+
+    def move_to(self, x, y):
+        user32.SetCursorPos(x, y)
+
+    def window_at(self, x, y):
+        """(x, y) 那一点上是哪个窗口（顶层的）：看要点的地方有没有被别的窗口挡着。"""
+        return int(user32.GetAncestor(user32.WindowFromPoint(wintypes.POINT(x, y)), GA_ROOT) or 0)
+
+    def click_at(self, x, y):
+        """光标挪过去、按一下左键（你把左右键对调了的话，系统里的"左键"是物理的右键）。"""
+        user32.SetCursorPos(x, y)
+        swapped = bool(user32.GetSystemMetrics(SM_SWAPBUTTON))
+        down, up = (MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP) if swapped else (MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP)
+        items = []
+        for flag in (down, up):
+            item = _INPUT(type=INPUT_MOUSE)
+            item.mi = _MOUSEINPUT(dx=0, dy=0, mouseData=0, dwFlags=flag, time=0, dwExtraInfo=INPUT_TAG)
+            items.append(item)
+        _send(items)
 
     def set_value(self, node, text):
         self._pattern(node, self.uia.UIA_ValuePatternId, self.uia.IUIAutomationValuePattern).SetValue(text)

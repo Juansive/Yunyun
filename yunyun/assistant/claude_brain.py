@@ -606,7 +606,8 @@ class ClaudeBrain:
         # 芸芸的浏览器（阶段 6.2）：第一次用时才打开；开 / 关告诉芸芸（开着时不闲置释放）
         self.browser = Browser(on_change=lambda is_open: emit(protocol.BrowserChanged(is_open)),
                                on_download=lambda name, path, by_user: emit(protocol.Downloaded(name, path, by_user)))
-        self.desktop = Desktop()   # 操作桌面软件（11.6b）：第一次用时才开 UI 自动化的线程
+        # 操作桌面软件（11.6b）：第一次用时才开 UI 自动化的线程；用你的鼠标时告诉本体（11.6c，角落小条、交还时的气泡）
+        self.desktop = Desktop(on_control=lambda active, taken_back: emit(protocol.MouseControl(active, taken_back)))
         self.gate = PermissionGate(settings.workspace or WORKSPACE, emit, ask_screenshot=settings.screenshot_ask,
                                    browser=self.browser, desktop=self.desktop)
         self.bridge = Bridge(emit)   # 请芸芸进程截图、打开软件（服务商看不了图片就没有截图工具，见 build_options）
@@ -656,6 +657,7 @@ class ClaudeBrain:
             images = ()
         self._state.new_turn()
         self.gate.stopped = False
+        self.desktop.new_turn()   # 上一问里你拿回鼠标的不再算（你说"继续"了）
         if self._state.conversation_full:
             # 自己管每段对话上限时，花到了就不再发出去（Claude Code 的 max_budget_usd 也是这样报 budget）
             log.info("这段对话已经花了约 %.4f 美元，到了上限 %s，不再提问", self._state.conversation_cost,
@@ -691,6 +693,8 @@ class ClaudeBrain:
             self._emit(protocol.Error(error_kind(str(e)), f"{type(e).__name__}: {e}"[:500]))
             self._emit(protocol.TurnFinished(stopped=self._state.interrupted))
             return
+        finally:
+            await self.desktop.release()   # 这一问完了（答完 / 停下 / 出错）：鼠标还给你，光标放回原处（11.6c）
         if self._state.needs_compact:
             await self.compact()
 
@@ -762,6 +766,7 @@ class ClaudeBrain:
         self.gate.deny_all(PermissionGate.STOPPED)
         self.bridge.cancel_all()
         await self.browser.close()   # 好好关浏览器（不然作业对象一结束它，下次打开 Edge 会说没有正常关闭）
+        await self.desktop.release()
         self.desktop.close()
         if self._client is not None:
             client, self._client = self._client, None
