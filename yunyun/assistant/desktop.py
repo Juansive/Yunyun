@@ -429,7 +429,7 @@ class _Backend:
         self.cache = self.automation.CreateCacheRequest()
         for prop in (uia.UIA_ControlTypePropertyId, uia.UIA_NamePropertyId, uia.UIA_IsEnabledPropertyId,
                      uia.UIA_IsOffscreenPropertyId, uia.UIA_IsPasswordPropertyId, uia.UIA_ValueValuePropertyId,
-                     uia.UIA_IsKeyboardFocusablePropertyId,
+                     uia.UIA_IsKeyboardFocusablePropertyId, uia.UIA_ProcessIdPropertyId,
                      uia.UIA_ValueIsReadOnlyPropertyId, uia.UIA_ToggleToggleStatePropertyId,
                      uia.UIA_ExpandCollapseExpandCollapseStatePropertyId, uia.UIA_SelectionItemIsSelectedPropertyId,
                      *(prop for _, prop in self.patterns)):
@@ -465,11 +465,17 @@ class _Backend:
     # ---- 读 ----
 
     def read(self, hwnd):
+        from yunyun.pet import winapi
         root = self.automation.ElementFromHandleBuildCache(hwnd, self.cache)
+        # 商店应用的外框（"系统"菜单、最小化 / 最大化 / 关闭）属于 ApplicationFrameHost：不列（11.6b 真计算器上看到的，6 行没用的）
+        frame = winapi.process_id(hwnd)
+        frame = frame if winapi.process_name(frame).casefold() == FRAME_HOST else None
         nodes = []
 
         def walk(element, depth):
             if len(nodes) >= MAX_NODES or depth > MAX_DEPTH:
+                return
+            if depth and frame is not None and element.GetCachedPropertyValue(self.uia.UIA_ProcessIdPropertyId) == frame:
                 return
             nodes.append(self._node(element, depth))
             children = element.GetCachedChildren()
