@@ -3,8 +3,10 @@
     .\\.venv\\Scripts\\python tools\\try_ui_point.py
 
 UI 自动化、光标、截图都是假的（tests/fake_desktop.py 的假微信；截图请求由这个脚本假装芸芸本体回答），绝不碰你真的窗口和鼠标。
-剧本：截图（不用问）→ ui_click_at 点微信的输入框（聊天软件：每次问、不给都允许；这里允许）→ ui_type 不给编号、打在光标处
-（问：允许一次）→ 按回车（聊天软件里规则直接拒绝）。Claude 官方、DeepSeek 两种样子各来一遍。
+剧本：截图（不用问）→ ui_click_at 点微信的置顶聊天（聊天软件：每次问、不给都允许；这里允许）→ ui_click_at 点输入框（又要问）
+→ ui_type 不给编号、打在光标处（问：允许一次）→ 按回车（聊天软件里规则直接拒绝）。每次确认前"你"都挪鼠标去点卡片
+（2026-10-16 用户验收时发现：芸芸拿着鼠标时又要确认，一挪鼠标就被当成拿回去了 → 改成要确认前先放开）。
+Claude 官方、DeepSeek 两种样子各来一遍。
 看：工具在不在、截图的位置有没有交到子进程（坐标换算对不对）、卡片上有没有那个点、点完有没有新截图交给模型。
 """
 import asyncio
@@ -25,7 +27,8 @@ from yunyun.pet import screen_capture  # noqa: E402
 SHOT, CLICK_AT, TYPE, KEY = (protocol.SCREENSHOT_TOOL, protocol.UI_CLICK_AT_TOOL, protocol.UI_TYPE_TOOL,
                              protocol.UI_KEY_TOOL)
 STEPS = [("tool", SHOT, {"target": "window"}), ("tool", CLICK_AT, {"x": 200, "y": 150}),
-         ("tool", TYPE, {"text": "晚上吃啥？"}), ("tool", KEY, {"keys": "enter"}), ("text", "打好了，你按发送就行")]
+         ("tool", CLICK_AT, {"x": 210, "y": 160}), ("tool", TYPE, {"text": "晚上吃啥？"}), ("tool", KEY, {"keys": "enter"}),
+         ("text", "打好了，你按发送就行")]
 SHOT_RECT = (100, 200, 900, 800)   # 假装截的是屏幕上这一块（800x600），缩成 400x300
 
 
@@ -47,8 +50,9 @@ async def run(label, jpeg, provider=None):
 
     def emit(event):
         events.append(event)
-        if isinstance(event, protocol.PermissionRequest):   # 都允许一次
-            loop.call_soon(brain.reply_permission, protocol.PermissionReply(event.request_id, True))
+        if isinstance(event, protocol.PermissionRequest):   # 你挪鼠标去点卡片（一会儿），再允许一次
+            fake_desktop.CURSOR["pos"] = (1500 + len(events), 900)
+            loop.call_later(0.2, brain.reply_permission, protocol.PermissionReply(event.request_id, True))
         elif isinstance(event, protocol.ScreenshotRequest):   # 假装芸芸本体截了微信
             backend = brain.desktop._backend
             if backend is not None:
@@ -71,28 +75,31 @@ async def run(label, jpeg, provider=None):
         decisions = [e.decision for e in events if isinstance(e, protocol.ToolDecision)]
         asks = [(e.kind, e.danger, e.can_remember, tuple(e.point)) for e in events
                 if isinstance(e, protocol.PermissionRequest)]
-        results = [api.result_of(i) for i in range(4)]
+        results = [api.result_of(i) for i in range(5)]
+        mouse = [(e.active, e.taken_back) for e in events if isinstance(e, protocol.MouseControl)]
         done = brain.desktop._backend.done
         print(f"\n===== {label} =====")
         print("1. 交给模型的工具：", [t.split("__")[-1] for t in api.offered_tools or [] if t in (SHOT, *protocol.UI_TOOLS)])
         print("2. 操作记录：", decisions, " 截图请求：", shots)
         print("3. 问了的：", asks)
-        print("4. 假 UI 自动化做了：", done)
+        print("4. 假 UI 自动化做了：", done, " 拿着 / 放开鼠标：", mouse)
         for i, (error, text) in enumerate(results):
             print(f"   结果 {i + 1}（出错={error}）：{text[:160]!r}")
         checks["工具在"] = CLICK_AT in (api.offered_tools or [])
-        checks["问不问"] = decisions == ["auto", "allowed", "allowed", "blocked"]
+        checks["问不问"] = decisions == ["auto", "allowed", "allowed", "allowed", "blocked"]
         checks["聊天软件按坐标点：每次问、带着点"] = asks == [("ui_click", True, False, (500, 500)),
-                                                  ("ui_type", False, True, ())]
-        checks["做了的"] = done == [("mouse", 500, 500), ("text", "晚上吃啥？"), ("move", 500, 500)]   # 答完光标放回原处
-        checks["点完交回新截图"] = shots == ["window", "window"] and "Clicked at (200, 150) in Weixin.exe" in results[1][1]
-        checks["回车不按"] = results[3][0] and "never sends" in results[3][1]
+                                                  ("ui_click", True, False, (520, 520)), ("ui_type", False, True, ())]
+        # 你挪鼠标去点卡片不算拿回去：两下都点了；最后一次放开是等你确认打字，光标不挪回去
+        checks["做了的"] = done == [("mouse", 500, 500), ("mouse", 520, 520), ("text", "晚上吃啥？")]
+        checks["要确认前先放开鼠标"] = mouse == [(True, False), (False, False), (True, False), (False, False)]
+        checks["点完交回新截图"] = shots == ["window"] * 3 and "Clicked at (200, 150) in Weixin.exe" in results[1][1]
+        checks["回车不按"] = results[4][0] and "never sends" in results[4][1]
     finally:
         await brain.close()
         server.shutdown()
         shutil.rmtree(tmp, ignore_errors=True)
     print("；".join(f"{k} {'✓' if v else '✗'}" for k, v in checks.items()))
-    return all(checks.values()) and len(checks) == 6
+    return all(checks.values()) and len(checks) == 7
 
 
 async def main(jpeg):

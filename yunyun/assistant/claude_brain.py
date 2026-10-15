@@ -307,6 +307,8 @@ class PermissionGate:
         if self.stopped:
             self._record(tool_id, tool, tool_input, "stopped", element)
             return PermissionResultDeny(message=self.STOPPED)
+        if self.desktop is not None:   # 芸芸拿着鼠标的话先放开：你要动鼠标去点确认卡片（11.6c）
+            await self.desktop.release(restore=False)
         request_id, self._next_id = self._next_id, self._next_id + 1
         future = asyncio.get_running_loop().create_future()
         self._pending[request_id] = (future, decision)

@@ -238,8 +238,10 @@ class Desktop:
                 await self.release(taken_back=True)
                 return
 
-    async def release(self, taken_back=False):
-        """不再用你的鼠标（这一问答完了 / 停下了 / 你拿回去了）。正常还的时候把光标放回你原来的地方。"""
+    async def release(self, taken_back=False, restore=True):
+        """不再用你的鼠标（这一问答完了 / 停下了 / 你拿回去了）。正常还的时候把光标放回你原来的地方。
+        restore=False：要等你确认了（PermissionGate 发确认请求之前）——你得动鼠标去点卡片，所以先放开：不算你拿回去、
+        光标也不挪；她下次真要用鼠标时再拿（2026-10-16 用户验收时发现的：不然你一去点"允许"就被当成拿回去了）。"""
         control, self._control = self._control, None
         if control is None:
             return
@@ -248,12 +250,12 @@ class Desktop:
             task.cancel()
         if taken_back:
             self.taken_back = True
-        else:
+        elif restore:
             try:
                 await self._run(lambda b: b.move_to(*control["home"]))
             except DesktopError as e:
                 log.info("光标没放回去：%s", e)
-        log.info("鼠标还给你了%s", "（你拿回去的）" if taken_back else "")
+        log.info("鼠标还给你了%s", "（你拿回去的）" if taken_back else "（等你确认）" if not restore else "")
         self.on_control(False, taken_back)
 
     async def _run(self, func):

@@ -665,3 +665,30 @@ def test_confirm_card_shows_a_crop_with_a_red_circle(qapp, monkeypatch):
     crop = screen_capture.crop_around(500, 500)                                  # 假截图（conftest）上画好红圈
     x, y = 500 - (500 - crop.width() // 2) + screen_capture.RING_RADIUS, crop.height() // 2
     assert QColor(crop.pixel(x, y)).red() > 200 and QColor(crop.pixel(x, y)).green() < 120
+
+
+def test_waiting_for_your_ok_lets_go_of_the_mouse_first():
+    """2026-10-16 用户验收时发现：芸芸拿着鼠标时又要你确认，你一去点"允许"就被当成拿回去了。
+    → 发确认请求之前先放开（不算你拿回去、光标不挪），之后真要用鼠标时再拿。"""
+    from yunyun.assistant.claude_brain import PermissionGate
+    desk, told, front = holding_desktop()
+    events = []
+    gate = PermissionGate("C:\\work", events.append, desktop=desk)
+
+    async def main():
+        await desk.read()
+        await desk.click("u7", front)                                          # 用鼠标点：拿着鼠标
+        assert told == [(True, False)]
+        task = asyncio.create_task(gate.can_use_tool(CLICK, {"ref": "u4"}, type("C", (), {"tool_use_id": "t"})()))
+        while not any(isinstance(e, protocol.PermissionRequest) for e in events):
+            await asyncio.sleep(0.01)
+        assert told == [(True, False), (False, False)]                         # 先放开了：角落小条收起，不冒气泡
+        fake_desktop.CURSOR["pos"] = (1500, 900)                                # 你挪鼠标去点卡片上的"允许"
+        await asyncio.sleep(0.15)
+        assert not desk.taken_back and ("move", 500, 500) not in desk._backend.done   # 不算拿回去，光标也没被挪走
+        request = next(e for e in events if isinstance(e, protocol.PermissionRequest))
+        gate.reply(protocol.PermissionReply(request.request_id, True))
+        assert type(await task).__name__ == "PermissionResultAllow"
+        await desk.click("u7", front)                                          # 再用鼠标：重新拿着
+        assert told[-1] == (True, False) and not desk.taken_back
+    run(main())
