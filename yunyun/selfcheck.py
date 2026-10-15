@@ -76,7 +76,10 @@ def _sprites():
     from yunyun.paths import resource_path
     if QImage(str(resource_path("assets", "ui", "chevron-down.svg"))).isNull():   # 设置窗口的下拉箭头（要 Qt 的 svg 插件）
         raise RuntimeError("读不了 assets/ui 的 svg 图标")
-    return f"{ASSET_DIR}（{frames}+ 张图；助手模式自己的 {own} 张；svg 图标），界面风格 {app.style().name()}"
+    import winsound  # noqa: F401（双击的"啵"用它播）
+    if not resource_path("assets", "sounds", "bounce.wav").is_file():   # 没带上的话只是悄悄不出声，不容易发现
+        raise RuntimeError("没有 assets/sounds/bounce.wav（双击的音效）")
+    return f"{ASSET_DIR}（{frames}+ 张图；助手模式自己的 {own} 张；svg 图标；音效），界面风格 {app.style().name()}"
 
 
 def _qt_translation():
