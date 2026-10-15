@@ -910,8 +910,9 @@ class AssistantMode(QObject):
         if result is None:
             reply = protocol.ScreenshotReply(request.request_id, False, detail="Yunyun could not take a screenshot.")
         else:
-            target, data, width, height = result
-            reply = protocol.ScreenshotReply(request.request_id, True, data, "image/jpeg", width, height, target)
+            target, data, width, height, rect = result
+            reply = protocol.ScreenshotReply(request.request_id, True, data, "image/jpeg", width, height, target,
+                                             rect=rect)
         self.session.answer(reply)
 
     def _on_window_requested(self, request):

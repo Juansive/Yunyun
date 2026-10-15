@@ -55,6 +55,15 @@ def session(qapp, monkeypatch):
 FAKE_SCREENSHOT = "ZmFrZSBzY3JlZW5zaG90"   # 假截图的 base64（"fake screenshot"）
 
 
+def fake_capture(rect):
+    """假的 screen_capture.capture：rect 那么大的一块灰图（绝不真的截屏）。"""
+    from PySide6.QtGui import QColor, QImage
+    left, top, right, bottom = rect
+    image = QImage(max(right - left, 1), max(bottom - top, 1), QImage.Format.Format_RGB32)
+    image.fill(QColor("#888888"))
+    return image
+
+
 @pytest.fixture(autouse=True)
 def no_real_assistant(monkeypatch, tmp_path):
     """测试里绝不启动真的助手子进程 / 测试连接的小进程（会启动 Claude Code、联网），也不读真的助手 Key（autouse：自动生效）。
@@ -86,7 +95,8 @@ def no_real_assistant(monkeypatch, tmp_path):
     monkeypatch.setattr(clipboard, "set_text", lambda text: board.__setitem__("text", text))
     # 截图（阶段 5）：GDI 截图在 offscreen 平台下也会真的截到你的屏幕——测试里一律换成假截图（一张 4x2 的灰图）
     from yunyun.pet import screen_capture, winapi
-    monkeypatch.setattr(screen_capture, "take", lambda target, near: (target, FAKE_SCREENSHOT, 4, 2))
+    monkeypatch.setattr(screen_capture, "take", lambda target, near: (target, FAKE_SCREENSHOT, 4, 2, (0, 0, 8, 4)))
+    monkeypatch.setattr(screen_capture, "capture", fake_capture)   # 按坐标点的确认卡片截的一小块（11.6d）也是假的
     # 鼠标左键按没按着：测试里不看你真的鼠标（跑测试时你在点东西，结果就会变）
     monkeypatch.setattr(winapi, "left_button_down", lambda: False)
     # 旁观模式（阶段 8）：绝不读、不改你真的 ~/.claude/settings.json

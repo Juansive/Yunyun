@@ -12,6 +12,9 @@
   正常答完时光标放回你原来的地方。
 - 输入：输入框支持就直接把字放进去（替换原来的）；不支持的先把焦点放进去，再一个字一个字地发——换行用 Shift+回车，
   **不按真的回车**（2026-10-15 定的：免得在聊天软件里打着打着就发出去了）。
+- 按截图上的坐标点（11.6d，读不到界面的软件：新版微信、游戏……）：截图工具记下截的是屏幕上哪一块（remember_shot），
+  模型给截图上的 (x, y) → 换算回屏幕；那一点上是哪个窗口就按哪个软件的规矩问；点法和上面用鼠标点一样（切到前面、
+  没被挡着、拿着鼠标）。点完以后按键、不给编号打字都发给这个窗口（比如先点微信的输入框，再把字打进去）。
 - 按键：发给最后读的那个窗口。先请芸芸本体把它切到前面（只有前台程序能切窗口，tools/desktop.py 走 Bridge），
   发之前再看一眼它是不是真的在最前面——不是就不发（不然按键会落到你正在用的别的窗口里）。
 
@@ -28,7 +31,7 @@ from ctypes import wintypes
 from dataclasses import dataclass, field, replace
 
 from yunyun.assistant.permissions import KEYS, MODIFIERS, ElementFacts, classify_app, parse_keys
-from yunyun.assistant.protocol import UI_KEY_TOOL, UI_READ_TOOL
+from yunyun.assistant.protocol import UI_CLICK_AT_TOOL, UI_CLICK_TOOL, UI_READ_TOOL
 
 log = logging.getLogger(__name__)
 
@@ -91,6 +94,14 @@ class UiView:
 
 def window_id(hwnd):
     return f"w{hwnd}"
+
+
+def _int(value):
+    """模型给的坐标（可能是 12.0、"12"）→ 整数；不像数的是 -1（换算时报"在截图外面"）。"""
+    try:
+        return int(round(float(value)))
+    except (TypeError, ValueError):
+        return -1
 
 
 def parse_window_id(text):
@@ -173,9 +184,33 @@ class Desktop:
         self._refs = {}         # 那次读出来的编号 → Node
         self._context = ""
         self._control = None    # 拿着鼠标时：home（你的光标原来在哪，UI 自动化线程的坐标）、last（光标该在哪）、moving、task
+        self._shot = None       # 最近一张截图：((左, 上, 右, 下) 真实像素, 宽, 高)——ui_click_at 的坐标按它换算（11.6d）
         self.taken_back = False  # 这一问里你把鼠标拿回去了：剩下的点 / 输入 / 按键都不做
 
     # ---- 拿着鼠标 / 还给你（11.6c） ----
+
+    def remember_shot(self, rect, width, height):
+        """截图工具截好一张（11.6d）：记下截的是屏幕上哪一块、缩成多大，之后按截图上的坐标点就靠它换算。"""
+        self._shot = (tuple(rect), width, height) if len(rect) == 4 and width and height else None
+
+    def _screen_point(self, x, y):
+        """截图上的 (x, y) → 屏幕上的点（真实像素）。"""
+        if self._shot is None:
+            raise DesktopError("Take a screenshot first: ui_click_at uses the coordinates of the latest screenshot.")
+        (left, top, right, bottom), width, height = self._shot
+        if not (0 <= x < width and 0 <= y < height):
+            raise DesktopError(f"({x}, {y}) is outside the latest screenshot ({width}x{height}).")
+        return left + round(x * (right - left) / width), top + round(y * (bottom - top) / height)
+
+    async def _at_point(self, point):
+        """屏幕上这一点是哪个窗口、那里的控件叫什么（读得到的话）。"""
+        hwnd = await self._run(lambda b: b.window_at(*point))
+        windows = await self._run(lambda b: b.windows())
+        window = next((w for w in windows if w.hwnd == hwnd), None)
+        if window is None:
+            raise DesktopError("There is no app window at that spot (maybe the desktop or the taskbar).")
+        role, name = await self._run(lambda b: b.name_at(*point))
+        return window, (f'- {role} "{name}"' if name else ""), name
 
     def new_turn(self):
         """新的一问：上一问里你拿回去的不再算（你说"继续"了）。"""
@@ -296,17 +331,24 @@ class Desktop:
         """这次要读 / 点 / 输入 / 按键的窗口和控件是什么（芸芸自己看的，不信模型的说法）。"""
         tool_input = tool_input if isinstance(tool_input, dict) else {}
         try:
+            node = None
             if tool == UI_READ_TOOL:
                 window = await self._target(str(tool_input.get("window") or ""))
+            elif self.taken_back:   # 你这一问里把鼠标拿回去了：都不做（读还可以）
+                raise DesktopError(TAKEN_BACK)
+            elif tool == UI_CLICK_AT_TOOL:   # 按截图上的坐标点：那一点上是哪个窗口、那里叫什么（读得到的话）
+                point = self._screen_point(_int(tool_input.get("x")), _int(tool_input.get("y")))
+                window, element, label = await self._at_point(point)
+                forbidden, chat = self._rule(window)
+                return ElementFacts(site=window.app, element=element, label=label, forbidden=forbidden, chat=chat,
+                                    point=point)
             else:
-                if self.taken_back:   # 你这一问里把鼠标拿回去了：都不做（读还可以）
-                    raise DesktopError(TAKEN_BACK)
                 window = await self._current()
                 ref = str(tool_input.get("ref") or "")
-                node = self._node(ref) if ref or tool != UI_KEY_TOOL else None
+                node = self._node(ref) if ref or tool == UI_CLICK_TOOL else None   # 按键、打字可以不给编号
             forbidden, chat = self._rule(window)
             facts = ElementFacts(site=window.app, forbidden=forbidden, chat=chat)
-            if tool != UI_READ_TOOL and node is not None:
+            if node is not None:
                 facts = replace(facts, element=describe(node), label=node.name, sensitive=node.password,
                                 context=self._context)
             return facts
@@ -352,9 +394,32 @@ class Desktop:
             how = await self._run(lambda b: b.press(node))
         return await self._after(window, before, f"Pressed {ref} ({how}).")
 
+    async def click_at(self, x, y, bring_to_front):
+        """按截图上的坐标点（11.6d）：那一点上的窗口切到前面、没被挡着就用鼠标点。之后按键 / 打字都发给这个窗口。
+        返回给模型的说明（看结果要再截一张图，tools/desktop.py 顺手截了）。"""
+        if self.taken_back:
+            raise DesktopError(TAKEN_BACK)
+        point = self._screen_point(_int(x), _int(y))
+        window, _, _ = await self._at_point(point)
+        if self._rule(window)[0]:   # 权限规则已经挡过，这里兜底
+            raise DesktopError("Yunyun doesn't operate that window.")
+        before = await self._hwnds()
+        await self._click_point(window, point, bring_to_front)
+        self._window, self._refs, self._context = window, {}, ""   # 之后按键、不给编号打字都在这个窗口
+        await asyncio.sleep(SETTLE_S)
+        windows = await self._run(lambda b: b.windows())
+        notes = [f"Clicked at ({x}, {y}) in {window.app or 'the window'} ({window_id(window.hwnd)})."]
+        notes += [f"A new window opened: {window_id(w.hwnd)} · {w.app or '?'} · {w.title}."
+                  for w in windows if w.hwnd not in before and w.pid not in self.own_pids]
+        return " ".join(notes)
+
     async def _mouse_click(self, window, node, bring_to_front):
         left, top, right, bottom = node.rect
-        x, y = (left + right) // 2, (top + bottom) // 2
+        await self._click_point(window, ((left + right) // 2, (top + bottom) // 2), bring_to_front)
+
+    async def _click_point(self, window, point, bring_to_front):
+        """切到前面、确认那一点上是这个窗口（没被挡着）、拿着鼠标、点。"""
+        x, y = point
         await self._to_front(window, bring_to_front)
         if await self._run(lambda b: b.window_at(x, y)) != window.hwnd:
             raise DesktopError("Another window is covering that spot, so Yunyun didn't click. Read the window again, "
@@ -368,10 +433,16 @@ class Desktop:
             control["last"], control["moving"] = _cursor_pos(), False
 
     async def type(self, ref, text, bring_to_front):
-        """bring_to_front(window)：请芸芸本体把窗口切到前面（不能直接放字时，要一个字一个字地发）。"""
+        """bring_to_front(window)：请芸芸本体把窗口切到前面（不能直接放字时，要一个字一个字地发）。
+        不给编号（ref 空）：打在那个窗口现在的光标处（比如刚用 ui_click_at 点过的微信输入框，11.6d）。"""
         if self.taken_back:
             raise DesktopError(TAKEN_BACK)
         window = await self._current()
+        if not ref:
+            before = await self._hwnds()
+            await self._to_front(window, bring_to_front)
+            await self._run(lambda b: b.send_text(text))
+            return await self._after(window, before, "Typed the text at the cursor.")
         node = self._node(ref)
         if node.password:   # 权限规则已经挡过，这里兜底
             raise DesktopError("That is a password field; Yunyun never types into it.")
@@ -667,6 +738,16 @@ class _Backend:
 
     def move_to(self, x, y):
         user32.SetCursorPos(x, y)
+
+    def name_at(self, x, y):
+        """(x, y) 那一点上的控件 (种类, 名字)；读不到（自己画界面的软件）是 ("", "")。"""
+        try:
+            element = self.automation.ElementFromPoint(wintypes.POINT(x, y))
+            name = element.CurrentName
+            return self.roles.get(element.CurrentControlType, "custom"), name if isinstance(name, str) else ""
+        except Exception as e:   # 读不到就算了：照样能按坐标点
+            log.info("那一点上的控件读不到：%s", type(e).__name__)
+            return "", ""
 
     def window_at(self, x, y):
         """(x, y) 那一点上是哪个窗口（顶层的）：看要点的地方有没有被别的窗口挡着。"""

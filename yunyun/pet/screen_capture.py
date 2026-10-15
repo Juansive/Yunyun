@@ -16,8 +16,8 @@ import os
 from contextlib import contextmanager
 from ctypes import wintypes
 
-from PySide6.QtCore import QBuffer, QByteArray, QIODevice, Qt
-from PySide6.QtGui import QImage, QPainter
+from PySide6.QtCore import QBuffer, QByteArray, QIODevice, QPointF, Qt
+from PySide6.QtGui import QColor, QImage, QPainter, QPen
 
 from yunyun.pet import winapi
 
@@ -26,6 +26,8 @@ log = logging.getLogger(__name__)
 MAX_SIDE = 1568          # 缩小后的最长边（像素）
 JPEG_QUALITY = 80
 MIN_WINDOW = (120, 80)   # 比这还小的窗口不算"你在用的窗口"（小工具条、弹出的提示）
+CROP = (360, 200)        # 按坐标点的确认卡片上（11.6d）：截要点的地方周围这么大一块（真实像素）
+RING_RADIUS = 16         # 红圈多大（真实像素）
 SHELL_CLASSES = {"Progman", "WorkerW", "Shell_TrayWnd", "Shell_SecondaryTrayWnd"}   # 桌面、任务栏
 
 WDA_NONE, WDA_EXCLUDEFROMCAPTURE = 0x0, 0x11
@@ -191,7 +193,8 @@ def encode(image, max_side=MAX_SIDE, quality=JPEG_QUALITY):
 
 def take(target, near):
     """截图：target "window" / "screen"，near = 芸芸的位置（物理像素，截 "screen" 时用它找是哪块屏幕）。
-    返回 (实际截的 target, base64, 宽, 高)；截不了是 None。"""
+    返回 (实际截的 target, base64, 宽, 高, 截的是屏幕上哪一块 (左, 上, 右, 下))；截不了是 None。
+    截的那一块（真实像素）交给助手：模型按截图上的坐标点的时候靠它换算回屏幕（11.6d）。"""
     if not winapi.IS_WINDOWS:
         return None
     with excluded_from_capture(own_windows()):
@@ -207,4 +210,26 @@ def take(target, near):
     data, width, height = encode(image)
     log.info("截图：%s，%dx%d → %dx%d，%d KB", target, image.width(), image.height(), width, height,
              len(data) * 3 // 4 // 1024)
-    return target, data, width, height
+    return target, data, width, height, tuple(rect)
+
+
+def crop_around(x, y):
+    """确认卡片上用（11.6d）：屏幕上 (x, y)（真实像素）周围一小块，芸芸自己的窗口不截，点的地方画个红圈。截不了是 None。"""
+    if not winapi.IS_WINDOWS:
+        return None
+    left, top, right, bottom = monitor_rect(x, y)
+    width, height = min(CROP[0], right - left), min(CROP[1], bottom - top)
+    x0 = min(max(x - width // 2, left), right - width)   # 靠屏幕边的时候整块挪进屏幕里，红圈就不在正中间
+    y0 = min(max(y - height // 2, top), bottom - height)
+    with excluded_from_capture(own_windows()):
+        image = capture((x0, y0, x0 + width, y0 + height))
+    if image is None:
+        return None
+    painter = QPainter(image)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setPen(QPen(QColor("white"), 6))   # 白边：深色背景上也看得清
+    painter.drawEllipse(QPointF(x - x0, y - y0), RING_RADIUS, RING_RADIUS)
+    painter.setPen(QPen(QColor("#E5534B"), 3))
+    painter.drawEllipse(QPointF(x - x0, y - y0), RING_RADIUS, RING_RADIUS)
+    painter.end()
+    return image

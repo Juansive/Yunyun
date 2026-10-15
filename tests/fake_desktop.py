@@ -16,6 +16,7 @@ def fake_windows():
             Window(202, "计算器", "CalculatorApp.exe", 22, "ApplicationFrameWindow"),
             Window(203, "运行", "explorer.exe", 23, "#32770"),
             Window(204, "QQ", "QQ.exe", 24, "Chrome_WidgetWin_1"),
+            Window(206, "微信", "Weixin.exe", 26, "Qt51514QWindowIcon"),   # 新版微信：读不到里面（11.6d 按坐标点）
             Window(209, "芸芸", "python.exe", OWN_PID, "Qt6QWindowIcon")]
 
 
@@ -46,6 +47,7 @@ def fake_controls():
         204: [Node("window", "QQ", 0), Node("edit", "输入", 1, ("value",)), Node("button", "发送(S)", 1, ("invoke",))],
         205: [Node("window", "另存为", 0), Node("text", "文件名已存在，要替换它吗？", 1), Node("button", "是(Y)", 1, ("invoke",)),
               Node("button", "否(N)", 1, ("invoke",))],
+        206: [Node("window", "微信", 0), Node("pane", "", 1)],
         209: [Node("window", "芸芸", 0), Node("button", "允许一次", 1, ("invoke",))],
     }
 
@@ -59,6 +61,7 @@ class FakeDesktopBackend:
         self.reads = 0
         self.cover = None    # window_at() 时挡在那一点上的窗口
         self.lazy = {}       # 窗口 → 前几次读只读到窗口本身（像 QQ 这类网页技术做的软件第一次被读时）
+        self.names = {}      # 屏幕上的点 → 那里的控件 (种类, 名字)（name_at；读不到的软件是空的）
         self.last_read = None
 
     def windows(self):
@@ -113,6 +116,9 @@ class FakeDesktopBackend:
 
     def window_at(self, x, y):
         return self.cover or self.last_read
+
+    def name_at(self, x, y):
+        return self.names.get((x, y), ("", ""))
 
     def click_at(self, x, y):
         self.done.append(("mouse", x, y))

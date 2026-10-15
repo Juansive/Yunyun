@@ -248,7 +248,8 @@ _DESKTOP_UI = {
           "用最新一次 ui_read 的编号（比如 u5），每次读编号都会变。发送、删除、付款、关闭这类撤不回的每次都问；"
           "聊天软件（微信、QQ……）里只打字、不发送，打好了告诉用户自己按发送。密码框不碰，终端、\"运行\"框、"
           "系统安全设置也不碰。按不下去的按钮芸芸会用鼠标点（用户看得到提示）；用户一动鼠标就是拿回去了，"
-          "这一问别再操作，简单说做到哪了、等用户说继续。有的软件自己画界面，读不到东西，这时用截图看。",
+          "这一问别再操作，简单说做到哪了、等用户说继续。有的软件自己画界面，读不到东西：这时先截图，"
+          "再用 ui_click_at 按截图上的坐标点（比如点微信的输入框），然后 ui_type 不给编号就能打在光标处。",
     "en": "\n- You can operate inside desktop apps: ui_read reads a window's buttons, text boxes and lists (no need to "
           "ask; faster and cheaper than a screenshot, so prefer it), ui_click presses a button, ui_type puts text "
           "into a text box, ui_key presses a key or shortcut (Yunyun asks the user first; they can allow an app for "
@@ -258,7 +259,8 @@ _DESKTOP_UI = {
           "security settings are off-limits. Buttons that can't be pressed directly are clicked with the mouse "
           "(the user sees a notice); if the user moves the mouse they've taken it back: stop operating, say "
           "briefly how far you got and wait for them to say continue. Some apps draw their own interface and "
-          "show nothing; take a screenshot then.",
+          "show nothing: take a screenshot, click by its coordinates with ui_click_at (e.g. WeChat's text box), "
+          "then ui_type without a ref types at the cursor.",
     "ja": "\n- デスクトップのソフトの中も操作できます：ui_read でウィンドウのボタン・入力欄・リストを読み（確認不要。"
           "スクリーンショットより速くて安いので優先してください）、ui_click でボタンを押し、ui_type で入力欄に文字を入れ、"
           "ui_key でキーやショートカットを押します（芸芸が先にユーザーに確認します。「このソフトは全部許可」もできます）。"
@@ -267,7 +269,8 @@ _DESKTOP_UI = {
           "準備できたらユーザーに送信ボタンを押してもらってください。パスワード欄、ターミナル、「ファイル名を指定して実行」、"
           "セキュリティ設定には触れません。直接押せないボタンはマウスでクリックします（ユーザーには表示が出ます）。"
           "ユーザーがマウスを動かしたら取り返したということなので、操作をやめ、どこまでやったかを短く伝えて"
-          "「続けて」と言われるのを待ってください。独自の画面を描くソフトは何も読めないので、そのときはスクリーンショットで見てください。",
+          "「続けて」と言われるのを待ってください。独自の画面を描くソフトは何も読めません。そのときはスクリーンショットを撮り、"
+          "ui_click_at でその座標をクリックし（例えば WeChat の入力欄）、番号なしの ui_type でカーソル位置に入力します。",
 }
 # 打开软件那句里"打开以后不能操作里面"：有 _DESKTOP_UI 时去掉
 _APPS_NO_INSIDE = {   # (原来的, 换成)

@@ -403,6 +403,8 @@ class FakeBridge:
     async def request(self, make_request, reply_type):
         request = make_request(1)
         self.requests.append(request)
+        if isinstance(request, protocol.ScreenshotRequest):   # 点完以后顺手截的一张（11.6d）
+            return protocol.ScreenshotReply(1, True, "c2hvdA==", "image/jpeg", 400, 300, "window", rect=(0, 0, 800, 600))
         if self.ok:
             hwnd = int(request.window[1:])
             self.desk._backend.front = next(w.pid for w in self.desk._backend.list if w.hwnd == hwnd)
@@ -416,8 +418,10 @@ def call(desk, name, args, bridge=None):
 
 
 def test_tool_names_match_the_protocol():
-    names = {f"mcp__yunyun__{t.name}" for t in desktop_tools(new_desktop(), None)}
+    names = {f"mcp__yunyun__{t.name}" for t in desktop_tools(new_desktop(), None, screen=True)}
     assert names == set(protocol.UI_TOOLS)
+    without_images = {f"mcp__yunyun__{t.name}" for t in desktop_tools(new_desktop(), None)}   # 看不了图：不能按坐标点
+    assert without_images == set(protocol.UI_TOOLS) - {protocol.UI_CLICK_AT_TOOL}
 
 
 def test_desktop_tools():
@@ -552,3 +556,112 @@ def test_action_log_and_progress_name_the_app_tools(qapp, monkeypatch):
         for language in ("zh", "en", "ja"):
             monkeypatch.setattr(i18n, "_current", language)
             assert i18n.tr(_TOOL_TEXT[tool]) and i18n.tr(_ACTION_VERBS[tool])
+
+
+# ================= 11.6d：按截图上的坐标点 =================
+
+CLICK_AT = protocol.UI_CLICK_AT_TOOL
+
+
+@pytest.mark.parametrize("element, grants, expected", [
+    (facts(label=""), (), (ASK, "ui_click", False, True)),                              # 按软件"都允许"
+    (facts(label=""), [("ui", "notepad.exe")], (ALLOW, "", False, False)),
+    (facts(site="Weixin.exe", chat=True, label=""), [("ui", "weixin.exe")], (ASK, "ui_click", True, False)),   # 聊天软件：每次问
+    (facts(site="Weixin.exe", chat=True, label="发送(S)"), (), (DENY, "", False, False)),   # 读得到是"发送"：不点
+    (facts(label="删除"), [("ui", "notepad.exe")], (ASK, "ui_click", True, False)),
+    (facts(forbidden="own"), (), (DENY, "", False, False)),                              # 点到芸芸自己身上
+])
+def test_click_at_rules(element, grants, expected):
+    decision = rule(CLICK_AT, {"x": 10, "y": 20}, element, grants)
+    assert (decision.action, decision.kind, decision.danger, bool(decision.grant)) == expected
+
+
+def shooting_desktop():
+    desk, told, front = holding_desktop()
+    desk.remember_shot((100, 200, 900, 800), 400, 300)   # 截的是屏幕上 800x600 那一块，缩成 400x300
+    return desk, told, front
+
+
+def test_screenshot_coordinates_map_back_to_the_screen():
+    desk = new_desktop()
+    with pytest.raises(DesktopError, match="Take a screenshot first"):
+        desk._screen_point(10, 10)
+    desk.remember_shot((100, 200, 900, 800), 400, 300)
+    assert desk._screen_point(0, 0) == (100, 200) and desk._screen_point(200, 150) == (500, 500)
+    with pytest.raises(DesktopError, match="outside the latest screenshot"):
+        desk._screen_point(400, 10)
+    desk.remember_shot((), 0, 0)                          # 没截成：忘掉
+    with pytest.raises(DesktopError, match="Take a screenshot first"):
+        desk._screen_point(10, 10)
+
+
+def test_click_at_facts_say_which_app_is_under_the_point():
+    desk, _, _ = shooting_desktop()
+
+    async def main():
+        await desk._run(lambda b: None)
+        desk._backend.cover = 206                          # 那一点上是微信
+        weixin = await desk.facts(CLICK_AT, {"x": 200, "y": 150})
+        assert (weixin.site, weixin.chat, weixin.point, weixin.element) == ("Weixin.exe", True, (500, 500), "")
+        desk._backend.names[(500, 500)] = ("button", "发送(S)")   # 读得到那里是"发送"
+        assert (await desk.facts(CLICK_AT, {"x": 200, "y": 150})).label == "发送(S)"
+        desk._backend.cover = 209                          # 芸芸自己的窗口
+        assert (await desk.facts(CLICK_AT, {"x": 200, "y": 150})).forbidden == "own"
+        assert "outside" in (await desk.facts(CLICK_AT, {"x": "abc", "y": 1})).problem
+        desk._backend.cover = 12345                        # 桌面 / 任务栏
+        assert "no app window" in (await desk.facts(CLICK_AT, {"x": 1, "y": 1})).problem
+    run(main())
+
+
+def test_click_at_then_type_at_the_cursor_like_in_wechat():
+    desk, told, front = shooting_desktop()
+
+    async def main():
+        await desk._run(lambda b: None)
+        desk._backend.cover = 206
+        note = await desk.click_at(200, 150, front)        # 点微信的输入框（读不到，只能按坐标）
+        assert desk._backend.done[-1] == ("mouse", 500, 500) and told == [(True, False)]
+        assert note.startswith("Clicked at (200, 150) in Weixin.exe (w206).")
+        facts = await desk.facts(TYPE, {"text": "晚上吃啥"})   # 不给编号：打在刚点过的窗口
+        assert (facts.site, facts.chat) == ("Weixin.exe", True)
+        await desk.type("", "晚上吃啥\n明天见", front)
+        assert desk._backend.done[-1] == ("text", "晚上吃啥\n明天见")
+        assert (await desk.facts(KEY, {"keys": "enter"})).chat   # 回车：聊天软件里权限规则会拒绝
+    run(main())
+
+
+def test_click_at_tool_returns_a_new_screenshot():
+    desk = new_desktop()
+    desk.remember_shot((100, 200, 900, 800), 400, 300)
+
+    async def main():
+        await desk._run(lambda b: None)
+        desk._backend.cover = 206
+    run(main())
+    bridge = FakeBridge(desk)
+    tool = next(t for t in desktop_tools(desk, bridge, screen=True) if t.name == "ui_click_at")
+    result = asyncio.run(tool.handler({"x": 200, "y": 150}))
+    image, text = result["content"]
+    assert image["type"] == "image" and "Clicked at (200, 150) in Weixin.exe" in text["text"]
+    assert [type(r).__name__ for r in bridge.requests] == ["WindowRequest", "ScreenshotRequest"]
+    assert desk._shot == ((0, 0, 800, 600), 400, 300)                          # 之后的坐标按新截的这张算
+    error = asyncio.run(tool.handler({"x": 999, "y": 1}))
+    assert error["is_error"] and "outside" in error["content"][0]["text"]
+
+
+def test_screenshot_reply_carries_where_it_was_taken():
+    reply = protocol.ScreenshotReply(3, True, "x", "image/jpeg", 4, 2, "window", rect=(0, 0, 8, 4))
+    assert protocol.decode(protocol.encode(reply)) == reply                     # JSON 来回一趟还是元组
+
+
+def test_confirm_card_shows_a_crop_with_a_red_circle(qapp, monkeypatch):
+    from PySide6.QtGui import QColor
+    from yunyun.pet import assistant_confirm as card, screen_capture
+    monkeypatch.setattr(i18n, "_current", "zh")
+    request = protocol.PermissionRequest(1, CLICK_AT, {"x": 200, "y": 150}, "ui_click", True, "Weixin.exe", False, "t",
+                                         "", point=(500, 500))
+    assert card.note_key(request) == "assistant_confirm_note_ui_point"
+    assert card.CROP_URL.toString() in card.detail_html(request, "") and "Weixin.exe" in card.detail_html(request, "")
+    crop = screen_capture.crop_around(500, 500)                                  # 假截图（conftest）上画好红圈
+    x, y = 500 - (500 - crop.width() // 2) + screen_capture.RING_RADIUS, crop.height() // 2
+    assert QColor(crop.pixel(x, y)).red() > 200 and QColor(crop.pixel(x, y)).green() < 120

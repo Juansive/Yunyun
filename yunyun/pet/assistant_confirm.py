@@ -19,16 +19,19 @@ import html
 import re
 from urllib.parse import unquote
 
-from PySide6.QtCore import QRect, Qt, Signal
-from PySide6.QtGui import QColor
+from PySide6.QtCore import QRect, Qt, QUrl, Signal
+from PySide6.QtGui import QColor, QTextDocument
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QLineEdit
 
 from yunyun import i18n, paths
 from yunyun.assistant.transcripts import relative_path
+from yunyun.pet import screen_capture
 from yunyun.pet.change_diff import change_html, proposed_change
 from yunyun.pet.side_panel import SCROLLBAR_STYLE, SidePanel, make_button, text_view
 
 REMEMBER_SCOPE_CHARS = 24  # "这次对话 xxx 都允许"里 xxx 最多显示多长
+CROP_URL = QUrl("yunyun:crop")   # 按截图上的坐标点（11.6d）：卡片上那一小块截图（_fill 时放进文档里）
+CROP_SHOWN_W = 300               # 那一小块在卡片上显示多宽
 
 _ALLOW_STYLE = """
 QPushButton { background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #4FA8FF, stop:1 #7C8CFF); color: white;
@@ -103,6 +106,8 @@ def note_key(request):
         return "assistant_confirm_note_web_risky"
     if request.danger and request.kind in UI_KINDS:
         return "assistant_confirm_note_ui_risky"
+    if request.point:   # 按截图上的坐标点：芸芸看不出那里是什么
+        return "assistant_confirm_note_ui_point"
     if request.danger and request.kind == "command":
         return "assistant_confirm_note_danger"
     if request.kind == "edit_sensitive":
@@ -149,6 +154,8 @@ def detail_html(request, workspace):
     if request.kind in UI_KINDS:   # 哪个软件、哪个控件（芸芸自己看的）、要输入的字 / 要按的键
         rows = [f'<div style="color:#6B7280;">{html.escape(request.scope)}</div>' if request.scope else "",
                 f'<div><b>{html.escape(element_text(request.element))}</b></div>' if request.element else ""]
+        if request.point:   # 按截图上的坐标点：截一小块、红圈标出要点的地方（11.6d，2026-10-15 用户定）
+            rows.append(f'<div><img src="{CROP_URL.toString()}" width="{CROP_SHOWN_W}"></div>')
         if request.kind == "ui_type":
             rows.append(f'<div {MONO}>{html.escape(str(data.get("text", "")))}</div>')
         elif request.kind == "ui_key":
@@ -286,6 +293,10 @@ class AssistantConfirm(SidePanel):
         said = str((request.input or {}).get("description") or "").strip()
         self._said.setText(i18n.tr("assistant_confirm_said_by", said) if said else "")
         self._said.setVisible(bool(said))
+        if request.point:   # 按截图上的坐标点：现截那一小块（芸芸自己的窗口不截），画好红圈放进文档
+            crop = screen_capture.crop_around(*request.point)
+            if crop is not None:
+                self._detail.document().addResource(QTextDocument.ResourceType.ImageResource, CROP_URL, crop)
         self._detail.setHtml(detail_html(request, self._workspace))
         remember = remember_text(request)
         self._remember_button.setText(remember)

@@ -24,8 +24,8 @@ SCREENSHOT_SCHEMA = {
 _WHAT = {"window": "the window the user was using", "screen": "the whole screen"}
 
 
-def screen_tools(bridge):
-    """bridge：tools.bridge.Bridge。"""
+def screen_tools(bridge, desktop=None):
+    """bridge：tools.bridge.Bridge；desktop：assistant.desktop.Desktop（记下截的是屏幕上哪一块，按坐标点用，11.6d）。"""
     @tool("screenshot", SCREENSHOT, SCREENSHOT_SCHEMA)
     async def screenshot(args):
         target = args.get("target") if args.get("target") in protocol.SCREENSHOT_TARGETS else "window"
@@ -35,6 +35,8 @@ def screen_tools(bridge):
             log.info("截图没截成：%s", reply.detail)
             return text_result(f"No screenshot: {reply.detail}", error=True)
         note = "" if reply.target == target else " (no other window was open, so this is the whole screen)"
+        if desktop is not None:
+            desktop.remember_shot(reply.rect, reply.width, reply.height)
         log.info("截图：%s，%dx%d，%d KB", reply.target, reply.width, reply.height, len(reply.data) * 3 // 4 // 1024)
         return {"content": [
             {"type": "image", "data": reply.data, "mimeType": reply.mime},

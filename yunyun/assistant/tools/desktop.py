@@ -1,6 +1,7 @@
 """操作桌面软件的四个工具（阶段 11.6b）：ui_read 读窗口里的按钮、输入框（不用问）；ui_click 点、ui_type 输入、
 ui_key 按键（要问，规则在 permissions.decide）。读和做在 assistant/desktop.py（Windows 的 UI 自动化）；
 要发按键 / 一个字一个字打的时候，先请芸芸本体把窗口切到前面（Bridge 的 WindowRequest——只有前台程序能切窗口）。
+读不到界面的软件（新版微信、游戏……）：ui_click_at 按截图上的坐标点（11.6d，服务商能看图片时才有），点完顺手再截一张交回去。
 
 交给模型的是"窗口编号 · 程序 · 标题 + 控件列表"；太长就分段（和浏览器一样，PART_CHARS）。做完以后也交回这个窗口的样子。
 """
@@ -34,9 +35,22 @@ CLICK = ("Press a control in the window you read last (button, checkbox, list it
          "chat apps Yunyun never presses send. " + _ASKS)
 CLICK_SCHEMA = {"type": "object", "properties": {"ref": _REF}, "required": ["ref"]}
 TYPE = ("Put text into a text box in the window you read last (replaces what's there when the box allows it, "
-        "otherwise types at the cursor). Never presses Enter: new lines stay new lines, nothing gets sent. Never "
-        "type passwords (Yunyun refuses). " + _ASKS)
-TYPE_SCHEMA = {"type": "object", "properties": {"ref": _REF, "text": {"type": "string"}}, "required": ["ref", "text"]}
+        "otherwise types at the cursor). Without ref: types at the cursor of the window you read or clicked last "
+        "(e.g. after clicking a text box with ui_click_at). Never presses Enter: new lines stay new lines, nothing "
+        "gets sent. Never type passwords (Yunyun refuses). " + _ASKS)
+TYPE_SCHEMA = {"type": "object",
+               "properties": {"ref": {**_REF, "description": "The text box's ref from the latest ui_read; leave it out "
+                                                             "to type at the cursor"},
+                              "text": {"type": "string"}},
+               "required": ["text"]}
+CLICK_AT = ("For apps whose window ui_read can't see into (they draw their own interface): click a spot in the latest "
+            "screenshot by its pixel coordinates (x from the left, y from the top of that screenshot). Clicks with the "
+            "mouse (the user sees a notice and can take it back by moving it), then returns a new screenshot of that "
+            "window. Prefer ui_read + ui_click whenever ui_read shows the controls. " + _ASKS)
+CLICK_AT_SCHEMA = {"type": "object",
+                   "properties": {"x": {"type": "integer", "description": "Pixels from the left of the latest screenshot"},
+                                  "y": {"type": "integer", "description": "Pixels from the top of the latest screenshot"}},
+                   "required": ["x", "y"]}
 KEY = ("Press a key or shortcut in the window you read last: ctrl+s, tab, down, escape, f5 … (ref: focus that "
        "control first). Enter, Delete and Alt+F4 are confirmed every time; Windows-key shortcuts and Shift+Delete "
        "are refused; in chat apps Enter is refused. " + _ASKS)
@@ -58,8 +72,9 @@ def view_text(view, part=1):
     return head + ("\n" + parts[part - 1].rstrip() if view.snapshot else "")
 
 
-def desktop_tools(desktop, bridge):
-    """desktop：assistant.desktop.Desktop；bridge：tools.bridge.Bridge（请芸芸本体切窗口）。"""
+def desktop_tools(desktop, bridge, screen=False):
+    """desktop：assistant.desktop.Desktop；bridge：tools.bridge.Bridge（请芸芸本体切窗口）；
+    screen：服务商能看图片（有截图工具）——有它才有 ui_click_at（11.6d）。"""
 
     async def bring_to_front(window):
         reply = await bridge.request(
@@ -95,4 +110,20 @@ def desktop_tools(desktop, bridge):
         return await run(lambda: desktop.key(str(args.get("keys") or ""), str(args.get("ref") or ""),
                                              bring_to_front))
 
-    return [ui_read, ui_click, ui_type, ui_key]
+    @tool("ui_click_at", CLICK_AT, CLICK_AT_SCHEMA)
+    async def ui_click_at(args):
+        try:
+            note = await desktop.click_at(args.get("x"), args.get("y"), bring_to_front)
+        except DesktopError as e:
+            log.info("按坐标没点成：%s", str(e)[:200])
+            return _text(f"Desktop: {e}", error=True)
+        reply = await bridge.request(lambda request_id: protocol.ScreenshotRequest(request_id, "window"),
+                                     protocol.ScreenshotReply)   # 点完顺手截一张：模型要看点了以后变成什么样
+        if not reply.ok:
+            return _text(note + " (No new screenshot: take one to see the result.)")
+        desktop.remember_shot(reply.rect, reply.width, reply.height)
+        return {"content": [{"type": "image", "data": reply.data, "mimeType": reply.mime},
+                            {"type": "text", "text": f"{note} New screenshot of that window, scaled to "
+                                                     f"{reply.width}x{reply.height}; coordinates refer to it now."}]}
+
+    return [ui_read, ui_click, ui_type, ui_key] + ([ui_click_at] if screen else [])

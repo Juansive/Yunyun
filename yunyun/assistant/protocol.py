@@ -130,6 +130,10 @@ class ScreenshotReply:
     height: int = 0
     target: str = ""
     detail: str = ""
+    rect: tuple = ()     # 截的是屏幕上哪一块（左, 上, 右, 下，真实像素）：按截图上的坐标点（11.6d）靠它换算
+
+    def __post_init__(self):
+        object.__setattr__(self, "rect", tuple(self.rect))   # JSON 读回来是列表：统一成元组
 
 
 @_message
@@ -197,7 +201,7 @@ class PermissionRequest:
     kind：permissions.KINDS 里的一种（界面按它显示说明）；can_remember：能不能选"这次对话都允许"，
     scope：那样的话管到哪里（命令开头 / 文件夹 / 网站）；danger：危险命令 / 敏感文件 / 撤不回的网页操作，要醒目地提醒；
     element：网页操作时芸芸自己看到的那个元素（快照里那一行，比如 button "提交订单"；不是模型说的）；
-    link：下载时那个链接指向的网址（看得出来的话）。
+    link：下载时那个链接指向的网址（看得出来的话）；point：按截图上的坐标点时，屏幕上的那个点（11.6d）。
     """
     TYPE: ClassVar[str] = "permission_request"
     request_id: int
@@ -210,6 +214,10 @@ class PermissionRequest:
     tool_id: str = ""      # 是哪一次工具调用（和 ToolStarted 的 tool_id 一样；操作记录用）
     element: str = ""
     link: str = ""
+    point: tuple = ()      # 按截图上的坐标点（11.6d）：要点的地方在屏幕上的位置（真实像素），卡片上截一小块、画红圈
+
+    def __post_init__(self):
+        object.__setattr__(self, "point", tuple(self.point))
 
 
 @_message
@@ -292,7 +300,8 @@ UI_READ_TOOL = "mcp__yunyun__ui_read"
 UI_CLICK_TOOL = "mcp__yunyun__ui_click"
 UI_TYPE_TOOL = "mcp__yunyun__ui_type"
 UI_KEY_TOOL = "mcp__yunyun__ui_key"
-UI_ACTION_TOOLS = (UI_CLICK_TOOL, UI_TYPE_TOOL, UI_KEY_TOOL)
+UI_CLICK_AT_TOOL = "mcp__yunyun__ui_click_at"   # 11.6d：读不到界面的软件，按截图上的坐标点（要问）
+UI_ACTION_TOOLS = (UI_CLICK_TOOL, UI_TYPE_TOOL, UI_KEY_TOOL, UI_CLICK_AT_TOOL)
 UI_TOOLS = (UI_READ_TOOL,) + UI_ACTION_TOOLS
 
 

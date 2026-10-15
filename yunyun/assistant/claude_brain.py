@@ -270,6 +270,8 @@ class PermissionGate:
                 detail += f" ← {str(tool_input.get('text') or '')[:100]}"
             elif tool == protocol.UI_KEY_TOOL and isinstance(tool_input, dict):
                 detail += f" · {str(tool_input.get('keys') or '')[:40]}"
+            elif tool == protocol.UI_CLICK_AT_TOOL and isinstance(tool_input, dict):   # 按截图上的坐标点（11.6d）
+                detail += f" · ({tool_input.get('x')}, {tool_input.get('y')})"
         else:
             detail = transcripts.tool_detail(tool_input, self.workspace, 120)
         self._emit(protocol.ToolDecision(tool_id or "", tool, decision, detail))
@@ -311,7 +313,8 @@ class PermissionGate:
         self._emit(protocol.PermissionRequest(
             request_id, tool, tool_input if isinstance(tool_input, dict) else {}, decision.kind,
             bool(decision.grant), decision.scope, decision.danger, tool_id, element.element if element else "",
-            element.link if element and tool == protocol.BROWSER_DOWNLOAD_TOOL else ""))
+            element.link if element and tool == protocol.BROWSER_DOWNLOAD_TOOL else "",
+            element.point if element else ()))
         try:
             reply = await future
         finally:

@@ -928,6 +928,8 @@ TEXTS = {
     "assistant_tool_ui_type": {"zh": "正在软件里输入……", "en": "Typing in the app…", "ja": "ソフトに入力しています…"},
     "assistant_tool_ui_key": {"zh": "正在软件里按键……", "en": "Pressing keys in the app…",
                               "ja": "ソフトでキーを押しています…"},
+    "assistant_tool_ui_click_at": {"zh": "正在按截图上的位置点……", "en": "Clicking a spot from the screenshot…",
+                                   "ja": "スクリーンショットの位置をクリックしています…"},
     "assistant_downloaded_said": {"zh": "下载好了：{}（在\"下载\"文件夹里）", "en": "Downloaded: {} (in your Downloads folder)",
                                   "ja": "ダウンロードしたよ：{}（「ダウンロード」フォルダーにあります）"},
     # 相处笔记（阶段 11.3）：回想以前的对话后，有新的开始生效（一天最多一次；自己设定性格时用 _plain）
@@ -1034,6 +1036,12 @@ TEXTS = {
         "en": "This looks like sending, deleting, paying, closing or pressing Enter — things that can't be undone — "
               "so you'll be asked every time.",
         "ja": "送信・削除・支払い・閉じる・Enter など、取り消せない操作のようなので、毎回確認します。",
+    },
+    "assistant_confirm_note_ui_point": {
+        "zh": "这个软件芸芸读不到里面，是按截图上的位置点的：看清楚红圈在哪再允许。",
+        "en": "Yunyun can't see inside this app, so it clicks by position on the screenshot: check where the red circle "
+              "is before allowing.",
+        "ja": "このソフトは中を読めないので、スクリーンショットの位置でクリックします。赤い丸の場所を確かめてから許可してください。",
     },
     "assistant_confirm_remember_ui": {"zh": "这次对话在 {} 都允许", "en": "Allow in {} for this chat",
                                       "ja": "この会話では {} で許可"},
@@ -1242,6 +1250,7 @@ TEXTS = {
     "assistant_action_ui_click": {"zh": "软件里按一下", "en": "App: press", "ja": "ソフトで押す"},
     "assistant_action_ui_type": {"zh": "软件里输入", "en": "App: type", "ja": "ソフトに入力"},
     "assistant_action_ui_key": {"zh": "软件里按键", "en": "App: keys", "ja": "ソフトでキー"},
+    "assistant_action_ui_click_at": {"zh": "按位置点", "en": "App: click spot", "ja": "位置をクリック"},
     "assistant_action_failed": {"zh": "（没成功）", "en": " (failed)", "ja": "（失敗）"},
     "assistant_decision_auto": {"zh": "不用问", "en": "No need to ask", "ja": "確認不要"},
     "assistant_decision_granted": {"zh": "之前允许过同类", "en": "Allowed earlier", "ja": "以前に許可済み"},

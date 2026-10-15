@@ -36,7 +36,8 @@ def yunyun_server(workspace, notebook=True, bridge=None, screen=False, browser=N
         tools += recall_chats_tools(chats, language)
     if bridge is not None:
         tools += (app_tools(bridge) + reminder_tools(bridge) + clipboard_tools() + window_tools(bridge)
-                  + (screen_tools(bridge) if screen else []) + (desktop_tools(desktop, bridge) if desktop is not None else []))
+                  + (screen_tools(bridge, desktop) if screen else [])
+                  + (desktop_tools(desktop, bridge, screen) if desktop is not None else []))
     if browser is not None:
         tools += browser_tools(browser)
     return create_sdk_mcp_server(SERVER, tools=tools) if tools else None

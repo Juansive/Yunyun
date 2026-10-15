@@ -33,6 +33,7 @@
   Win 键组合、Shift+Delete 一律拒绝；密码框一律不输入；聊天软件里"发送"按钮和回车一律不点（芸芸打好字，发送你自己按）；
   一律不碰：芸芸自己的窗口、终端和"运行"框（在里面打字回车 = 执行命令，会绕开"执行命令要问"）、
   系统安全类（Windows 安全中心、注册表编辑器、凭据管理器、用户账户控制）。窗口和元素是什么也由芸芸自己看（assistant/desktop.py）；
+  按截图上的坐标点（11.6d，读不到界面的软件）：和点按钮一样问；聊天软件里看不出点的是不是"发送"，每次问、不给"都允许"；
 - 别的工具一律拒绝（本来也没开，这里是兜底）。
 
 拿不准的时候一律往"问你"那边靠：多问一次只是麻烦一点，少问一次可能出事。
@@ -48,8 +49,8 @@ from yunyun.assistant.recollections import RECALL_CHATS_TOOL
 from yunyun.assistant.protocol import (
     BROWSER_ACTION_TOOLS, BROWSER_BACK_TOOL, BROWSER_CLICK_TOOL, BROWSER_DOWNLOAD_TOOL, BROWSER_OPEN_TOOL,
     BROWSER_READ_TOOL, BROWSER_SELECT_TOOL, BROWSER_TYPE_TOOL, COPY_TO_CLIPBOARD_TOOL, FIND_APP_TOOL, LIST_WINDOWS_TOOL,
-    OPEN_APP_TOOL, READ_CLIPBOARD_TOOL, REMINDER_TOOLS, SCREENSHOT_TOOL, UI_CLICK_TOOL, UI_KEY_TOOL, UI_READ_TOOL,
-    UI_TOOLS, UI_TYPE_TOOL, WINDOW_ACTION_TOOL,
+    OPEN_APP_TOOL, READ_CLIPBOARD_TOOL, REMINDER_TOOLS, SCREENSHOT_TOOL, UI_CLICK_AT_TOOL, UI_CLICK_TOOL, UI_KEY_TOOL,
+    UI_READ_TOOL, UI_TOOLS, UI_TYPE_TOOL, WINDOW_ACTION_TOOL,
 )
 
 ALLOW, ASK, DENY = "allow", "ask", "deny"
@@ -64,7 +65,7 @@ KINDS = ("read_outside", "edit", "edit_sensitive", "write_outside", "command", "
          "web_click", "web_type", "web_select", "web_download", "clipboard", "ui_read", "ui_click", "ui_type", "ui_key")
 WEB_KINDS = {BROWSER_CLICK_TOOL: "web_click", BROWSER_TYPE_TOOL: "web_type", BROWSER_SELECT_TOOL: "web_select",
              BROWSER_DOWNLOAD_TOOL: "web_download"}
-UI_KINDS = {UI_CLICK_TOOL: "ui_click", UI_TYPE_TOOL: "ui_type", UI_KEY_TOOL: "ui_key"}
+UI_KINDS = {UI_CLICK_TOOL: "ui_click", UI_TYPE_TOOL: "ui_type", UI_KEY_TOOL: "ui_key", UI_CLICK_AT_TOOL: "ui_click"}
 
 SENSITIVE_DIRS = (".git", ".claude")   # 工作文件夹里这些文件夹里的东西，改了可能让程序以后自动运行别的东西
 
@@ -85,6 +86,7 @@ class ElementFacts:
     forbidden: str = ""     # 桌面软件：一律不碰的窗口，FORBIDDEN_REASONS 里的一种（芸芸自己的、终端、运行框、系统安全类）
     chat: bool = False      # 桌面软件：聊天软件（"发送"按钮和回车不点）
     context: str = ""       # 桌面软件：对话框里的说明文字（"确定要删除这个文件吗？"）——点"确定 / 是"时看是不是撤不回的事
+    point: tuple = ()       # 按截图上的坐标点（11.6d）：屏幕上的那个点（真实像素），确认卡片上截一小块、画红圈
 
 
 # 做了就撤不回的：按钮上的字（短的才看，长的多半是一大块内容）
@@ -333,11 +335,12 @@ def _decide_ui(tool, tool_input, grants, element, ask_screenshot):
             return Decision(DENY, reason="Yunyun doesn't press Windows-key shortcuts or Shift+Delete (permanent "
                                          "delete).")
         risky = rule == "risky"
-    elif tool == UI_CLICK_TOOL:
+    elif tool in (UI_CLICK_TOOL, UI_CLICK_AT_TOOL):
         if element.chat and _SEND_LABEL.search(element.label):
             return Decision(DENY, reason="In chat apps Yunyun never clicks send: leave the message typed and tell the "
                                          "user to press send themselves.")
-        risky = is_risky_ui(element)
+        # 按坐标点聊天软件：看不出点的是不是"发送"，每次让你看着红圈拍板（2026-10-15 定的"发送你自己按"）
+        risky = is_risky_ui(element) or (tool == UI_CLICK_AT_TOOL and element.chat)
     if risky:
         return Decision(ASK, kind, scope=element.site, danger=True)
     if not element.site:   # 看不出是哪个程序：不给"都允许"（不然看不出来的都算同一个）
