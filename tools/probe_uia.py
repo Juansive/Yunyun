@@ -119,6 +119,8 @@ def main():
     parser.add_argument("--counts", action="store_true")
     parser.add_argument("--lines", type=int, default=60)
     parser.add_argument("--default-timeouts", action="store_true", help="不改 UI 自动化的超时（看卡住的软件会卡多久）")
+    parser.add_argument("--find", action="append", default=[],
+                        help="名字里带这几个字的控件有几个、是什么种类（只报数，不打印名字；可以给好几次）")
     args = parser.parse_args()
     if args.dpi == "aware":
         user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))   # PER_MONITOR_AWARE_V2
@@ -169,6 +171,13 @@ def main():
             lines.append(f"{'  ' * min(depth, 12)}{type_name} {label(type_name, name, args.show)} "
                          f"[{r.left},{r.top},{r.right},{r.bottom}] {','.join(patterns)}{flags}")
     print("\n".join(lines))
+    for word in args.find:
+        hits = Counter(CONTROL_TYPES.get(el.CachedControlType, "?") for _, el in nodes if word in (el.CachedName or ""))
+        print(f"名字里带「{word}」的：{dict(hits) or '没有'}")
+    edits = [el for _, el in nodes if el.GetCachedPropertyValue(UIA.UIA_IsValuePatternAvailablePropertyId)
+             and CONTROL_TYPES.get(el.CachedControlType) in ("Edit", "Document")]
+    print(f"能填字的输入框（Edit / Document + Value）：{len(edits)} 个；其中屏幕上看得见的 "
+          f"{sum(not el.CachedIsOffscreen for el in edits)} 个")
     print(f"\n读一次 {took * 1000:.0f} ms（一次跨进程拿全部），共 {len(nodes)} 个节点；能操作的 {interactive} 个，其中有名字的 {named} 个")
     print("控件：", dict(types.most_common(12)))
     print("界面框架：", dict(frameworks), "  属于进程：", dict(procs))
