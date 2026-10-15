@@ -93,6 +93,8 @@ _ACTION_VERBS = {
     protocol.UI_READ_TOOL: "assistant_action_ui_read", protocol.UI_CLICK_TOOL: "assistant_action_ui_click",
     protocol.UI_TYPE_TOOL: "assistant_action_ui_type", protocol.UI_KEY_TOOL: "assistant_action_ui_key",
     protocol.UI_CLICK_AT_TOOL: "assistant_action_ui_click_at",
+    protocol.POWER_TOOL: "assistant_action_power", protocol.LIST_PROCESSES_TOOL: "assistant_action_list_processes",
+    protocol.END_PROCESS_TOOL: "assistant_action_end_process",
 }
 _DECISION_COLORS = {"auto": "#8A94A6", "granted": "#2E7D32", "allowed": "#2E7D32", "remembered": "#2E7D32",
                     "denied": "#C62828", "blocked": "#C62828", "stopped": "#B7791F"}

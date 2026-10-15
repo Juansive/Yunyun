@@ -222,7 +222,10 @@ _DESKTOP = {
           "\n- 你能把文字放进剪贴板（copy_to_clipboard，不用问，比如替用户写好的回复，让用户自己粘贴发送），"
           "也能看用户的剪贴板（read_clipboard，芸芸会先问用户）。"
           "\n- 你能看用户开着哪些窗口（list_windows），切换到某个窗口、最小化、还原（window_action）；都不用问。"
-          "不能关窗口；窗口标题可能有隐私，只提和眼前的事有关的。",
+          "不能关窗口；窗口标题可能有隐私，只提和眼前的事有关的。"
+          "\n- 你能锁屏、让电脑睡眠（power，不用问）；关机、重启要先问用户，同意后过 60 秒才执行，用户说取消就用 power 的 cancel。"
+          "能列出正在运行的程序和占的内存（list_processes，不用问）；结束一个程序要先问（end_process，没保存的会丢；"
+          "芸芸自己和系统进程不能结束）。",
     "en": "\n- You can set reminders for the user: set_reminder (at that time Yunyun shows a bubble and a Windows "
           "notification and says it aloud; it can repeat daily, on weekdays or weekly), list_reminders to see them, "
           "cancel_reminder to cancel; no need to ask first. Use in_minutes for relative times (\"in 25 minutes\"); "
@@ -231,14 +234,22 @@ _DESKTOP = {
           "user to paste and send themselves) and read the user's clipboard (read_clipboard; Yunyun asks them first)."
           "\n- You can see which windows the user has open (list_windows) and switch to, minimize or restore one "
           "(window_action); no need to ask. You can't close windows. Titles can be private: mention only what's "
-          "relevant.",
+          "relevant."
+          "\n- You can lock the screen or put the computer to sleep (power, no need to ask); shutting down or "
+          "restarting is confirmed by the user and happens 60 seconds later — if they want to cancel, use power with "
+          "action=cancel. You can list running programs and their memory (list_processes, no need to ask) and end a "
+          "program after the user confirms (end_process; unsaved work is lost; Yunyun herself and system processes "
+          "can't be ended).",
     "ja": "\n- ユーザーにリマインダーを設定できます：set_reminder（時間になると芸芸が吹き出し・Windows の通知・読み上げで知らせます。"
           "毎日・平日・毎週の繰り返しも可）、list_reminders で確認、cancel_reminder で取り消し。どれも先に聞く必要はありません。"
           "「25 分後」のような相対時間は in_minutes を使い、設定したら何時に何を知らせるかを回答ではっきり伝えてください。"
           "\n- テキストをクリップボードに入れられます（copy_to_clipboard、確認不要。たとえばユーザーが自分で貼り付けて送る返信の下書き）。"
           "ユーザーのクリップボードを見ることもできます（read_clipboard、芸芸が先にユーザーに確認します）。"
           "\n- ユーザーが開いているウィンドウを確認し（list_windows）、切り替え・最小化・元に戻す（window_action）ことができます。"
-          "どれも確認不要です。ウィンドウは閉じられません。タイトルには私的な内容もあるので、関係のあることだけ触れてください。",
+          "どれも確認不要です。ウィンドウは閉じられません。タイトルには私的な内容もあるので、関係のあることだけ触れてください。"
+          "\n- 画面ロックやスリープ（power、確認不要）ができます。シャットダウン・再起動はユーザーの確認が必要で、許可から 60 秒後に実行します。"
+          "取り消したいと言われたら power の cancel を使います。動いているプログラムとメモリ使用量を一覧でき（list_processes、確認不要）、"
+          "プログラムの終了は確認してから行います（end_process。保存していないものは失われます。芸芸自身とシステムのプロセスは終了できません）。",
 }
 
 # 操作桌面软件（阶段 11.6b：tools/desktop.py），有它时替换 _APPS 里"打开以后不能操作"那句

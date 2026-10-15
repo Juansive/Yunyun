@@ -928,6 +928,10 @@ TEXTS = {
     "assistant_tool_ui_type": {"zh": "正在软件里输入……", "en": "Typing in the app…", "ja": "ソフトに入力しています…"},
     "assistant_tool_ui_key": {"zh": "正在软件里按键……", "en": "Pressing keys in the app…",
                               "ja": "ソフトでキーを押しています…"},
+    "assistant_tool_power": {"zh": "正在操作电源……", "en": "Handling power…", "ja": "電源を操作しています…"},
+    "assistant_tool_list_processes": {"zh": "正在看有哪些程序在运行……", "en": "Checking running programs…",
+                                      "ja": "動いているプログラムを確認しています…"},
+    "assistant_tool_end_process": {"zh": "正在结束程序……", "en": "Ending a program…", "ja": "プログラムを終了しています…"},
     "assistant_tool_ui_click_at": {"zh": "正在按截图上的位置点……", "en": "Clicking a spot from the screenshot…",
                                    "ja": "スクリーンショットの位置をクリックしています…"},
     "assistant_downloaded_said": {"zh": "下载好了：{}（在\"下载\"文件夹里）", "en": "Downloaded: {} (in your Downloads folder)",
@@ -1036,6 +1040,29 @@ TEXTS = {
         "en": "This looks like sending, deleting, paying, closing or pressing Enter — things that can't be undone — "
               "so you'll be asked every time.",
         "ja": "送信・削除・支払い・閉じる・Enter など、取り消せない操作のようなので、毎回確認します。",
+    },
+    # 电源和程序（11.6e）
+    "assistant_confirm_power_shutdown": {"zh": "芸芸想关机", "en": "Yunyun wants to shut down the computer",
+                                         "ja": "芸芸がパソコンをシャットダウンしようとしています"},
+    "assistant_confirm_power_restart": {"zh": "芸芸想重启电脑", "en": "Yunyun wants to restart the computer",
+                                        "ja": "芸芸がパソコンを再起動しようとしています"},
+    "assistant_confirm_power_detail": {
+        "zh": "允许以后过 60 秒才执行（Windows 会提示），这期间跟芸芸说\u201c取消关机\u201d就能撤回。",
+        "en": "It happens 60 seconds after you allow it (Windows shows a notice); until then, tell Yunyun \u201ccancel\u201d "
+              "to stop it.",
+        "ja": "許可してから 60 秒後に実行します（Windows が通知します）。それまでに芸芸に\u300c取り消して\u300dと言えば止められます。",
+    },
+    "assistant_confirm_note_power": {
+        "zh": "没保存的东西会丢，先保存好再允许。所以每次都要问你。",
+        "en": "Unsaved work will be lost, so save first. That's why you're asked every time.",
+        "ja": "保存していないものは失われるので、先に保存してください。そのため毎回確認します。",
+    },
+    "assistant_confirm_end_process": {"zh": "芸芸想结束一个程序", "en": "Yunyun wants to end a program",
+                                      "ja": "芸芸がプログラムを終了しようとしています"},
+    "assistant_confirm_note_end_process": {
+        "zh": "直接结束：这个程序里没保存的东西会丢。所以每次都要问你。",
+        "en": "It's force-quit: anything unsaved in it is lost. That's why you're asked every time.",
+        "ja": "強制終了します：保存していないものは失われます。そのため毎回確認します。",
     },
     "assistant_confirm_note_ui_point": {
         "zh": "这个软件芸芸读不到里面，是按截图上的位置点的：看清楚红圈在哪再允许。",
@@ -1250,6 +1277,9 @@ TEXTS = {
     "assistant_action_ui_click": {"zh": "软件里按一下", "en": "App: press", "ja": "ソフトで押す"},
     "assistant_action_ui_type": {"zh": "软件里输入", "en": "App: type", "ja": "ソフトに入力"},
     "assistant_action_ui_key": {"zh": "软件里按键", "en": "App: keys", "ja": "ソフトでキー"},
+    "assistant_action_power": {"zh": "电源", "en": "Power", "ja": "電源"},
+    "assistant_action_list_processes": {"zh": "列出程序", "en": "List programs", "ja": "プログラム一覧"},
+    "assistant_action_end_process": {"zh": "结束程序", "en": "End program", "ja": "プログラム終了"},
     "assistant_action_ui_click_at": {"zh": "按位置点", "en": "App: click spot", "ja": "位置をクリック"},
     "assistant_action_failed": {"zh": "（没成功）", "en": " (failed)", "ja": "（失敗）"},
     "assistant_decision_auto": {"zh": "不用问", "en": "No need to ask", "ja": "確認不要"},

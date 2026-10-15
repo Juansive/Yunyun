@@ -303,6 +303,11 @@ UI_KEY_TOOL = "mcp__yunyun__ui_key"
 UI_CLICK_AT_TOOL = "mcp__yunyun__ui_click_at"   # 11.6d：读不到界面的软件，按截图上的坐标点（要问）
 UI_ACTION_TOOLS = (UI_CLICK_TOOL, UI_TYPE_TOOL, UI_KEY_TOOL, UI_CLICK_AT_TOOL)
 UI_TOOLS = (UI_READ_TOOL,) + UI_ACTION_TOOLS
+# 电源和程序（11.6e，assistant/tools/system.py）：锁屏 / 睡眠 / 取消关机、列出程序不用问；关机 / 重启、结束程序每次问
+POWER_TOOL = "mcp__yunyun__power"
+LIST_PROCESSES_TOOL = "mcp__yunyun__list_processes"
+END_PROCESS_TOOL = "mcp__yunyun__end_process"
+POWER_ACTIONS = ("lock", "sleep", "shutdown", "restart", "cancel")
 
 
 @_message

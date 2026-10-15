@@ -23,7 +23,8 @@ from claude_agent_sdk import (
     UserMessage, get_session_messages,
 )
 
-from yunyun.assistant import apps, memory, permissions, proctree, protocol, rapport, recollections, transcripts
+from yunyun.assistant import (apps, memory, permissions, processes, proctree, protocol, rapport, recollections,
+                              transcripts)
 from yunyun.assistant.browser import Browser
 from yunyun.assistant.desktop import Desktop
 from yunyun.assistant.environment import (   # noqa: F401（clean_environment、hide_child_consoles 也从这里用）
@@ -254,6 +255,8 @@ class PermissionGate:
                 return permissions.ElementFacts(problem="Yunyun has no browser here.")
             ref = tool_input.get("ref") if isinstance(tool_input, dict) else None
             return await self.browser.element_facts(ref)
+        elif tool == protocol.END_PROCESS_TOOL:   # 结束程序（11.6e）：是哪个程序、是不是芸芸自己 / 系统的
+            return await asyncio.to_thread(processes.facts, tool_input)
         elif tool in protocol.UI_TOOLS:   # 桌面软件（11.6b）：哪个窗口、哪个控件
             if self.desktop is None:
                 return permissions.ElementFacts(problem="Yunyun can't operate desktop apps here.")

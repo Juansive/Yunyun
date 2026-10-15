@@ -125,6 +125,16 @@ def no_real_assistant(monkeypatch, tmp_path):
         raise RuntimeError("测试里不许真的开浏览器（要测就用 tools/try_browser.py）")
     monkeypatch.setattr(browser, "start_playwright", no_browser)
     monkeypatch.setattr(browser, "PROFILE_DIR", tmp_path / "assistant_browser")
+    # 电源和程序（11.6e）：绝不真的锁屏 / 睡眠 / 关机、不结束你真的程序（假的进程表 FAKE_PROCESSES；做过的记在 processes.done）
+    from yunyun.assistant import processes
+    done = []
+    monkeypatch.setattr(processes, "_snapshot", lambda: [p[:3] for p in FAKE_PROCESSES])
+    monkeypatch.setattr(processes, "_memory", lambda pid: next((p[3] for p in FAKE_PROCESSES if p[0] == pid), 0))
+    monkeypatch.setattr(processes, "_session", lambda pid: next((p[4] for p in FAKE_PROCESSES if p[0] == pid), 0))
+    monkeypatch.setattr(processes, "_terminate", lambda pid: done.append(("end", pid)) or pid != 666)
+    monkeypatch.setattr(processes, "_apply_power", lambda action, comment="": done.append((action, comment)) or (True, ""))
+    monkeypatch.setattr(processes, "_default_own", lambda: {1000})
+    monkeypatch.setattr(processes, "done", done, raising=False)
     # 操作桌面软件（11.6b）：绝不用真的 UI 自动化读 / 点你的窗口、不发真的按键（假的见 tests/fake_desktop.py）
     import fake_desktop
     from yunyun.assistant import desktop
@@ -164,6 +174,21 @@ FAKE_WINDOWS = [   # 假的窗口：(句柄, 标题, 程序, 进程号, 最小�
     (101, "微信", "WeChat.exe", 11, False),
     (102, "论文初稿.docx - Word", "WINWORD.EXE", 12, True),
     (103, "芸芸", "python.exe", 0, False),
+]
+
+FAKE_PROCESSES = [   # 假的进程表：(进程号, 父进程号, 程序名, 内存字节, 会话)；1000 当作芸芸自己（processes._default_own）
+    (4, 0, "System", 2**20, 0),
+    (500, 4, "svchost.exe", 50 * 2**20, 0),
+    (800, 4, "explorer.exe", 200 * 2**20, 1),
+    (1000, 800, "python.exe", 300 * 2**20, 1),          # 芸芸本体
+    (1001, 1000, "python.exe", 200 * 2**20, 1),         # 助手子进程
+    (1002, 1001, "claude.exe", 400 * 2**20, 1),         # 它开的 Claude Code
+    (1003, 1001, "msedge.exe", 300 * 2**20, 1),         # 芸芸的浏览器
+    (2001, 800, "msedge.exe", 900 * 2**20, 1),          # 你自己的 Edge
+    (2002, 2001, "msedge.exe", 600 * 2**20, 1),
+    (3001, 800, "Notepad.exe", 30 * 2**20, 1),
+    (3002, 800, "Notepad.exe", 25 * 2**20, 1),
+    (666, 800, "Admin.exe", 10 * 2**20, 1),             # 结束不了（管理员权限）
 ]
 
 FAKE_APPS = [   # 假的开始菜单（Get-StartApps 的样子）

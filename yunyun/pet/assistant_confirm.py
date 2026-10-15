@@ -71,9 +71,11 @@ def title_key(request):
         return "assistant_confirm_read_outside" if request.tool == "Read" else "assistant_confirm_search_outside"
     if request.kind == "edit":
         return "assistant_confirm_write" if request.tool == "Write" else "assistant_confirm_edit"
-    if request.kind in ("edit_sensitive", "write_outside", "screenshot", "open_app", "clipboard") \
+    if request.kind in ("edit_sensitive", "write_outside", "screenshot", "open_app", "clipboard", "end_process") \
             or request.kind in WEB_KINDS or request.kind in UI_KINDS:
         return f"assistant_confirm_{request.kind}"
+    if request.kind == "power":   # 关机 / 重启（11.6e）
+        return "assistant_confirm_power_restart" if request.scope == "restart" else "assistant_confirm_power_shutdown"
     return "assistant_confirm_other"
 
 
@@ -100,6 +102,8 @@ def element_text(element):
 
 def note_key(request):
     """标题下面的一行说明（为什么每次都问）；没有就是 None。"""
+    if request.kind in ("power", "end_process"):   # 11.6e
+        return f"assistant_confirm_note_{request.kind}"
     if request.kind == "web_download":
         return "assistant_confirm_note_web_download"
     if request.danger and request.kind in WEB_KINDS:
@@ -151,6 +155,10 @@ def detail_html(request, workspace):
             rows.append(f'<div style="color:#6B7280;">'
                         f'{html.escape(i18n.tr("assistant_confirm_download_to", str(paths.downloads_dir())))}</div>')
         return "".join(rows)
+    if request.kind == "end_process":   # 结束哪个程序、几个进程（芸芸自己看的）
+        return f'<div><b>{html.escape(request.element or request.scope)}</b></div>'
+    if request.kind == "power":
+        return f'<div style="color:#6B7280;">{html.escape(i18n.tr("assistant_confirm_power_detail"))}</div>'
     if request.kind in UI_KINDS:   # 哪个软件、哪个控件（芸芸自己看的）、要输入的字 / 要按的键
         rows = [f'<div style="color:#6B7280;">{html.escape(request.scope)}</div>' if request.scope else "",
                 f'<div><b>{html.escape(element_text(request.element))}</b></div>' if request.element else ""]

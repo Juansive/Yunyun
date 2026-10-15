@@ -34,6 +34,9 @@
   一律不碰：芸芸自己的窗口、终端和"运行"框（在里面打字回车 = 执行命令，会绕开"执行命令要问"）、
   系统安全类（Windows 安全中心、注册表编辑器、凭据管理器、用户账户控制）。窗口和元素是什么也由芸芸自己看（assistant/desktop.py）；
   按截图上的坐标点（11.6d，读不到界面的软件）：和点按钮一样问；聊天软件里看不出点的是不是"发送"，每次问、不给"都允许"；
+- 电源和程序（11.6e，2026-10-15 用户定的）：锁屏、睡眠、取消关机不用问；关机、重启每次问、标红、不给"都允许"
+  （同意了也留 60 秒，可以取消）；列出正在运行的程序不用问；结束程序每次问、标红、不给"都允许"，
+  芸芸自己（连同她开的 Claude Code、浏览器）和系统进程一律不结束（ElementFacts 由 assistant/processes.py 看）；
 - 别的工具一律拒绝（本来也没开，这里是兜底）。
 
 拿不准的时候一律往"问你"那边靠：多问一次只是麻烦一点，少问一次可能出事。
@@ -48,8 +51,8 @@ from yunyun.assistant.memory import NOTEBOOK_TOOLS
 from yunyun.assistant.recollections import RECALL_CHATS_TOOL
 from yunyun.assistant.protocol import (
     BROWSER_ACTION_TOOLS, BROWSER_BACK_TOOL, BROWSER_CLICK_TOOL, BROWSER_DOWNLOAD_TOOL, BROWSER_OPEN_TOOL,
-    BROWSER_READ_TOOL, BROWSER_SELECT_TOOL, BROWSER_TYPE_TOOL, COPY_TO_CLIPBOARD_TOOL, FIND_APP_TOOL, LIST_WINDOWS_TOOL,
-    OPEN_APP_TOOL, READ_CLIPBOARD_TOOL, REMINDER_TOOLS, SCREENSHOT_TOOL, UI_CLICK_AT_TOOL, UI_CLICK_TOOL, UI_KEY_TOOL,
+    BROWSER_READ_TOOL, BROWSER_SELECT_TOOL, BROWSER_TYPE_TOOL, COPY_TO_CLIPBOARD_TOOL, END_PROCESS_TOOL, FIND_APP_TOOL,
+    LIST_PROCESSES_TOOL, LIST_WINDOWS_TOOL, OPEN_APP_TOOL, POWER_ACTIONS, POWER_TOOL, READ_CLIPBOARD_TOOL, REMINDER_TOOLS, SCREENSHOT_TOOL, UI_CLICK_AT_TOOL, UI_CLICK_TOOL, UI_KEY_TOOL,
     UI_READ_TOOL, UI_TOOLS, UI_TYPE_TOOL, WINDOW_ACTION_TOOL,
 )
 
@@ -62,7 +65,8 @@ SHELL_TOOLS = ("Bash", "PowerShell")   # Windows 上有 Git Bash 时 Claude Code
 
 # 要问你的几种情况（界面按它显示说明）
 KINDS = ("read_outside", "edit", "edit_sensitive", "write_outside", "command", "screenshot", "open_app",
-         "web_click", "web_type", "web_select", "web_download", "clipboard", "ui_read", "ui_click", "ui_type", "ui_key")
+         "web_click", "web_type", "web_select", "web_download", "clipboard", "ui_read", "ui_click", "ui_type", "ui_key",
+         "power", "end_process")
 WEB_KINDS = {BROWSER_CLICK_TOOL: "web_click", BROWSER_TYPE_TOOL: "web_type", BROWSER_SELECT_TOOL: "web_select",
              BROWSER_DOWNLOAD_TOOL: "web_download"}
 UI_KINDS = {UI_CLICK_TOOL: "ui_click", UI_TYPE_TOOL: "ui_type", UI_KEY_TOOL: "ui_key", UI_CLICK_AT_TOOL: "ui_click"}
@@ -146,8 +150,16 @@ def decide(tool, tool_input, workspace, grants=frozenset(), ask_screenshot=False
     tool_input = tool_input if isinstance(tool_input, dict) else {}
     if tool in WEB_TOOLS or tool in NOTEBOOK_TOOLS or tool in REMINDER_TOOLS or tool in (
             FIND_APP_TOOL, BROWSER_READ_TOOL, BROWSER_BACK_TOOL, RECALL_CHATS_TOOL, COPY_TO_CLIPBOARD_TOOL,
-            LIST_WINDOWS_TOOL, WINDOW_ACTION_TOOL):
+            LIST_WINDOWS_TOOL, WINDOW_ACTION_TOOL, LIST_PROCESSES_TOOL):
         return Decision(ALLOW)
+    if tool == POWER_TOOL:
+        return _decide_power(str(tool_input.get("action") or ""))
+    if tool == END_PROCESS_TOOL:
+        if element is None or element.problem or element.forbidden:
+            reason = element.problem if element and element.problem else PROCESS_FORBIDDEN.get(
+                element.forbidden if element else "", "Yunyun couldn't look at that program.")
+            return Decision(DENY, reason=reason)
+        return Decision(ASK, "end_process", scope=element.site, danger=True)
     if tool == READ_CLIPBOARD_TOOL:
         if ("clipboard",) in grants:
             return Decision(ALLOW, by_grant=True)
@@ -220,6 +232,23 @@ def _decide_open_app(name, grants, apps):
     if ("open_app", key) in grants:
         return Decision(ALLOW, by_grant=True)
     return Decision(ASK, "open_app", (("open_app", key),), name)
+
+
+# ---------- 电源和程序（阶段 11.6e） ----------
+
+PROCESS_FORBIDDEN = {
+    "own": "That is Yunyun herself (or something she runs, like Claude Code or her browser); Yunyun doesn't end it.",
+    "system": "That is part of Windows (a system process or service); ending it could crash or log out the computer. "
+              "Yunyun doesn't end these.",
+}
+
+
+def _decide_power(action):
+    if action not in POWER_ACTIONS:
+        return Decision(DENY, reason="Unknown power action. Use lock, sleep, shutdown, restart or cancel.")
+    if action in ("shutdown", "restart"):   # 撤不回（没保存的会丢）：每次问、标红；同意了也留 60 秒能取消
+        return Decision(ASK, "power", scope=action, danger=True)
+    return Decision(ALLOW)
 
 
 # ---------- 桌面软件（阶段 11.6b） ----------
