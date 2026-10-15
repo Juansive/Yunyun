@@ -41,7 +41,9 @@ log = logging.getLogger(__name__)
 
 WEB_TOOLS = ["WebSearch", "WebFetch"]
 # 选了工作文件夹才开。Windows 上 Claude Code 有 Git Bash 就用 Bash，没有就用 PowerShell，两个都列上
-WORK_TOOLS = ["Read", "Glob", "Grep", "Edit", "Write", "Bash", "PowerShell"]
+# 命令工具只给 PowerShell（11.6f，2026-10-15 用户定"大家都用 PowerShell"）：芸芸带的 Claude Code 找到 Git Bash 就只给 Bash
+# （Git 装在默认位置的朋友会这样），要 CLAUDE_CODE_USE_POWERSHELL_TOOL=1 + 工具里只列 PowerShell 才统一成 PowerShell（实测）
+WORK_TOOLS = ["Read", "Glob", "Grep", "Edit", "Write", "PowerShell"]
 PROJECT_NOTES_FILES = ("CLAUDE.md", os.path.join(".claude", "CLAUDE.md"))   # 项目规矩：读，但 .claude/ 里的设置不加载
 PROJECT_NOTES_MAX_CHARS = 20_000   # 太长的只读开头（每一问都要带着它，太长费钱）
 # 工具结果的上限（阶段 11.2，tools/try_context.py 实测）：读文件一次最多多少 token（Claude Code 默认 2.5 万；超了它自己截断，
@@ -168,6 +170,7 @@ def build_options(settings, api_key, language, stderr=None, gate=None, resume=""
         "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",   # 不自动更新、不发遥测和错误报告
         "CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS": str(READ_MAX_TOKENS),
         "BASH_MAX_OUTPUT_LENGTH": str(COMMAND_MAX_CHARS),
+        "CLAUDE_CODE_USE_POWERSHELL_TOOL": "1",   # 有没有 Git Bash 都用 PowerShell（见 WORK_TOOLS）
         **system_proxy_env(),
     }
     notes = read_project_notes(settings.workspace)

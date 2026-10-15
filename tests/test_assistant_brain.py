@@ -642,8 +642,12 @@ def test_build_options_uses_the_chosen_work_folder(monkeypatch, tmp_path):
     monkeypatch.setattr(claude_brain, "system_proxy_env", lambda: {})
     options = claude_brain.build_options(AssistantSettings(workspace=str(tmp_path)), "sk-ant-test", "zh")
     assert options.cwd == str(tmp_path)
-    assert options.tools == ["WebSearch", "WebFetch", "Read", "Glob", "Grep", "Edit", "Write", "Bash", "PowerShell"]
+    # 11.6f：命令只用 PowerShell（有 Git Bash 也一样）：工具里不列 Bash，打开 PowerShell 工具的开关
+    assert options.tools == ["WebSearch", "WebFetch", "Read", "Glob", "Grep", "Edit", "Write", "PowerShell"]
+    assert options.env["CLAUDE_CODE_USE_POWERSHELL_TOOL"] == "1"
     assert options.system_prompt["append"] == persona("zh", working=True, notebook=([], []))
+    assert "-Encoding UTF8" in options.system_prompt["append"]                       # 避坑短清单
+    assert "-Encoding UTF8" not in persona("zh")                                     # 只聊天时没有命令，不带
 
 
 def test_project_claude_md_is_read_but_not_its_settings(monkeypatch, tmp_path):

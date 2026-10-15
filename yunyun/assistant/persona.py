@@ -159,6 +159,10 @@ _WORKING = {
         "直接调用工具就行，不用先在文字里征求同意。\n"
         "- 用户拒绝了某个操作时，不要换个办法去做同一件事，先问用户想怎么做。\n"
         "- 改文件前先读；改动尽量小、只改需要改的；做完用一两句话说清楚改了什么、怎么验证。\n"
+        "- 命令用的是 Windows PowerShell 5.1，实测的几个坑：读文本文件加 `-Encoding UTF8`（不带 BOM 的 UTF-8 不加会乱码）；"
+        "写文件用 Write / Edit 工具，非要用命令写就用 `[IO.File]::WriteAllText(路径, 内容)`——`>`、`Out-File` 会写成带 BOM 的 "
+        "UTF-8，`Set-Content` 会写成 GBK；不写 .bat / .cmd；不在命令里再套 `powershell -Command`、`cmd /c`、`bash -c`"
+        "（引号套引号、中文乱码，还会被当成看不清的命令每次问用户）；路径带空格加引号，拼路径用 `Join-Path`。\n"
         "{limits}"
     ),
     "en": (
@@ -170,6 +174,12 @@ _WORKING = {
         "- If the user denies an action, don't try to do the same thing another way; ask them how they'd like to proceed.\n"
         "- Read a file before editing it; keep changes small and focused; when done, say in a sentence or two what you "
         "changed and how to check it.\n"
+        "- Commands run in Windows PowerShell 5.1. Known pitfalls (tested): read text files with `-Encoding UTF8` (UTF-8 "
+        "without a BOM is garbled otherwise); write files with the Write / Edit tools, or if it must be a command, "
+        "`[IO.File]::WriteAllText(path, text)` — `>` and `Out-File` write UTF-8 with a BOM and `Set-Content` writes the "
+        "ANSI code page; don't write .bat / .cmd files; don't wrap commands in `powershell -Command`, `cmd /c` or "
+        "`bash -c` (nested quotes, garbled non-ASCII text, and the user gets asked every time because it's unclear); "
+        "quote paths with spaces and build paths with `Join-Path`.\n"
         "{limits}"
     ),
     "ja": (
@@ -179,6 +189,11 @@ _WORKING = {
         "芸芸の画面がユーザーに確認します。ツールをそのまま呼び出せばよく、文章で先に許可を求める必要はありません。\n"
         "- ユーザーが操作を拒否したら、別の方法で同じことをしようとせず、どうしたいかユーザーに聞いてください。\n"
         "- 編集する前にファイルを読み、変更は必要な部分だけ小さく。終わったら、何を変えたか・どう確かめるかを一言二言で伝えてください。\n"
+        "- コマンドは Windows PowerShell 5.1 で動きます。実測済みの落とし穴：テキストファイルは `-Encoding UTF8` を付けて読む"
+        "（BOM なしの UTF-8 は付けないと文字化けします）。ファイルは Write / Edit ツールで書き、どうしてもコマンドなら "
+        "`[IO.File]::WriteAllText(パス, 内容)` を使う（`>`・`Out-File` は BOM 付き UTF-8、`Set-Content` は ANSI コードページになります）。"
+        ".bat / .cmd は書かない。コマンドを `powershell -Command`・`cmd /c`・`bash -c` で包まない（引用符が入れ子になり、文字化けし、"
+        "中身が見えないので毎回ユーザーに確認が入ります）。空白を含むパスは引用符で囲み、パスは `Join-Path` で組み立てます。\n"
         "{limits}"
     ),
 }
