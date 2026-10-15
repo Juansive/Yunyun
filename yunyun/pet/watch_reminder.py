@@ -15,6 +15,7 @@ from PySide6.QtCore import QObject
 from yunyun import i18n
 from yunyun.pet import winapi
 from yunyun.pet.assistant_notice import AssistantNotice
+from yunyun.watch.relay import REMIND_EVENTS
 
 log = logging.getLogger(__name__)
 
@@ -46,6 +47,8 @@ class WatchReminder(QObject):
 
     def on_event(self, event, force=False):
         """收到一件事。force：设置页的"发一条测试提醒"（你正看着设置窗口，照样提醒）。"""
+        if event.event not in REMIND_EVENTS:   # 在干活、闲着……只用来换样子（pet/watch_activity.py）
+            return
         if not force and looking_at(event):
             log.info("旁观模式：你正看着 Claude Code，不提醒")
             return

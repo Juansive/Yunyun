@@ -5,6 +5,16 @@
 """
 import sys
 
+
+def _stdin_is_pipe():
+    """标准输入是不是管道（GetFileType = FILE_TYPE_PIPE）。"""
+    import ctypes
+    kernel32 = ctypes.windll.kernel32
+    kernel32.GetStdHandle.restype = ctypes.c_void_p
+    handle = kernel32.GetStdHandle(-10)   # STD_INPUT_HANDLE
+    return bool(handle) and handle != ctypes.c_void_p(-1).value and kernel32.GetFileType(ctypes.c_void_p(handle)) == 3
+
+
 if __name__ == "__main__":
     if len(sys.argv) in (3, 4) and sys.argv[1] == "--self-check":   # 构建脚本检查打包结果用：报告文件 [full / lite]（见 yunyun/selfcheck.py）
         from yunyun import selfcheck
@@ -20,8 +30,11 @@ if __name__ == "__main__":
         voice_worker.main(sys.argv[2:])
         sys.exit(0)
 
-    if len(sys.argv) >= 2 and sys.argv[1] == "--watch-relay":        # 旁观模式的 hook 脚本（见 yunyun/watch/relay.py）
-        from yunyun.watch import relay   # 只用标准库，不 import Qt：每次 hook 都要启动一次，要快
+    if len(sys.argv) >= 2 and sys.argv[1] == "--watch-relay" or len(sys.argv) == 1 and _stdin_is_pipe():
+        # 旁观模式的 hook 脚本（见 yunyun/watch/relay.py）：只用标准库，不 import Qt（每次 hook 都要启动一次，要快）。
+        # 不带参数、标准输入却是管道：也当 hook（hook 写成"命令 + 参数"的样子，老版本 Claude Code 不认参数，会只运行 芸芸.exe；
+        # 双击、开机启动打开时标准输入不是管道）——不然每个 hook 都会去开一个芸芸
+        from yunyun.watch import relay
         sys.exit(relay.main())
 
     if len(sys.argv) >= 2 and sys.argv[1] == "--assistant-check":    # 设置窗口的"测试连接"（见 yunyun/assistant/check.py）

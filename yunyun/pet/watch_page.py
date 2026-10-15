@@ -1,10 +1,10 @@
 """设置窗口的"旁观"页（阶段 8）：连接 / 断开你自己的 Claude Code，发一条测试提醒。
 
     说明（灰色）
-    状态：✓ 已经连接 / 还没有连接 / 只连了一半 / 设置文件看不懂
+    状态：✓ 已经连接 / 还没有连接 / 要重新连接（芸芸更新过）/ 只连了一半 / 设置文件看不懂
     会改的文件：C:\\Users\\…\\.claude\\settings.json
     [连接我的 Claude Code] [断开]          [发一条测试提醒]
-    注意（灰色）：先备份、只动芸芸的两条、已经开着的 Claude Code 要重开
+    注意（灰色）：先备份、只动芸芸加的、已经开着的 Claude Code 要重开
 
 改的是你自己的 Claude Code 设置：点"连接"先弹框问你；改之前 hooks.py 会先备份。和助手模式无关，打包版也有这一页。
 """
@@ -15,7 +15,9 @@ from yunyun import i18n
 from yunyun.pet.widgets import StatusLabel, note
 from yunyun.watch import hooks
 
-_STATUS_COLORS = {"connected": "#2E7D32", "disconnected": "#666", "partial": "#B26A00", "broken": "#C62828"}
+_STATUS_COLORS = {"connected": "#2E7D32", "disconnected": "#666", "outdated": "#B26A00", "partial": "#B26A00",
+                  "broken": "#C62828"}
+_HALF = ("outdated", "partial")   # 连着、但要重新连接一下
 
 
 class WatchPage(QWidget):
@@ -57,10 +59,9 @@ class WatchPage(QWidget):
         status = hooks.status()
         self._status.setText(i18n.tr(f"watch_status_{status}"))
         self._status.setStyleSheet(f"color: {_STATUS_COLORS[status]}; font-weight: bold;")
-        self._connect_button.setText(i18n.tr("watch_reconnect" if status in ("connected", "partial")
-                                             else "watch_connect"))
+        self._connect_button.setText(i18n.tr("watch_reconnect" if status in ("connected", *_HALF) else "watch_connect"))
         self._connect_button.setEnabled(status != "broken")
-        self._disconnect_button.setEnabled(status in ("connected", "partial"))
+        self._disconnect_button.setEnabled(status in ("connected", *_HALF))
 
     # ---------- 内部 ----------
 

@@ -88,7 +88,7 @@ def main():
 
     connect_mail(mail, pet, machine, history, quiet)
     connect_assistant(pet, machine)
-    watch = connect_watch(app, pet)
+    watch = connect_watch(app, pet, machine)
 
     app.aboutToQuit.connect(lambda: pet.close_assistant(wait=True))   # 退出前关掉助手子进程（等它真的退出）
     app.aboutToQuit.connect(keyboard.stop)       # 退出前停止键盘监听
@@ -128,14 +128,19 @@ def connect_assistant(pet, machine):
     pet.assistant_listening_changed.connect(machine.set_listening)   # 按住快捷键说话（阶段 7）
 
 
-def connect_watch(app, pet):
-    """旁观模式（阶段 8）：开本机通道收你自己的 Claude Code 的 hook（没连接时也开着，几乎不占东西），收到就提醒你。
-    和助手模式无关（不 import 助手的代码）。返回一个有 close() 的对象（退出时关掉）。"""
+def connect_watch(app, pet, machine=None):
+    """旁观模式（阶段 8）：开本机通道收你自己的 Claude Code 的 hook（没连接时也开着，几乎不占东西），收到就提醒你；
+    8.6a 起芸芸还跟着它换样子（machine：状态机）。和助手模式无关（不 import 助手的代码）。返回一个有 close() 的对象（退出时关掉）。"""
+    from yunyun.pet.watch_activity import WatchActivity
     from yunyun.pet.watch_reminder import WatchReminder
     from yunyun.watch.server import WatchServer
     server = WatchServer(parent=app)
     reminder = WatchReminder(pet)
+    activity = WatchActivity(app)
+    server.event_received.connect(activity.on_event)   # 先换样子再提醒：做完时先不忙了，再冒"做完了"的气泡
     server.event_received.connect(reminder.on_event)
+    if machine is not None:
+        activity.activity_changed.connect(machine.set_watch)
     pet.watch_reminder = reminder   # 设置 → 旁观的"发一条测试提醒"用
 
     class Watch:

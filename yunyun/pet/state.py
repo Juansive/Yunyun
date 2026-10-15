@@ -19,6 +19,8 @@
     （睡着时说话会醒来，说完再睡）；助手在想 / 干活 / 等确认时不变。说话时来了新邮件不激动、打字也不打断。
     出声说话（阶段 7，reason="voice"）：比"助手在想 / 写回答"优先（边写边说时嘴要动），但不盖过 在干活 / 等你确认。
     在听 LISTENING（阶段 7，set_listening）：你按着快捷键说话时，什么都比不过它（这时芸芸只在听你说）。
+    你自己的 Claude Code（8.6a，set_watch）：它在干活 = 在干活 BUSY、要你批准 = 等你确认 WAITING，和助手的合在一起算
+    （谁在等你都是等待，然后才是在干活）。
 
     免打扰时段里，"休息"的样子从 待机 IDLE 换成 睡觉 SLEEPING：
     睡觉 SLEEPING ── 敲键盘 ──▶ 工作（醒来陪你打字）── 一段时间没敲 ──▶ 又睡着
@@ -63,6 +65,7 @@ class StateMachine(QObject):
         self._quiet = False  # 是否在免打扰时段
         self._thinking = set()  # 芸芸在想哪些事（"mail" / "assistant"）
         self._assistant = ""    # 助手在做什么（"" / "thinking" / "busy" / "waiting"，见 set_assistant）
+        self._watch = ""        # 你自己的 Claude Code 在做什么（"" / "busy" / "waiting"，见 set_watch）
         self._talking = set()   # 为什么在说话："bubble" 头顶有气泡、"voice" 在出声（见 set_talking）
         self._listening = False  # 在听你说话（见 set_listening）
 
@@ -129,6 +132,11 @@ class StateMachine(QObject):
         self._assistant = activity if activity in _ASSISTANT_STATES else ""
         self._refresh()
 
+    def set_watch(self, activity):
+        """你自己的 Claude Code 在做什么（8.6a，pet/watch_activity.py）："" 没事、"busy" 在干活、"waiting" 等你批准 / 选。"""
+        self._watch = activity if activity in ("busy", "waiting") else ""
+        self._refresh()
+
     def set_talking(self, talking, reason="bubble"):
         """头顶有没有气泡（reason="bubble"，BubbleStack.speaking_changed）/ 在不在出声（"voice"，语音阶段 7）。"""
         if talking:
@@ -146,8 +154,11 @@ class StateMachine(QObject):
         """助手和邮件处理占着的样子（在听 > 等你确认 > 在干活 > 出声说话 > 思考）；都没有就是 None。"""
         if self._listening:
             return PetState.LISTENING
-        if self._assistant in ("waiting", "busy"):
-            return _ASSISTANT_STATES[self._assistant]
+        doing = (self._assistant, self._watch)
+        if "waiting" in doing:
+            return PetState.WAITING
+        if "busy" in doing:
+            return PetState.BUSY
         if "voice" in self._talking:
             return PetState.TALKING
         if self._thinking or self._assistant == "thinking":

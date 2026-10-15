@@ -19,18 +19,21 @@ RELAY = os.path.abspath(relay.__file__)
 # ---------- hook 脚本：要发什么 ----------
 
 def test_stop_and_notifications_become_messages():
-    stop = relay.message_from({"hook_event_name": "Stop", "cwd": "F:\\code\\proj",
+    stop = relay.message_from({"hook_event_name": "Stop", "cwd": "F:\\code\\proj", "session_id": "s1",
                                "last_assistant_message": "\n## **改好了**：测试都过了。\n\n下面是细节……"})
-    assert stop == {"event": "stop", "cwd": "F:\\code\\proj", "text": "改好了：测试都过了。"}   # 第一句，去掉 Markdown
+    assert stop == {"event": "stop", "session": "s1", "cwd": "F:\\code\\proj", "text": "改好了：测试都过了。",   # 第一句，去掉 Markdown
+                    "reply": True}                                                                   # 等芸芸回话（8.6d 接着说）
     ask = relay.message_from({"hook_event_name": "Notification", "notification_type": "permission_prompt",
                               "message": "Claude needs your permission to use Bash", "cwd": "F:\\code\\proj"})
-    assert ask["event"] == "permission" and ask["text"] == "Claude needs your permission to use Bash"
+    assert ask["event"] == "permission" and ask["text"] == "Claude needs your permission to use Bash" and "reply" not in ask
     choice = relay.message_from({"hook_event_name": "Notification", "notification_type": "elicitation_dialog"})
     assert choice["event"] == "choice"
+    idle = relay.message_from({"hook_event_name": "Notification", "notification_type": "idle_prompt"})
+    assert idle["event"] == "idle"                                       # 闲着：不提醒，只是不忙了（8.6a）
 
 
 @pytest.mark.parametrize("hook", [
-    {"hook_event_name": "Notification", "notification_type": "idle_prompt"},   # 用户定的：等你回话不提醒
+    {"hook_event_name": "Notification", "notification_type": "auth_success"},
     {"hook_event_name": "PreToolUse"},
     {},
 ])
@@ -99,33 +102,56 @@ def mine(command="echo hi"):
     return {"type": "command", "command": command}
 
 
-def test_connect_adds_two_hooks_keeps_everything_else_and_backs_up(tmp_path):
+RELAY_CMD = ("C:/Program Files/芸芸/芸芸.exe", ["--watch-relay"])   # 路径里有空格、中文：写成"程序 + 参数"就不怕
+
+
+def test_connect_adds_our_hooks_keeps_everything_else_and_backs_up(tmp_path):
     path = tmp_path / "settings.json"
     original = {"model": "opus", "hooks": {"Stop": [{"hooks": [mine("say done")]}],
                                            "PreToolUse": [{"matcher": "Bash", "hooks": [mine()]}]}}
     path.write_text(json.dumps(original), encoding="utf-8")
-    backup = watch_hooks.connect(path, command='"py" "x/watch/relay.py"')
+    backup = watch_hooks.connect(path, command=RELAY_CMD)
     assert json.loads(backup.read_text(encoding="utf-8")) == original           # 先备份了原样
     data = json.loads(path.read_text(encoding="utf-8"))
     assert data["model"] == "opus" and data["hooks"]["PreToolUse"] == original["hooks"]["PreToolUse"]
     assert data["hooks"]["Stop"][0] == {"hooks": [mine("say done")]}           # 你自己的 Stop hook 还在
-    assert data["hooks"]["Stop"][1]["hooks"][0]["command"] == '"py" "x/watch/relay.py"'
-    assert data["hooks"]["Notification"][0]["matcher"] == "permission_prompt|elicitation_dialog"
-    assert watch_hooks.status(path) == "connected"
+    stop = data["hooks"]["Stop"][1]["hooks"][0]
+    assert stop == {"type": "command", "command": "C:/Program Files/芸芸/芸芸.exe", "args": ["--watch-relay"], "timeout": 90}
+    assert data["hooks"]["Notification"][0]["matcher"] == "permission_prompt|elicitation_dialog|idle_prompt"
+    assert set(data["hooks"]) == {"Stop", "PreToolUse", *watch_hooks.EVENTS}  # 8.6a：开始干活、批准、出错……都接上了
+    background = {event for event, groups in data["hooks"].items() for g in groups for h in g["hooks"] if h.get("async")}
+    assert background == {"UserPromptSubmit", "PostToolUse", "Notification", "StopFailure", "SessionEnd"}   # 只换样子的在后台跑
+    assert data["hooks"]["PermissionRequest"][0]["hooks"][0]["timeout"] == 600  # 等你在芸芸这边批准（8.6b）
+    assert watch_hooks.status(path, RELAY_CMD) == "connected"
 
 
 def test_connecting_twice_does_not_duplicate(tmp_path):
     path = tmp_path / "settings.json"
-    watch_hooks.connect(path, command="old --watch-relay")
-    watch_hooks.connect(path, command="new --watch-relay")                     # 芸芸挪了位置：换成新命令
+    watch_hooks.connect(path, command=("old/芸芸.exe", ["--watch-relay"]))
+    watch_hooks.connect(path, command=RELAY_CMD)                                # 芸芸挪了位置：换成新命令
     stop = json.loads(path.read_text(encoding="utf-8"))["hooks"]["Stop"]
-    assert [h["command"] for g in stop for h in g["hooks"]] == ["new --watch-relay"]
+    assert [h["command"] for g in stop for h in g["hooks"]] == [RELAY_CMD[0]]
+    assert watch_hooks.status(path, ("old/芸芸.exe", ["--watch-relay"])) == "outdated"   # 芸芸挪了位置：要重新连接
+
+
+def test_old_two_hook_connection_is_outdated(tmp_path):
+    """阶段 8 的老连接：只有两条，而且是一整句命令（新版 Claude Code 交给 PowerShell 解释，那种写法跑不起来）。"""
+    path = tmp_path / "settings.json"
+    old = {"type": "command", "command": '"F:/芸芸/芸芸.exe" --watch-relay', "timeout": 10}
+    path.write_text(json.dumps({"hooks": {"Stop": [{"hooks": [old]}],
+                                          "Notification": [{"matcher": "permission_prompt|elicitation_dialog",
+                                                            "hooks": [old]}]}}), encoding="utf-8")
+    assert watch_hooks.status(path, RELAY_CMD) == "outdated"
+    watch_hooks.connect(path, command=RELAY_CMD)                                # 重新连接：老的两条换成新的
+    assert watch_hooks.status(path, RELAY_CMD) == "connected"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    assert sum(len(g["hooks"]) for g in data["hooks"]["Stop"]) == 1
 
 
 def test_disconnect_removes_only_ours(tmp_path):
     path = tmp_path / "settings.json"
     path.write_text(json.dumps({"hooks": {"Stop": [{"hooks": [mine("say done")]}]}}), encoding="utf-8")
-    watch_hooks.connect(path, command="x --watch-relay")
+    watch_hooks.connect(path, command=RELAY_CMD)
     assert watch_hooks.disconnect(path) is not None
     assert json.loads(path.read_text(encoding="utf-8")) == {"hooks": {"Stop": [{"hooks": [mine("say done")]}]}}
     assert watch_hooks.status(path) == "disconnected"
@@ -134,7 +160,7 @@ def test_disconnect_removes_only_ours(tmp_path):
 
 def test_missing_settings_file_is_created_and_cleaned_up(tmp_path):
     path = tmp_path / ".claude" / "settings.json"
-    assert watch_hooks.connect(path, command="x --watch-relay") is None          # 原来没有文件：不用备份
+    assert watch_hooks.connect(path, command=RELAY_CMD) is None                  # 原来没有文件：不用备份
     watch_hooks.disconnect(path)
     assert json.loads(path.read_text(encoding="utf-8")) == {}                    # 只剩一个空的设置
 
@@ -143,23 +169,25 @@ def test_broken_settings_are_never_touched(tmp_path):
     path = tmp_path / "settings.json"
     path.write_text("{ 这不是 JSON", encoding="utf-8")
     with pytest.raises(watch_hooks.HooksError) as error:
-        watch_hooks.connect(path, command="x --watch-relay")
+        watch_hooks.connect(path, command=RELAY_CMD)
     assert error.value.kind == "broken" and path.read_text(encoding="utf-8") == "{ 这不是 JSON"
     assert watch_hooks.status(path) == "broken" and list(tmp_path.iterdir()) == [path]   # 也没留下备份
 
 
 def test_partial_when_one_hook_was_removed_by_hand(tmp_path):
     path = tmp_path / "settings.json"
-    watch_hooks.connect(path, command="x --watch-relay")
+    watch_hooks.connect(path, command=RELAY_CMD)
     data = json.loads(path.read_text(encoding="utf-8"))
     del data["hooks"]["Notification"]
     path.write_text(json.dumps(data), encoding="utf-8")
-    assert watch_hooks.status(path) == "partial"
+    assert watch_hooks.status(path, RELAY_CMD) == "partial"
 
 
 def test_dev_relay_command_points_at_the_script():
-    command = watch_hooks.relay_command()
-    assert watch_hooks.is_ours(command) and "\\" not in command and command.count('"') == 4
+    program, args = watch_hooks.relay_command()
+    entry = {"type": "command", "command": program, "args": args}
+    assert watch_hooks.is_ours(entry) and "\\" not in program + args[0] and args[0].endswith("yunyun/watch/relay.py")
+    assert not watch_hooks.is_ours(mine("say done"))
 
 
 # ---------- 提醒（pet/watch_reminder.py） ----------

@@ -26,7 +26,7 @@ Turn on Assistant mode and she can also chat, look things up, edit code, look at
 - **Nothing gets lost**: reminders you've seen are kept for 7 days.
 - **Never touches your mailbox**: emails Yunyun reads stay "unread" in your mailbox.
 - **AI assistant** (since 0.6, Full edition only): right-click → "✦ Assistant mode", using your own DeepSeek / Claude API key (pay as you go). See [Assistant mode](#assistant-mode).
-- **Watch mode**: when you use Claude Code yourself, Yunyun lets you know when it finishes or needs your approval.
+- **Watch mode**: when you use Claude Code yourself, Yunyun follows along (busy while it works, waiting while it needs you) and lets you know when it finishes or needs your approval.
 - UI in English, 中文 and 日本語 (right-click → Settings… → General → Language).
 
 ## Download and install
@@ -161,12 +161,13 @@ Her "brain" is Claude (Anthropic) by default, or the cheaper **DeepSeek**. **Bot
 
 When you use Claude Code yourself in a terminal, VS Code or the Claude desktop app, Yunyun can watch it for you: when it **finishes a turn, waits for your permission, or asks you to pick an option**,
 Yunyun tells you ("Claude Code is done · project name", with its first sentence below). **She stays quiet if you're already looking at that window**; if Yunyun is covered by other windows,
-a small bar pops up above the taskbar — click it to switch to Claude Code. No need to open Assistant mode, and it works in both editions.
+a small bar pops up above the taskbar — click it to switch to Claude Code. Yunyun also **follows along**: she looks busy while Claude Code works and waits with you while it needs your permission. No need to open Assistant mode, and it works in both editions.
 
-- Turn it on: Settings → "Watch" → "Connect my Claude Code". This adds two hooks to `C:\Users\you\.claude\settings.json`
-  (they run Yunyun's tiny script when Claude Code finishes or waits for you — it takes a few dozen milliseconds and does nothing if Yunyun isn't running). The file is backed up in the same folder first; your own hooks and other settings are left alone.
+- Turn it on: Settings → "Watch" → "Connect my Claude Code". This adds a few hooks to `C:\Users\you\.claude\settings.json`
+  (they run Yunyun's tiny script when Claude Code starts working, needs you or finishes — a few dozen milliseconds, the ones that only change her look run in the background, and nothing happens if Yunyun isn't running). The file is backed up in the same folder first; your own hooks and other settings are left alone.
 - Claude Code windows that are already open need to be restarted. Click "Send a test reminder" to see what it looks like.
-- Don't want it any more? "Disconnect" removes only Yunyun's two hooks.
+- Used Watch mode before? If the page says to reconnect, click "Reconnect" once (newer Claude Code runs hooks through PowerShell, and the old connection may not remind you at all).
+- Don't want it any more? "Disconnect" removes only Yunyun's hooks.
 
 ## Privacy
 

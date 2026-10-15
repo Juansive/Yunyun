@@ -1,8 +1,13 @@
 """在你自己的 Claude Code 设置（~/.claude/settings.json）里加 / 删芸芸的 hook（阶段 8，设置 → 旁观）。
 
-加的两个 hook 都是运行 relay.py（开发版：pythonw relay.py；打包版：芸芸.exe --watch-relay）：
-- Stop：做完一轮；
-- Notification，matcher = permission_prompt|elicitation_dialog：等你确认 / 让你选。
+加的 hook 都是运行 relay.py（开发版：pythonw relay.py；打包版：芸芸.exe --watch-relay），事件见 EVENTS：
+- 阶段 8：Stop 做完一轮；Notification 等你确认 / 让你选（还有"闲着"：被打断时靠它知道不忙了）；
+- 8.6a（2026-10-16）芸芸跟着换样子：UserPromptSubmit 开始干活、PostToolUse 用完一个工具（批准完接着干）、PermissionRequest 要你批准、
+  StopFailure 出错停下、SessionEnd 会话结束。只用来换样子的放在后台跑（"async"），一点都不拖慢 Claude Code。
+- **写成"程序 + 参数"**（"command" 是程序路径、"args" 是参数，Claude Code 2.1.139 起）：不经过命令行解释，
+  路径里有空格、中文都没事。10-16 实测：Windows 上 hook 的命令现在是交给 PowerShell 解释的，以前那种
+  `"路径" --watch-relay` 在 PowerShell 里是语法错误，hook 根本跑不起来（旧的连接在设置页显示"要重新连接"）。
+  老版本不认 "args"、只运行程序：芸芸.exe 不带参数、标准输入是管道时也当 hook 处理（tools/exe_entry.py），不会开出一个芸芸。
 
 规矩（改的是你自己的设置，要格外小心）：
 - 改之前**先备份**整个文件（settings.json.yunyun-<时间>.bak，放在旁边）；设置页点"连接"前会先问你；
@@ -22,8 +27,16 @@ from yunyun.paths import resource_path
 
 log = logging.getLogger(__name__)
 
-NOTIFICATION_MATCHER = "permission_prompt|elicitation_dialog"
-TIMEOUT_S = 10            # hook 最多跑多久（relay 正常几十毫秒就完）
+NOTIFICATION_MATCHER = "permission_prompt|elicitation_dialog|idle_prompt"
+EVENTS = {   # 事件 → (matcher, 最多跑几秒, 后台跑)。要等芸芸回话的两个比 relay.REPLY_EVENTS 长一点；别的 relay 几十毫秒就完
+    "UserPromptSubmit": (None, 10, True),
+    "PostToolUse": (None, 10, True),
+    "PermissionRequest": (None, 600, False),
+    "Notification": (NOTIFICATION_MATCHER, 10, True),
+    "Stop": (None, 90, False),
+    "StopFailure": (None, 10, True),
+    "SessionEnd": (None, 10, True),
+}
 OURS = ("watch/relay.py", "--watch-relay")   # 命令里有这些 = 芸芸加的
 
 
@@ -40,18 +53,27 @@ def settings_path():
 
 
 def relay_command():
-    """hook 要运行的命令（路径用正斜杠：Git Bash、cmd 都认）。"""
+    """hook 要运行的 (程序, 参数)（路径用正斜杠）。"""
     if getattr(sys, "frozen", False):   # 打包版：芸芸.exe --watch-relay（tools/exe_entry.py 一开始就分流，不 import Qt）
-        return f'"{Path(sys.executable).as_posix()}" --watch-relay'
+        return Path(sys.executable).as_posix(), ["--watch-relay"]
     python = Path(sys.executable)
     pythonw = python.with_name("pythonw.exe")   # 不弹黑窗口
-    script = resource_path("yunyun", "watch", "relay.py")
-    return f'"{(pythonw if pythonw.exists() else python).as_posix()}" "{script.as_posix()}"'
+    return (pythonw if pythonw.exists() else python).as_posix(), [resource_path("yunyun", "watch", "relay.py").as_posix()]
 
 
-def is_ours(command):
-    command = str(command or "").replace("\\", "/")
+def is_ours(entry):
+    """一条 hook（或者它的命令）是不是芸芸加的。"""
+    if isinstance(entry, dict):
+        args = entry.get("args") if isinstance(entry.get("args"), list) else []
+        entry = " ".join(str(part) for part in [entry.get("command"), *args])
+    command = str(entry or "").replace("\\", "/")
     return any(mark in command for mark in OURS)
+
+
+def _current(entry, command):
+    """芸芸的这条是不是现在这个样子（程序 + 参数，命令对得上）。"""
+    program, args = command
+    return entry.get("command") == program and entry.get("args") == args
 
 
 def _load(path):
@@ -100,7 +122,7 @@ def _without_ours(hooks):
             if not isinstance(inner, list):
                 kept_groups.append(group)
                 continue
-            kept = [h for h in inner if not (isinstance(h, dict) and is_ours(h.get("command")))]
+            kept = [h for h in inner if not (isinstance(h, dict) and is_ours(h))]
             removed += len(inner) - len(kept)
             if kept:
                 kept_groups.append({**group, "hooks": kept})
@@ -109,30 +131,39 @@ def _without_ours(hooks):
     return cleaned, removed
 
 
-def status(path=None):
-    """"connected"（两个都在）/ "partial"（只剩一个，比如你手动删过）/ "disconnected" / "broken"（设置文件看不懂）。"""
+def status(path=None, command=None):
+    """"connected"（都在、都是现在的样子）/ "outdated"（芸芸更新过：比如以前只连了两个、或者是老写法，要重新连接一下）/
+    "partial"（少了几个，比如你手动删过）/ "disconnected" / "broken"（设置文件看不懂）。"""
     try:
         hooks = _load(path or settings_path()).get("hooks", {})
     except HooksError as e:
         return "broken" if e.kind == "broken" else "disconnected"
-    found = {event for event, groups in hooks.items() if isinstance(groups, list)
+    command = command or relay_command()
+    found = {(event, _current(h, command)) for event, groups in hooks.items() if isinstance(groups, list)
              for group in groups if isinstance(group, dict) and isinstance(group.get("hooks"), list)
-             for h in group["hooks"] if isinstance(h, dict) and is_ours(h.get("command"))}
-    if {"Stop", "Notification"} <= found:
+             for h in group["hooks"] if isinstance(h, dict) and is_ours(h)}
+    if not found:
+        return "disconnected"
+    if found == {(event, True) for event in EVENTS}:
         return "connected"
-    return "partial" if found else "disconnected"
+    if any(not current for _, current in found) or {"Stop", "Notification"} <= {event for event, _ in found}:
+        return "outdated"   # 老写法，或者阶段 8 那两个都在、只是缺了 8.6 加的
+    return "partial"
 
 
 def connect(path=None, command=None):
-    """加上芸芸的两个 hook（已经有了就换成新的命令：比如芸芸挪了位置）。返回备份文件的路径（原来没有设置文件是 None）。"""
+    """加上芸芸的 hook（已经有了就换成新的：比如芸芸挪了位置、更新过）。返回备份文件的路径（原来没有设置文件是 None）。
+    command：(程序, 参数)，不给就是 relay_command()。"""
     path = path or settings_path()
     data = _load(path)
-    command = command or relay_command()
+    program, args = command or relay_command()
     backup = _backup(path)
     hooks, _ = _without_ours(data.get("hooks", {}))
-    entry = {"type": "command", "command": command, "timeout": TIMEOUT_S}
-    hooks.setdefault("Stop", []).append({"hooks": [dict(entry)]})
-    hooks.setdefault("Notification", []).append({"matcher": NOTIFICATION_MATCHER, "hooks": [dict(entry)]})
+    for event, (matcher, timeout, background) in EVENTS.items():
+        entry = {"type": "command", "command": program, "args": list(args), "timeout": timeout}
+        if background:
+            entry["async"] = True
+        hooks.setdefault(event, []).append({"matcher": matcher, "hooks": [entry]} if matcher else {"hooks": [entry]})
     data["hooks"] = hooks
     try:
         _save(path, data)

@@ -1,10 +1,14 @@
-"""旁观模式（阶段 8）的 hook 脚本：你自己用的 Claude Code 做完一轮 / 等你确认时运行它，把这件事告诉芸芸。
+"""旁观模式（阶段 8）的 hook 脚本：你自己用的 Claude Code 发生了什么（开始干活、等你确认、做完……）就运行它，告诉芸芸。
 
     Claude Code ──(hook 输入 JSON，标准输入)──▶ relay.py ──(一行 JSON，命名管道)──▶ 芸芸（yunyun/watch/server.py）
+                ◀──(hook 输出，标准输出)───── relay.py ◀──(一行 JSON 回话)──────── 芸芸（只有 REPLY_EVENTS 才等）
 
 - **只用标准库**：每次 hook 都要启动一次，要快；开发版直接当脚本跑（pythonw relay.py），打包版是 芸芸.exe --watch-relay；
-- 芸芸没开（管道不在）：悄悄退出。**标准输出什么都不写**、退出码一律 0——Stop hook 的输出会被 Claude Code 当成指令；
-- 发给芸芸的：事件（stop / permission / choice）、工作目录、一句话（最后回答的第一句 / 通知的提示，最多 MAX_TEXT 字）、
+- 芸芸没开（管道不在）、没回话、回得太慢：悄悄放行（退出码一律 0、标准输出不写）——**绝不卡住 Claude Code**；
+- 8.6（2026-10-16）"芸芸当 Claude Code 的脸"：多接了几个事件（开始干活、用完一个工具、要你批准、出错停下、会话结束、闲着）
+  让芸芸跟着换样子；"要你批准"和"做完"要等芸芸回话（芸芸能替你批准 / 让它接着干，见 hook_output），
+  回话只认那几种样子，别的一律不写——Stop / PermissionRequest hook 的输出 Claude Code 会照着做；
+- 发给芸芸的：事件、会话编号、工作目录、一句话（最后回答的第一句 / 通知的提示，最多 MAX_TEXT 字）、要提醒的事再加
   祖先进程编号和控制台窗口（芸芸据此判断你是不是正看着 Claude Code 的窗口，点提醒时切过去）。不写日志内容。
 """
 import ctypes
@@ -19,7 +23,14 @@ from ctypes import wintypes
 PIPE_NAME = f"yunyun-watch-{getpass.getuser()}"   # 芸芸那边 QLocalServer 的名字（只有当前用户能连）
 MAX_TEXT = 200
 MAX_ANCESTORS = 12
-NOTIFICATIONS = {"permission_prompt": "permission", "elicitation_dialog": "choice"}   # 要提醒的通知种类 → 事件
+NOTIFICATIONS = {"permission_prompt": "permission", "elicitation_dialog": "choice",   # 通知种类 → 事件
+                 "idle_prompt": "idle"}   # 闲着等你（被你按 Esc 打断时不会有 Stop，靠它知道不忙了；不提醒）
+HOOK_EVENTS = {"UserPromptSubmit": "busy", "PostToolUse": "busy",   # hook 事件 → 发给芸芸的事件（Stop、Notification 另算）
+               "PermissionRequest": "approval", "StopFailure": "failed", "SessionEnd": "end"}
+REPLY_EVENTS = {"approval": 590, "stop": 60}   # 要等芸芸回话的事件 → 最多等几秒（比 hooks.py 里给它的超时短）
+REMIND_EVENTS = ("stop", "permission", "choice")   # 要提醒你的（才查祖先进程、控制台窗口）
+MAX_REPLY = 8192
+POLL_S = 0.02
 
 
 def pipe_path(name):
@@ -37,15 +48,40 @@ def first_line(text):
 
 
 def message_from(hook):
-    """hook 的输入 → 要发给芸芸的事（不用提醒的返回 None）。"""
+    """hook 的输入 → 要发给芸芸的事（芸芸不关心的返回 None）。"""
     name = hook.get("hook_event_name")
     if name == "Stop":
         event, text = "stop", first_line(hook.get("last_assistant_message"))
     elif name == "Notification" and hook.get("notification_type") in NOTIFICATIONS:
         event, text = NOTIFICATIONS[hook["notification_type"]], first_line(hook.get("message"))
+    elif name in HOOK_EVENTS:
+        event, text = HOOK_EVENTS[name], ""
     else:
         return None
-    return {"event": event, "cwd": str(hook.get("cwd") or ""), "text": text}
+    message = {"event": event, "session": str(hook.get("session_id") or "")[:100], "cwd": str(hook.get("cwd") or ""),
+               "text": text}
+    if event == "approval":
+        message["tool"] = str(hook.get("tool_name") or "")[:100]
+    if event in REPLY_EVENTS:
+        message["reply"] = True
+    return message
+
+
+def hook_output(event, reply):
+    """芸芸的回话 → 给 Claude Code 的 hook 输出（不是认得的样子就是 None：什么都不写，照常进行）。
+    approval：{"behavior": "allow" / "deny", "message": 拒绝的理由} → 替你批准 / 拒绝（它自己的确认框随之消失）；
+    stop：{"decision": "block", "reason": 你接着说的话} → 它不停下、照着这句接着干（界面上是"Hook 已重新提示 Claude"）。"""
+    if not isinstance(reply, dict):
+        return None
+    if event == "approval" and reply.get("behavior") in ("allow", "deny"):
+        decision = {"behavior": reply["behavior"]}
+        if reply["behavior"] == "deny" and isinstance(reply.get("message"), str):
+            decision["message"] = reply["message"][:MAX_REPLY]
+        return {"hookSpecificOutput": {"hookEventName": "PermissionRequest", "decision": decision}}
+    reason = reply.get("reason")
+    if event == "stop" and reply.get("decision") == "block" and isinstance(reason, str) and reason.strip():
+        return {"decision": "block", "reason": reason[:MAX_REPLY]}
+    return None
 
 
 # ---------- 祖先进程（芸芸据此找 Claude Code 所在的窗口） ----------
@@ -113,9 +149,39 @@ def read_stdin():
         chunks.append(chunk)
 
 
-def send(message, name):
-    with open(pipe_path(name), "wb", buffering=0) as pipe:
+def send(message, name, wait=0):
+    """发一行给芸芸；wait > 0：再等芸芸回一行（最多 wait 秒），返回解开的 JSON（没回 / 断了 / 看不懂是 None）。"""
+    with open(pipe_path(name), "r+b", buffering=0) as pipe:
         pipe.write((json.dumps(message, ensure_ascii=False) + "\n").encode("utf-8"))
+        line = _receive(pipe, wait) if wait else None
+    try:
+        return json.loads(line) if line else None
+    except ValueError:
+        return None
+
+
+def _receive(pipe, timeout):
+    """等芸芸回的一行。用 PeekNamedPipe 看有没有字再读（直接读会一直卡着，超时也停不下来）；芸芸关了 / 断开就不等了。"""
+    import msvcrt
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.PeekNamedPipe.argtypes = [wintypes.HANDLE, ctypes.c_void_p, wintypes.DWORD, ctypes.c_void_p,
+                                       ctypes.POINTER(wintypes.DWORD), ctypes.c_void_p]
+    kernel32.PeekNamedPipe.restype = wintypes.BOOL
+    handle = msvcrt.get_osfhandle(pipe.fileno())
+    available, data = wintypes.DWORD(), b""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if not kernel32.PeekNamedPipe(handle, None, 0, None, ctypes.byref(available), None):
+            return None   # 芸芸那头断开了
+        if not available.value:
+            time.sleep(POLL_S)
+            continue
+        data += pipe.read(available.value)
+        if b"\n" in data:
+            return data.split(b"\n", 1)[0]
+        if len(data) > MAX_REPLY:
+            return None
+    return None
 
 
 def _note_problem(problem):
@@ -133,9 +199,13 @@ def main():
         hook = json.loads(read_stdin() or b"{}")
         message = message_from(hook) if isinstance(hook, dict) else None
         if message:
-            message["ancestors"] = ancestors(os.getpid())
-            message["console"] = console_window()
-            send(message, os.environ.get("YUNYUN_WATCH_PIPE") or PIPE_NAME)
+            if message["event"] in REMIND_EVENTS:
+                message["ancestors"] = ancestors(os.getpid())
+                message["console"] = console_window()
+            reply = send(message, os.environ.get("YUNYUN_WATCH_PIPE") or PIPE_NAME, REPLY_EVENTS.get(message["event"], 0))
+            output = hook_output(message["event"], reply)
+            if output:   # 写底层描述符：pythonw 下 sys.stdout 是 None
+                os.write(1, json.dumps(output, ensure_ascii=False).encode("utf-8"))
     except FileNotFoundError:   # 芸芸没开：正常，悄悄退出
         pass
     except (OSError, ValueError) as e:
