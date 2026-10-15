@@ -30,6 +30,7 @@ from yunyun.pet.notebook_page import NotebookPage
 from yunyun.pet.reminders_page import RemindersPage
 from yunyun.pet.voice_page import VoicePage
 from yunyun.pet.watch_page import WatchPage
+from yunyun.pet import sound
 from yunyun.pet.bubble import animate
 from yunyun.pet.frame import FramedDialog
 from yunyun.pet.theme import SETTINGS_STYLE, Sidebar, Toggle
@@ -230,10 +231,22 @@ class GeneralPage(QWidget):
 
         self._on_top = Toggle(tr("menu_always_on_top"))
         self._autostart = Toggle(tr("menu_autostart"))
-        self._bounce_sound = Toggle(tr("setting_bounce_sound"))   # 双击芸芸弹两下时"啵啵"（2026-10-16）
         form.addRow(self._on_top)
         form.addRow(self._autostart)
-        form.addRow(self._bounce_sound)
+        # 双击芸芸时出声：[开关] [哔哔 ▾] [试听]（2026-10-16；除了自带的"哔哔"，都是选了才下载的 meme 音效，见 pet/sound.py）
+        self._bounce_sound = Toggle(tr("setting_bounce_sound"))
+        self._sound_choice = QComboBox()
+        self._sound_preview = QPushButton(tr("sound_preview"))
+        sound_row = QHBoxLayout()
+        sound_row.addWidget(self._bounce_sound)
+        sound_row.addSpacing(6)
+        sound_row.addWidget(self._sound_choice)
+        sound_row.addWidget(self._sound_preview)
+        sound_row.addStretch()
+        self._sound_status = StatusLabel()
+        form.addRow(sound_row)
+        form.addRow(note(tr("sound_note")))
+        form.addRow(self._sound_status)
         self._auto_update = Toggle(tr("setting_auto_update"))   # 新版本提醒（pet.updates 可能是 None，比如测试里）
         self._auto_update.setToolTip(tr("setting_auto_update_tip"))
         if pet.updates is not None:
@@ -279,6 +292,9 @@ class GeneralPage(QWidget):
         self._on_top.toggled.connect(pet.set_always_on_top)
         self._autostart.toggled.connect(pet.set_autostart)
         self._bounce_sound.toggled.connect(pet.set_bounce_sound)
+        self._sound_choice.activated.connect(self._on_sound_chosen)
+        self._sound_preview.clicked.connect(lambda: sound.play(pet.bounce_sound_name))
+        sound.downloader().finished.connect(self._on_sound_downloaded)
         if pet.updates is not None:
             self._auto_update.toggled.connect(pet.updates.set_auto_check)
         self._shortcut_button.clicked.connect(pet.create_desktop_shortcut)
@@ -295,6 +311,7 @@ class GeneralPage(QWidget):
             (self._autostart, lambda: self._autostart.setChecked(shortcut.is_autostart_enabled())),
             (self._size, lambda: self._size.setValue(round(self._pet.scale * 100))),
             (self._bounce_sound, lambda: self._bounce_sound.setChecked(self._pet.bounce_sound)),
+            (self._sound_choice, self._fill_sounds),
         ]
         if self._pet.updates is not None:
             updates.append((self._auto_update, lambda: self._auto_update.setChecked(self._pet.updates.auto_check)))
@@ -311,6 +328,36 @@ class GeneralPage(QWidget):
         self._size_label.setText(f"{self._size.value()}%")
         if self._quiet is not None:
             self._update_quiet_enabled()
+
+    def _fill_sounds(self):
+        """音效的下拉框：还没下载的标上"选了再下载"，选中现在用的那个。"""
+        self._sound_choice.clear()
+        for name in sound.NAMES:
+            label = i18n.tr(f"sound_{name}")
+            self._sound_choice.addItem(label if sound.available(name) else i18n.tr("sound_needs_download").format(label), name)
+        self._sound_choice.setCurrentIndex(self._sound_choice.findData(self._pet.bounce_sound_name))
+
+    def _on_sound_chosen(self, index):
+        name = self._sound_choice.itemData(index)
+        if sound.available(name):
+            self._pet.set_bounce_sound_name(name)
+            self._sound_status.clear()
+            sound.play(name)   # 选了就放一下，听听是什么样
+            return
+        self._sound_choice.setEnabled(False)   # 下完（或者失败）再放开
+        self._sound_status.show_text(i18n.tr("sound_downloading").format(i18n.tr(f"sound_{name}")))
+        sound.downloader().start(name)
+
+    def _on_sound_downloaded(self, name, kind):
+        self._sound_choice.setEnabled(True)
+        if kind:
+            self._sound_status.show_text(i18n.tr("sound_failed_network" if kind == "network" else f"voice_model_failed_{kind}"),
+                                         error=True)
+        else:
+            self._pet.set_bounce_sound_name(name)
+            self._sound_status.clear()
+            sound.play(name)
+        self.refresh()   # 失败了：下拉框回到原来选的那个
 
     def _on_quiet_toggled(self, on):
         self._quiet.set_enabled(on)

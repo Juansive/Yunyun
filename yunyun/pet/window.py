@@ -35,7 +35,8 @@ _ANNOUNCED_VERSION_KEY = "update/announced"   # 已经说过的新版本号
 _POSITION_KEY = "window/position"
 _SCALE_KEY = "window/scale"   # 芸芸的大小（1.0 = 默认）
 _AI_OFFERED_KEY = "onboarding/ai_offered"  # 是否已经引导过"设置 AI"（只引导一次）
-_BOUNCE_SOUND_KEY = "pet/bounce_sound"     # 双击 / 一直点时"啵"一声（设置 → 通用，默认开）
+_BOUNCE_SOUND_KEY = "pet/bounce_sound"     # 双击时出声（设置 → 通用，默认开）
+_BOUNCE_SOUND_NAME_KEY = "pet/bounce_sound_name"   # 出什么声（pet/sound.py：自带的"哔哔"，或者下载的 meme 音效）
 
 
 def hop_shape(u, amp=1.0):
@@ -207,12 +208,13 @@ class PetWindow(QWidget):
         self._sway_clock = QElapsedTimer()   # 量两帧之间实际隔了多久（定时器不是绝对准时的）
         self._sway_timer = QTimer(self, interval=self.SWAY_TICK_MS, timeout=self._sway_tick)
 
-        # 双击弹两下、一直点一直弹：一下一下排着弹，每弹一下"啵"一声（sound.play）
+        # 双击弹两下、一直点一直弹：一下一下排着弹；每双击一下出一声（10-16 用户改的：以前每弹一下"啵"一声，太吵）
         self._hop = QVariantAnimation(self, startValue=0.0, endValue=1.0, duration=self.HOP_MS,
                                       valueChanged=lambda _: self.update(), finished=self._next_hop)
         self._hops = 0            # 还要弹几下
         self._hop_amp = 0.8       # 这一下弹多高（连着弹时高低错开一点，看着更活泼；第一下是高的那个）
         self._poking = False      # 双击以后接着点：每点一下多弹一下，不再做单击的事
+        self._pokes = 0           # 这一串连着点了几下：每两下（= 一次双击）出一声
         self._poke_clock = QElapsedTimer()   # 离上一次点隔了多久（超过系统的双击间隔就不算接着点了）
 
         self._task_done.connect(self._on_task_done)
@@ -725,7 +727,7 @@ class PetWindow(QWidget):
             moved = (event.globalPosition().toPoint() - self._press_pos).manhattanLength()
             if not self._dragging and moved < QApplication.startDragDistance():
                 if self._poking and self._poke_clock.elapsed() < QApplication.doubleClickInterval():
-                    self.bounce(1)             # 双击以后接着点：再弹一下（第一下已经做过单击的事了）
+                    self._poke(1)              # 双击以后接着点：再弹一下（第一下已经做过单击的事了）
                 elif self._assistant is not None:
                     self._poking = False
                     self._assistant.summon()   # 助手模式开着：左键 = 唤出输入框和卡片（2026-10-08 用户要求）
@@ -743,12 +745,22 @@ class PetWindow(QWidget):
     def mouseDoubleClickEvent(self, event):
         """双击（第一下已经照常做了单击的事）：弹两下；已经在弹（一直在点）就再多弹一下。"""
         if event.button() == Qt.MouseButton.LeftButton:
+            if not self._poking:
+                self._pokes = 1   # 第一下（单击）
             self._poking = True
             self._poke_clock.restart()
-            self.bounce(1 if self._hop.state() == QAbstractAnimation.State.Running else 2)
+            self._poke(1 if self._hop.state() == QAbstractAnimation.State.Running else 2)
+
+    def _poke(self, hops):
+        """连着点的又一下：多弹 hops 下；每两下出一声（不管 Qt 把哪一下算成"双击"）。"""
+        self._pokes += 1
+        self.bounce(hops)
+        quiet = self.quiet_hours is not None and self.quiet_hours.active
+        if self._pokes % 2 == 0 and self.bounce_sound and not quiet:   # 免打扰时段只弹不出声
+            sound.play(self.bounce_sound_name)
 
     def bounce(self, hops=1):
-        """再弹 hops 下（排着弹，最多攒 MAX_HOPS 下），每弹一下"啵"一声。"""
+        """再弹 hops 下（排着弹，最多攒 MAX_HOPS 下）。"""
         self._hops = min(self._hops + hops, self.MAX_HOPS)
         if self._hop.state() != QAbstractAnimation.State.Running:
             self._next_hop()
@@ -760,9 +772,6 @@ class PetWindow(QWidget):
         self._hops -= 1
         self._hop_amp = 0.8 if self._hop_amp == 1.0 else 1.0
         self._hop.start()
-        quiet = self.quiet_hours is not None and self.quiet_hours.active
-        if self.bounce_sound and not quiet:   # 免打扰时段只弹不出声
-            sound.play("bounce")
 
     @property
     def bounce_sound(self):
@@ -770,6 +779,15 @@ class PetWindow(QWidget):
 
     def set_bounce_sound(self, on):
         QSettings().setValue(_BOUNCE_SOUND_KEY, bool(on))
+
+    @property
+    def bounce_sound_name(self):
+        """选的音效；下载的被删了（或者没下完）就用自带的。"""
+        name = QSettings().value(_BOUNCE_SOUND_NAME_KEY, sound.BUNDLED, type=str)
+        return name if sound.available(name) else sound.BUNDLED
+
+    def set_bounce_sound_name(self, name):
+        QSettings().setValue(_BOUNCE_SOUND_NAME_KEY, name)
 
     def _begin_drag(self):
         """开始拖动：有"被拎起来"的图就换上（像拎小猫的后颈），没有就保持原来的画面。"""

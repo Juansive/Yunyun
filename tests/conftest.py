@@ -125,10 +125,11 @@ def no_real_assistant(monkeypatch, tmp_path):
         raise RuntimeError("测试里不许真的开浏览器（要测就用 tools/try_browser.py）")
     monkeypatch.setattr(browser, "start_playwright", no_browser)
     monkeypatch.setattr(browser, "PROFILE_DIR", tmp_path / "assistant_browser")
-    # 双击的"啵"（2026-10-16）：绝不真的出声，放过的记在 sound.played 里
+    # 双击的音效（2026-10-16）：绝不真的出声，放过的记在 sound.played 里；下载的音效在临时目录（下载本身见下面的 fetch）
     from yunyun.pet import sound
     played = []
     monkeypatch.setattr(sound, "_play_file", played.append)
+    monkeypatch.setattr(sound, "extra_dir", lambda: tmp_path / "sounds")
     monkeypatch.setattr(sound, "played", played, raising=False)
     # 电源和程序（11.6e）：绝不真的锁屏 / 睡眠 / 关机、不结束你真的程序（假的进程表 FAKE_PROCESSES；做过的记在 processes.done）
     from yunyun.assistant import processes
@@ -164,8 +165,9 @@ def no_real_assistant(monkeypatch, tmp_path):
     monkeypatch.setattr(models, "model_dir", lambda: tmp_path / "voice_model")
 
     def no_download(*args, **kwargs):
-        raise OSError("测试里不许真的下载模型")
-    monkeypatch.setattr(models, "_urlopen", no_download)
+        raise OSError("测试里不许真的下载（识别模型、双击的音效）")
+    from yunyun import fetch
+    monkeypatch.setattr(fetch, "_urlopen", no_download)
     hotkeys = {}
     monkeypatch.setattr(winapi, "register_hotkey", lambda hotkey_id, mods, vk: hotkeys.setdefault(hotkey_id, (mods, vk)) == (mods, vk))
     monkeypatch.setattr(winapi, "unregister_hotkey", lambda hotkey_id: hotkeys.pop(hotkey_id, None))

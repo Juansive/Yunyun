@@ -15,7 +15,7 @@ from PySide6.QtCore import QObject, Signal
 from fake_voice_process import factory
 from helpers import wait, wait_until
 from test_voice import FakePlayer, FakeRecorder, Lines, no_recognizer, speaker, until, voice_world  # noqa: F401（fixture）
-from yunyun import i18n
+from yunyun import fetch, i18n
 from yunyun.assistant import protocol as assistant_protocol
 from yunyun.pet import hotkey, winapi
 from yunyun.pet.assistant_mode import AssistantMode
@@ -107,7 +107,7 @@ def serve_from(monkeypatch, handler):
     def urlopen(request, timeout):
         calls.append(request.full_url)
         return handler(request.full_url)
-    monkeypatch.setattr(models, "_urlopen", urlopen)
+    monkeypatch.setattr(fetch, "_urlopen", urlopen)
     return calls
 
 

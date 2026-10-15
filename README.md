@@ -87,7 +87,7 @@ Once Yunyun appears, **right-click her → Settings… → General → Desktop s
 | Hide the badge for now | **Right-click** the badge; **right-click Yunyun** to bring it back |
 | Browse the cards | **Scroll** or use ↑↓; **click a card** to see the subject, sender and attachments. With two or more mailboxes, a small tag in the card's bottom-right corner shows which mailbox received it |
 | Close the cards | Click elsewhere, press Esc, or click the badge again |
-| Tease her | **Double-click** Yunyun: she squashes and bounces twice with a little "boing boing"; keep clicking and she keeps bouncing (silent during quiet hours; turn the sound off in Settings → General → "Sound when you double-click Yunyun") |
+| Tease her | **Double-click** Yunyun: she squashes and bounces twice with a little squeak; keep clicking and she keeps bouncing. Pick another sound (a few meme clips, downloaded only when you choose one) or turn it off in Settings → General → "Sound when you double-click Yunyun"; silent during quiet hours |
 | See the last batch again | Right-click Yunyun → **Recent Mail** |
 | Look through older reminders | Right-click → Settings… → **History** (last 7 days) |
 | Not be disturbed at night | Right-click → Settings… → General → **Do not disturb** (23:00–08:00 by default). Yunyun sleeps and new mail is just counted quietly; she wakes up when you type |
