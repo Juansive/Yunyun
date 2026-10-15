@@ -14,7 +14,9 @@
 
 可以下载的几段（不进压缩包，选了才下，放在仓库的 sounds/ 里）：B 站视频 BV1PAfEBgESk"250个meme音效合集（补档）"
 （上传者说免费可用），按画面上的编号切：172 man、174 曼波、175 公鸡下蛋、233 咕咕嘎嘎。
-CLIPS 里的时间是画面上编号换掉的时刻（秒），实测（本机语音识别对过"what can I say""你别笑"）和声音对得很准，切的时候只在前后 0.04 秒里找最安静的地方下刀；音量统一成和"哔哔"差不多。
+画面上编号换掉的时刻和声音大致对得上（本机语音识别对过"what can I say""你别笑"），但有几段的结尾混进了别的声音
+（用户听出了曼波、man 的），所以 CLIPS 里是逐段看音高和频谱定下来的时间（秒）。开头干脆利落地进（用户说可以），
+结尾 80 毫秒慢慢淡出（用户说"戛然而止，像被斩首"）；音量统一成和"哔哔"差不多。
 """
 import math
 import random
@@ -35,14 +37,14 @@ VARIANTS = {
 }
 CHOSEN = "D"
 LEAD_S = 0.01   # 开头留一点点（播放器刚打开时会吞掉最开头）
-CLIPS = {   # 名字：(编号, 画面上的名字, 开始, 结束)
-    "man": (172, "man", 349.24, 350.08),
-    "manbo": (174, "曼波", 351.85, 352.32),   # 结尾不按画面：公鸡下蛋 352.37 秒就开始了（频谱从 2 kHz 跳到 4 kHz），用户听出来了
-    "chicken": (175, "公鸡下蛋", 352.51, 353.15),
-    "gugugaga": (233, "咕咕嘎嘎", 450.93, 452.13),
+CLIPS = {   # 名字：(编号, 画面上的名字, 开始, 结束)；画面上换编号的时刻写在后面
+    "man": (172, "man", 349.23, 349.81),            # 349.24～350.08：喊声（音高 156 → 310 → 140 Hz）到 349.80，后面是一段 530 Hz 的别的声音
+    "manbo": (174, "曼波", 351.88, 352.34),         # 351.85～352.51：公鸡下蛋 352.37 就开始了（频谱从 2 kHz 跳到 4 kHz）
+    "chicken": (175, "公鸡下蛋", 352.37, 353.04),   # 352.51～353.15：352.37 就开始了；353.04 之后静了一下，再有一小声别的
+    "gugugaga": (233, "咕咕嘎嘎", 450.92, 452.06),  # 450.93～452.13：你别笑 452.13 开始
 }
-SEARCH_S = 0.04
-FADE_S = 0.01
+FADE_IN_S = 0.01
+FADE_OUT_S = 0.08
 
 
 def squeak(pitch, seconds, brightness, formant, flutter, rng):
@@ -106,27 +108,18 @@ def decode(source, start, seconds):
     return [v / 32768 for v in struct.unpack(f"<{len(raw) // 2}h", raw)]
 
 
-def quietest(audio, around):
-    """around（样本序号）前后 SEARCH_S 秒里，10 毫秒一格，最安静的那一格从哪开始。"""
-    step, reach = int(0.01 * RATE), int(SEARCH_S * RATE)
-    return min(range(around - reach, around + reach, step // 2), key=lambda i: sum(s * s for s in audio[i:i + step]))
-
-
-def cut(source, folder):
+def cut(source, folder, clips=CLIPS):
     folder.mkdir(parents=True, exist_ok=True)
-    fade = int(FADE_S * RATE)
-    for name, (number, label, start, end) in CLIPS.items():
-        begin = start - 2 * SEARCH_S   # 只解这一段附近
-        audio = decode(source, begin, end - begin + 2 * SEARCH_S)
-        a, b = quietest(audio, int((start - begin) * RATE)), quietest(audio, int((end - begin) * RATE))
-        clip = audio[a:b]
-        a, b = a + begin * RATE, b + begin * RATE   # 下面打印的是在视频里的秒数
-        for i in range(fade):   # 前后淡入淡出
-            clip[i] *= i / fade
-            clip[-1 - i] *= i / fade
+    fade_in, fade_out = int(FADE_IN_S * RATE), int(FADE_OUT_S * RATE)
+    for name, (number, label, start, end) in clips.items():
+        clip = decode(source, start, end - start)
+        for i in range(fade_in):
+            clip[i] *= i / fade_in
+        for i in range(fade_out):   # 最后 80 毫秒：照 cos² 慢慢收到 0
+            clip[-fade_out + i] *= math.cos(math.pi / 2 * i / fade_out) ** 2
         path = folder / f"{name}.wav"
         save([0.0] * int(LEAD_S * RATE) + level(clip), path)
-        print(f"{path}  {number}.{label}  {a / RATE:.2f}～{b / RATE:.2f} 秒  {path.stat().st_size // 1024} KB")
+        print(f"{path}  {number}.{label}  {start:.2f}～{end:.2f} 秒  {path.stat().st_size // 1024} KB")
 
 
 def main():

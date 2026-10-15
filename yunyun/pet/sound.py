@@ -18,10 +18,10 @@ log = logging.getLogger(__name__)
 
 BUNDLED = "bounce"
 EXTRA = {   # 名字 → (字节数, SHA-256)：B 站"250个meme音效合集"切出来的（来源和编号见 sounds/README.md）
-    "man": (78_534, "3eb7512fcbf60635e96bd0ed27266f9324fa0b6f423dceb206b9ff90d86267eb"),
-    "manbo": (41_500, "346a451374eae88c9ef71be9ec49ce99050c319ed4e13cd239ab924ec62bc0a5"),
-    "chicken": (56_054, "5347e55aa726450e6433dc90077b3bfef9cf016cbd16717f03e7eef0ac5667f0"),
-    "gugugaga": (103_686, "a037e3b41c1cac726a50feed2ce8c09158cec3b4561c4c1067345a7e47d6ed08"),
+    "man": (52_082, "8e7220fb8962de5a3c8c838c99e4d93bae8e00e5ece879f64c61113dd2f777ff"),
+    "manbo": (41_498, "5c6abd7eb974daedec6454317f8144504f2100ea0e98cdab1c63435c181a9618"),
+    "chicken": (60_020, "b88a1c9daf57a9a2f01b76bd991e819283b6252560ccafbc57dfd28299aa1954"),
+    "gugugaga": (101_474, "64c31d8659542c758103296b63c31324c5702be8b254a57e5c74cf51ce7d4982"),
 }
 NAMES = (BUNDLED, *EXTRA)   # 设置里的顺序
 SOURCES = ("https://cdn.jsdelivr.net/gh/Juansive/Yunyun@master/sounds/",
