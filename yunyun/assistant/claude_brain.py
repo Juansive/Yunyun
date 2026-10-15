@@ -25,6 +25,7 @@ from claude_agent_sdk import (
 
 from yunyun.assistant import apps, memory, permissions, proctree, protocol, rapport, recollections, transcripts
 from yunyun.assistant.browser import Browser
+from yunyun.assistant.desktop import Desktop
 from yunyun.assistant.environment import (   # noqa: F401（clean_environment、hide_child_consoles 也从这里用）
     clean_environment, hide_child_consoles, prepare_process, system_proxy_env,
 )
@@ -151,12 +152,13 @@ def read_project_notes(workspace):
 
 
 def build_options(settings, api_key, language, stderr=None, gate=None, resume="", bridge=None, browser=None,
-                  withdraw=None):
+                  withdraw=None, desktop=None):
     """启动 Claude Code 的全部选项。gate：PermissionGate（每次用工具前拍板）；测试里可以不传。
     resume：接着哪一段对话聊（Claude Code 的会话编号；空 = 新对话）；
     withdraw：接着聊时扔掉最后一问（withdraw_point 的结果）；
     bridge：tools.Bridge（请芸芸进程截图、打开软件；有它才有这些工具，截图还要服务商能看图片）；
-    browser：assistant.browser.Browser（有它才有浏览器的工具）。"""
+    browser：assistant.browser.Browser（有它才有浏览器的工具）；
+    desktop：assistant.desktop.Desktop（有它和 bridge 才有操作桌面软件的工具，11.6b）。"""
     provider = settings.info
     screen = bridge is not None and provider.images
     env = {
@@ -175,9 +177,10 @@ def build_options(settings, api_key, language, stderr=None, gate=None, resume=""
     learned = rapport.active_lines(rapport.load()) if settings.rapport else ()   # 相处笔记（11.3）：生效的接在性格后面
     # 回忆（11.4）：最近几段的摘要接进人设，更早的用"翻回忆"工具查；和相处笔记一个开关（"回想以前的对话"）
     chats = recollections.recent_lines(recollections.load()) if settings.rapport else ()
+    desktop = desktop if bridge is not None else None
     server = yunyun_server(settings.workspace, notebook=settings.notebook, bridge=bridge, screen=screen,
                            browser=browser, chats=CONFIG_DIR / "projects" if settings.rapport else None,
-                           language=language)
+                           language=language, desktop=desktop)
     return ClaudeAgentOptions(
         resume=resume or None,            # 历史对话"接着聊"：Claude Code 读回那段对话的记录
         # "这句不是跟你说的"（7.9 ⑤）：只读到上一问结束，扔掉最后一问（Claude Code 会核对扔掉的只有那一问）
@@ -198,6 +201,7 @@ def build_options(settings, api_key, language, stderr=None, gate=None, resume=""
         system_prompt={"type": "preset", "preset": "claude_code",
                        "append": persona(language, working, notes, web_search="WebSearch" in tools, notebook=notebook,
                                          screen=screen, apps=bridge is not None, browser=browser is not None,
+                                         desktop=desktop is not None,
                                          personality=settings.personality,
                                          personality_text=settings.personality_text,
                                          user_name=settings.user_name, rapport=learned, chats=chats)},
@@ -222,11 +226,13 @@ class PermissionGate:
     DENIED = "The user denied this action."
     STOPPED = "The user stopped the current task."
 
-    def __init__(self, workspace, emit, ask_screenshot=False, browser=None):
-        """browser：assistant.browser.Browser（网页上点击、输入前，问它这个元素是什么）。"""
+    def __init__(self, workspace, emit, ask_screenshot=False, browser=None, desktop=None):
+        """browser：assistant.browser.Browser（网页上点击、输入前，问它这个元素是什么）；
+        desktop：assistant.desktop.Desktop（桌面软件同理，11.6b）。"""
         self.workspace = str(workspace)
         self.ask_screenshot = ask_screenshot   # 设置里选了"截图前先问我"
         self.browser = browser
+        self.desktop = desktop
         self.grants = set()
         self.stopped = False  # 这一轮被停下了：之后迟到的确认请求直接拒绝（下一轮开始时 ClaudeBrain.ask 清掉）
         self._emit = emit
@@ -248,6 +254,10 @@ class PermissionGate:
                 return permissions.ElementFacts(problem="Yunyun has no browser here.")
             ref = tool_input.get("ref") if isinstance(tool_input, dict) else None
             return await self.browser.element_facts(ref)
+        elif tool in protocol.UI_TOOLS:   # 桌面软件（11.6b）：哪个窗口、哪个控件
+            if self.desktop is None:
+                return permissions.ElementFacts(problem="Yunyun can't operate desktop apps here.")
+            return await self.desktop.facts(tool, tool_input)
         return None
 
     def _record(self, tool_id, tool, tool_input, decision, element=None):
@@ -255,9 +265,11 @@ class PermissionGate:
         if tool in permissions.SHELL_TOOLS and isinstance(tool_input, dict):
             detail = str(tool_input.get("command") or "")[:500]   # 命令记全文（太长的截一下）
         elif element is not None and not element.problem:
-            detail = " · ".join(x for x in (element.site, element.element) if x)   # 网页：哪个网站、哪个元素
-            if tool == protocol.BROWSER_TYPE_TOOL and isinstance(tool_input, dict):
+            detail = " · ".join(x for x in (element.site, element.element) if x)   # 网页 / 软件：哪里、哪个元素
+            if tool in (protocol.BROWSER_TYPE_TOOL, protocol.UI_TYPE_TOOL) and isinstance(tool_input, dict):
                 detail += f" ← {str(tool_input.get('text') or '')[:100]}"
+            elif tool == protocol.UI_KEY_TOOL and isinstance(tool_input, dict):
+                detail += f" · {str(tool_input.get('keys') or '')[:40]}"
         else:
             detail = transcripts.tool_detail(tool_input, self.workspace, 120)
         self._emit(protocol.ToolDecision(tool_id or "", tool, decision, detail))
@@ -594,8 +606,9 @@ class ClaudeBrain:
         # 芸芸的浏览器（阶段 6.2）：第一次用时才打开；开 / 关告诉芸芸（开着时不闲置释放）
         self.browser = Browser(on_change=lambda is_open: emit(protocol.BrowserChanged(is_open)),
                                on_download=lambda name, path, by_user: emit(protocol.Downloaded(name, path, by_user)))
+        self.desktop = Desktop()   # 操作桌面软件（11.6b）：第一次用时才开 UI 自动化的线程
         self.gate = PermissionGate(settings.workspace or WORKSPACE, emit, ask_screenshot=settings.screenshot_ask,
-                                   browser=self.browser)
+                                   browser=self.browser, desktop=self.desktop)
         self.bridge = Bridge(emit)   # 请芸芸进程截图、打开软件（服务商看不了图片就没有截图工具，见 build_options）
         self._stderr = deque(maxlen=30)   # Claude Code 的错误输出：启动失败时看最后几行
 
@@ -620,7 +633,7 @@ class ClaudeBrain:
             log.warning("撤回：记录里的最后一问对不上（或者找不到记录），照常接着聊、不扔")
         options = build_options(self._settings, self._api_key, self._language, stderr=self._stderr.append,
                                 gate=self.gate, resume=self._resume, bridge=self.bridge, browser=self.browser,
-                                withdraw=withdraw)
+                                withdraw=withdraw, desktop=self.desktop)
         if self._resume:
             # 接着聊：Claude Code 报的花费会接着那段对话的累计往上加（try_resume.py 实测），先把以前花的当起点，
             # 不然第一问会把以前的钱再算一遍
@@ -749,6 +762,7 @@ class ClaudeBrain:
         self.gate.deny_all(PermissionGate.STOPPED)
         self.bridge.cancel_all()
         await self.browser.close()   # 好好关浏览器（不然作业对象一结束它，下次打开 Edge 会说没有正常关闭）
+        self.desktop.close()
         if self._client is not None:
             client, self._client = self._client, None
             running = proctree.before_stop()

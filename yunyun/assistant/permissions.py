@@ -27,6 +27,12 @@
   下载（6.2c）：只能用下载工具，每次问、标红、不给"都允许"，存到你的"下载"文件夹；用普通点击去点下载链接直接拒绝
   （叫模型改用下载工具——免得问两遍）。
   元素是什么由芸芸自己看网页得出（ElementFacts，claude_brain.PermissionGate 去问浏览器），不信模型的说法；
+- 桌面软件（阶段 11.6b，2026-10-15 用户定的）：读窗口里的按钮、输入框不用问（和截图一样，"截图前先问我"也管它）；
+  点击、输入、按键每次问，可以选"这次对话在这个软件都允许"（按程序记）；撤不回的按钮（发送、删除、付款、关闭……，
+  对话框里写着"删除"之类时的"确定 / 是"）、回车 / Delete / Alt+F4：每次问、标红、不给"都允许"；
+  Win 键组合、Shift+Delete 一律拒绝；密码框一律不输入；聊天软件里"发送"按钮和回车一律不点（芸芸打好字，发送你自己按）；
+  一律不碰：芸芸自己的窗口、终端和"运行"框（在里面打字回车 = 执行命令，会绕开"执行命令要问"）、
+  系统安全类（Windows 安全中心、注册表编辑器、凭据管理器、用户账户控制）。窗口和元素是什么也由芸芸自己看（assistant/desktop.py）；
 - 别的工具一律拒绝（本来也没开，这里是兜底）。
 
 拿不准的时候一律往"问你"那边靠：多问一次只是麻烦一点，少问一次可能出事。
@@ -42,7 +48,8 @@ from yunyun.assistant.recollections import RECALL_CHATS_TOOL
 from yunyun.assistant.protocol import (
     BROWSER_ACTION_TOOLS, BROWSER_BACK_TOOL, BROWSER_CLICK_TOOL, BROWSER_DOWNLOAD_TOOL, BROWSER_OPEN_TOOL,
     BROWSER_READ_TOOL, BROWSER_SELECT_TOOL, BROWSER_TYPE_TOOL, COPY_TO_CLIPBOARD_TOOL, FIND_APP_TOOL, LIST_WINDOWS_TOOL,
-    OPEN_APP_TOOL, READ_CLIPBOARD_TOOL, REMINDER_TOOLS, SCREENSHOT_TOOL, WINDOW_ACTION_TOOL,
+    OPEN_APP_TOOL, READ_CLIPBOARD_TOOL, REMINDER_TOOLS, SCREENSHOT_TOOL, UI_CLICK_TOOL, UI_KEY_TOOL, UI_READ_TOOL,
+    UI_TOOLS, UI_TYPE_TOOL, WINDOW_ACTION_TOOL,
 )
 
 ALLOW, ASK, DENY = "allow", "ask", "deny"
@@ -54,16 +61,18 @@ SHELL_TOOLS = ("Bash", "PowerShell")   # Windows 上有 Git Bash 时 Claude Code
 
 # 要问你的几种情况（界面按它显示说明）
 KINDS = ("read_outside", "edit", "edit_sensitive", "write_outside", "command", "screenshot", "open_app",
-         "web_click", "web_type", "web_select", "web_download", "clipboard")
+         "web_click", "web_type", "web_select", "web_download", "clipboard", "ui_read", "ui_click", "ui_type", "ui_key")
 WEB_KINDS = {BROWSER_CLICK_TOOL: "web_click", BROWSER_TYPE_TOOL: "web_type", BROWSER_SELECT_TOOL: "web_select",
              BROWSER_DOWNLOAD_TOOL: "web_download"}
+UI_KINDS = {UI_CLICK_TOOL: "ui_click", UI_TYPE_TOOL: "ui_type", UI_KEY_TOOL: "ui_key"}
 
 SENSITIVE_DIRS = (".git", ".claude")   # 工作文件夹里这些文件夹里的东西，改了可能让程序以后自动运行别的东西
 
 
 @dataclass(frozen=True)
 class ElementFacts:
-    """芸芸自己看网页得出的：模型要点 / 输入 / 选的那个元素是什么（assistant/browser.py 的 element_facts）。"""
+    """芸芸自己看网页得出的：模型要点 / 输入 / 选的那个元素是什么（assistant/browser.py 的 element_facts）。
+    桌面软件（11.6b，assistant/desktop.py 的 facts）也用它：site 是程序文件名（"Notepad.exe"），element 是读窗口时那一行。"""
     site: str = ""          # 哪个网站（"bilibili.com"）："都允许"按它记
     element: str = ""       # 给人看的：快照里那一行（button "提交订单"）
     label: str = ""         # 元素上的字（按钮文字、值、aria-label……），看是不是"付款""删除"这类
@@ -73,6 +82,9 @@ class ElementFacts:
     sensitive: bool = False  # 密码、卡号、验证码这类输入框
     problem: str = ""       # 看不了这个元素（浏览器没开、编号过期了）：告诉模型的原因
     link: str = ""          # 在链接里的话，链接指向哪里（下载时给你看；密码 / 令牌参数已经遮掉）
+    forbidden: str = ""     # 桌面软件：一律不碰的窗口，FORBIDDEN_REASONS 里的一种（芸芸自己的、终端、运行框、系统安全类）
+    chat: bool = False      # 桌面软件：聊天软件（"发送"按钮和回车不点）
+    context: str = ""       # 桌面软件：对话框里的说明文字（"确定要删除这个文件吗？"）——点"确定 / 是"时看是不是撤不回的事
 
 
 # 做了就撤不回的：按钮上的字（短的才看，长的多半是一大块内容）
@@ -152,6 +164,8 @@ def decide(tool, tool_input, workspace, grants=frozenset(), ask_screenshot=False
         return _decide_open_app(str(tool_input.get("name") or "").strip(), grants, apps)
     if tool in BROWSER_ACTION_TOOLS:
         return _decide_web_action(tool, tool_input, grants, element)
+    if tool in UI_TOOLS:
+        return _decide_ui(tool, tool_input, grants, element, ask_screenshot)
     if tool in READ_TOOLS:
         return _decide_read(tool, tool_input, os.path.realpath(workspace), grants, saved_outputs)
     if tool in EDIT_TOOLS:
@@ -204,6 +218,134 @@ def _decide_open_app(name, grants, apps):
     if ("open_app", key) in grants:
         return Decision(ALLOW, by_grant=True)
     return Decision(ASK, "open_app", (("open_app", key),), name)
+
+
+# ---------- 桌面软件（阶段 11.6b） ----------
+
+TERMINAL_APPS = {"cmd.exe", "powershell.exe", "pwsh.exe", "powershell_ise.exe", "windowsterminal.exe", "wt.exe",
+                 "openconsole.exe", "conhost.exe", "mintty.exe", "bash.exe", "wsl.exe", "wslhost.exe", "alacritty.exe",
+                 "wezterm-gui.exe", "conemu.exe", "conemu64.exe", "hyper.exe", "tabby.exe", "putty.exe"}
+SECURITY_APPS = {"sechealthui.exe", "regedit.exe", "consent.exe", "credentialuibroker.exe",
+                 "useraccountcontrolsettings.exe"}
+SECURITY_TITLES = ("凭据管理器", "credential manager", "資格情報マネージャー")   # 在控制面板里，属于资源管理器的窗口
+RUN_TITLES = ("运行", "run", "ファイル名を指定して実行")                       # "运行"框：资源管理器的对话框（#32770）
+CHAT_APPS = {"weixin.exe", "wechat.exe", "qq.exe", "tim.exe", "wxwork.exe", "dingtalk.exe", "feishu.exe", "lark.exe",
+             "telegram.exe", "discord.exe", "slack.exe", "teams.exe", "ms-teams.exe", "whatsapp.exe", "line.exe",
+             "skype.exe", "signal.exe"}
+FORBIDDEN_REASONS = {
+    "own": "That is one of Yunyun's own windows; Yunyun doesn't operate itself.",
+    "terminal": "Yunyun doesn't operate terminals or the Run box: typing there runs commands, which must go through "
+                "the command tool so the user is asked.",
+    "security": "Yunyun doesn't touch security settings (Windows Security, Registry Editor, Credential Manager, "
+                "User Account Control). Ask the user to do it themselves.",
+}
+FORBIDDEN_REASONS["run"] = FORBIDDEN_REASONS["terminal"]
+
+
+def classify_app(app, title="", window_class=""):
+    """窗口属于哪一类："terminal" / "run"（"运行"框）/ "security" / "chat" / ""。app：程序文件名（"Weixin.exe"）。"""
+    name, title = str(app or "").casefold(), str(title or "").strip().casefold()
+    if name in TERMINAL_APPS:
+        return "terminal"
+    if name in SECURITY_APPS:
+        return "security"
+    if name == "explorer.exe":
+        if window_class == "#32770" and title in RUN_TITLES:
+            return "run"
+        if any(word in title for word in SECURITY_TITLES):
+            return "security"
+    return "chat" if name in CHAT_APPS else ""
+
+
+# 按键（ui_key）：名字 → 虚拟键码（desktop.py 按它发按键）。字母、数字用自己
+KEYS = {"enter": 0x0D, "tab": 0x09, "escape": 0x1B, "space": 0x20, "backspace": 0x08, "delete": 0x2E, "insert": 0x2D,
+        "home": 0x24, "end": 0x23, "pageup": 0x21, "pagedown": 0x22, "up": 0x26, "down": 0x28, "left": 0x25,
+        "right": 0x27, "menu": 0x5D, **{f"f{n}": 0x6F + n for n in range(1, 13)},
+        **{c: ord(c.upper()) for c in "abcdefghijklmnopqrstuvwxyz0123456789"},
+        ",": 0xBC, ".": 0xBE, "/": 0xBF, ";": 0xBA, "'": 0xDE, "[": 0xDB, "]": 0xDD, "-": 0xBD, "=": 0xBB, "`": 0xC0}
+MODIFIERS = {"ctrl": 0x11, "alt": 0x12, "shift": 0x10, "win": 0x5B}
+_KEY_ALIASES = {"control": "ctrl", "ctl": "ctrl", "cmd": "win", "windows": "win", "super": "win", "meta": "win",
+                "return": "enter", "esc": "escape", "del": "delete", "ins": "insert", "bksp": "backspace",
+                "back": "backspace", "pgup": "pageup", "pgdn": "pagedown", "spacebar": "space", "apps": "menu",
+                "arrowup": "up", "arrowdown": "down", "arrowleft": "left", "arrowright": "right"}
+
+
+def parse_keys(text):
+    """"Ctrl+Shift+S" → (frozenset({"ctrl", "shift"}), "s")；认不得、不是"几个修饰键 + 一个键"的 → None。"""
+    parts = [p.strip().casefold() for p in re.split(r"\s*\+\s*", str(text or "").strip()) if p.strip()]
+    parts = [_KEY_ALIASES.get(p, p) for p in parts]
+    if not parts or parts[-1] not in KEYS or any(p not in MODIFIERS for p in parts[:-1]):
+        return None
+    return frozenset(parts[:-1]), parts[-1]
+
+
+def _key_rule(mods, key):
+    """按键的规矩："deny"（Win 键组合、Shift+Delete 永久删除）/ "risky"（回车可能是发送、Delete、Alt+F4 关窗口）/ ""。"""
+    if "win" in mods or (key == "delete" and ("shift" in mods or {"ctrl", "alt"} <= mods)):
+        return "deny"
+    return "risky" if key in ("enter", "delete") or (key == "f4" and "alt" in mods) else ""
+
+
+_RISKY_UI_WORDS = re.compile(r"卸载|格式化|清空|重置|恢复出厂|关机|重启|注销|退出登录|关闭|退出"
+                             r"|\b(uninstall|format|reset|shut ?down|restart|sign out|log ?out|close|exit|quit)\b", re.I)
+_CONFIRM_LABEL = re.compile(r"^(确定|确认|是|好|继续|ok|yes|continue)\s*(\(&?\w\))?$", re.I)   # "确定(O)" 这种带快捷键的也算
+_SEND_LABEL = re.compile(r"发送|\bsend\b|送信", re.I)
+
+
+def _risky_words(text):
+    return bool(_RISKY_WORDS.search(text) or _RISKY_UI_WORDS.search(text))
+
+
+def is_risky_ui(element):
+    """桌面软件里点了撤不回的：按钮上写着发送 / 删除 / 付款 / 关闭……；或者对话框里写着这类事、点的是"确定 / 是"。"""
+    label = element.label.strip()
+    if label and len(label) <= RISKY_LABEL_CHARS and _risky_words(label):
+        return True
+    return bool(_CONFIRM_LABEL.match(label)) and _risky_words(element.context)
+
+
+def _decide_ui(tool, tool_input, grants, element, ask_screenshot):
+    if element is None or element.problem:
+        return Decision(DENY, reason=element.problem if element else "Yunyun couldn't look at this window.")
+    if element.forbidden:
+        return Decision(DENY, reason=FORBIDDEN_REASONS.get(element.forbidden, FORBIDDEN_REASONS["security"]))
+    if tool == UI_READ_TOOL:   # 和截图一样（2026-10-15 用户定的）
+        if not ask_screenshot:
+            return Decision(ALLOW)
+        if ("ui_read",) in grants:
+            return Decision(ALLOW, by_grant=True)
+        return Decision(ASK, "ui_read", (("ui_read",),), element.site)
+    kind, risky = UI_KINDS[tool], False
+    if tool == UI_TYPE_TOOL and element.sensitive:
+        return Decision(DENY, reason="This is a password field. Yunyun never types into these: ask the user to type "
+                                     "it themselves.")
+    if tool == UI_KEY_TOOL:
+        keys = parse_keys(tool_input.get("keys"))
+        if keys is None:
+            return Decision(DENY, reason="Unknown keys. Write them like ctrl+s, enter, tab, down, alt+f4, f5 "
+                                         "(modifiers ctrl / alt / shift, then one key).")
+        mods, key = keys
+        if element.chat and key == "enter" and mods != {"shift"}:
+            return Decision(DENY, reason="In chat apps Yunyun never sends: leave the message typed and tell the user "
+                                         "to press send themselves.")
+        rule = _key_rule(mods, key)
+        if rule == "deny":
+            return Decision(DENY, reason="Yunyun doesn't press Windows-key shortcuts or Shift+Delete (permanent "
+                                         "delete).")
+        risky = rule == "risky"
+    elif tool == UI_CLICK_TOOL:
+        if element.chat and _SEND_LABEL.search(element.label):
+            return Decision(DENY, reason="In chat apps Yunyun never clicks send: leave the message typed and tell the "
+                                         "user to press send themselves.")
+        risky = is_risky_ui(element)
+    if risky:
+        return Decision(ASK, kind, scope=element.site, danger=True)
+    if not element.site:   # 看不出是哪个程序：不给"都允许"（不然看不出来的都算同一个）
+        return Decision(ASK, kind)
+    grant = ("ui", element.site.casefold())
+    if grant in grants:
+        return Decision(ALLOW, by_grant=True)
+    return Decision(ASK, kind, (grant,), element.site)
 
 
 # ---------- 文件 ----------

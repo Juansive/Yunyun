@@ -287,6 +287,13 @@ READ_CLIPBOARD_TOOL = "mcp__yunyun__read_clipboard"
 # 窗口（11.5，assistant/tools/windows.py）：列出、切换 / 最小化 / 还原，都不用问；在芸芸本体做（pet/window_control.py）
 LIST_WINDOWS_TOOL = "mcp__yunyun__list_windows"
 WINDOW_ACTION_TOOL = "mcp__yunyun__window_action"
+# 操作桌面软件（11.6b，assistant/tools/desktop.py）：读窗口里的按钮、输入框不用问；点击、输入、按键要问（按软件"都允许"）
+UI_READ_TOOL = "mcp__yunyun__ui_read"
+UI_CLICK_TOOL = "mcp__yunyun__ui_click"
+UI_TYPE_TOOL = "mcp__yunyun__ui_type"
+UI_KEY_TOOL = "mcp__yunyun__ui_key"
+UI_ACTION_TOOLS = (UI_CLICK_TOOL, UI_TYPE_TOOL, UI_KEY_TOOL)
+UI_TOOLS = (UI_READ_TOOL,) + UI_ACTION_TOOLS
 
 
 @_message

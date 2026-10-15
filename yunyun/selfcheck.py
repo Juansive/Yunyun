@@ -187,6 +187,17 @@ def _voice():
             f"sherpa-onnx {sherpa_onnx.__version__}，Windows 语音 {count} 种")
 
 
+def _ui_automation():
+    """操作桌面软件（11.6b）：comtypes 照 UI 自动化类型库生成的模块打包带上了（不用在这台电脑上现生成），
+    能创建 UI 自动化、读到桌面的根节点（只读个名字，不碰任何窗口）。"""
+    import comtypes.client
+    import yunyun.assistant.desktop  # noqa: F401
+    from comtypes.gen import UIAutomationClient as uia
+    automation = comtypes.client.CreateObject(uia.CUIAutomation8, interface=uia.IUIAutomation2)
+    root = automation.GetRootElement()
+    return f"comtypes {comtypes.__version__}，桌面根节点「{root.CurrentName}」"
+
+
 def _no_assistant():
     """节能版：助手组件确实没带（不然白白大了 170 MB），右键菜单和设置窗口里也就不会出现助手的入口。"""
     import importlib.util
@@ -209,6 +220,7 @@ CHECKS = [
     ("助手的大脑（Claude Code）", _claude_code),
     ("芸芸的浏览器（Playwright + Edge）", _browser),
     ("语音（edge-tts、放音、录音、识别、Windows 语音）", _voice),
+    ("操作桌面软件（UI 自动化）", _ui_automation),
 ]
 HEAVY_CHECKS = (_claude_code, _browser)   # 助手模式的两项：要真的启动 claude.exe / Edge，平时的测试里不跑（见 tests/test_real_claude_code.py）
-FULL_ONLY_CHECKS = (*HEAVY_CHECKS, _voice)   # 节能版没有的（助手模式、语音）
+FULL_ONLY_CHECKS = (*HEAVY_CHECKS, _voice, _ui_automation)   # 节能版没有的（助手模式、语音、操作桌面软件）

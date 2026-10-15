@@ -53,7 +53,7 @@ EDITIONS = {"full": "完整版", "lite": "节能版"}
 # 只有助手模式用的包：节能版不打包（芸芸进程本来就不 import 它们，有测试守着；它们连带的 pydantic、httpx 等也就不会带上）
 # 后面几个是语音子进程用的（阶段 7）：edge-tts（连带 aiohttp）、miniaudio、Windows 语音（pywin32 的 win32com）、本地识别（sherpa-onnx）
 LITE_EXCLUDES = ["claude_agent_sdk", "anthropic", "playwright", "mcp",
-                 "edge_tts", "aiohttp", "miniaudio", "win32com", "pythoncom", "sherpa_onnx"]
+                 "edge_tts", "aiohttp", "miniaudio", "win32com", "pythoncom", "sherpa_onnx", "comtypes"]
 SHARE = ROOT.parent / "Yunyun"  # 发给别人的压缩包放这里（F:\cwx\yunyun\Yunyun，用户定的），只留最新的一版
 RELEASES = ROOT / "releases"    # 以前各版本的压缩包，留着溯源（太大，不提交到 Git）
 # 绝不能进压缩包的东西（压缩前再查一遍）：开发用的说明和工具设置、用户的数据和日志（防止被误拷进程序文件夹）
@@ -69,6 +69,10 @@ HIDDEN_IMPORTS = [
     "keyring.backends.null",      # 试助手子进程时用它（什么 Key 都读不到），见 check_worker
 ]
 COPY_METADATA = ["keyring"]       # ……入口点写在包的元数据（dist-info）里，所以元数据也要带上
+# 只有完整版要的：操作桌面软件（11.6b）用的 UI 自动化，comtypes 照 Windows 的类型库现生成的模块。打包前先生成好带上，
+# 打包版就不用在用户电脑上现生成（generate_comtypes_modules）
+FULL_HIDDEN_IMPORTS = ["comtypes.gen.UIAutomationClient", "comtypes.gen._944DE083_8FB8_45CF_BCB7_C477ACB2F897_0_1_0",
+                       "comtypes.gen.stdole", "comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0"]
 
 
 def package_dir(name):
@@ -262,6 +266,9 @@ def run_pyinstaller(edition, icon, version_file):
     if edition == "full":
         for source, target in EXTRA_DATA:
             args += ["--add-data", f"{source}{os.pathsep}{target}"]
+        generate_comtypes_modules()
+        for name in FULL_HIDDEN_IMPORTS:
+            args += ["--hidden-import", name]
     else:
         for name in LITE_EXCLUDES:
             args += ["--exclude-module", name]
@@ -272,6 +279,12 @@ def run_pyinstaller(edition, icon, version_file):
     for name in COPY_METADATA:
         args += ["--copy-metadata", name]
     subprocess.run(args, check=True, cwd=ROOT)
+
+
+def generate_comtypes_modules():
+    """让 comtypes 照 Windows 的 UI 自动化类型库生成好模块（开发时第一次用会自己生成；新装的环境里可能还没有）。"""
+    import comtypes.client
+    comtypes.client.GetModule("UIAutomationCore.dll")
 
 
 def remove_unused_qt_files(pyside_dir):

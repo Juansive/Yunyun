@@ -241,6 +241,38 @@ _DESKTOP = {
           "どれも確認不要です。ウィンドウは閉じられません。タイトルには私的な内容もあるので、関係のあることだけ触れてください。",
 }
 
+# 操作桌面软件（阶段 11.6b：tools/desktop.py），有它时替换 _APPS 里"打开以后不能操作"那句
+_DESKTOP_UI = {
+    "zh": "\n- 你能操作桌面软件里面：ui_read 读一个窗口里的按钮、输入框、列表（不用问；比截图快、省钱，优先用它），"
+          "ui_click 按按钮、ui_type 往输入框里放字、ui_key 按键或快捷键（都要芸芸先问用户，用户可以\"这个软件都允许\"）。"
+          "用最新一次 ui_read 的编号（比如 u5），每次读编号都会变。发送、删除、付款、关闭这类撤不回的每次都问；"
+          "聊天软件（微信、QQ……）里只打字、不发送，打好了告诉用户自己按发送。密码框不碰，终端、\"运行\"框、"
+          "系统安全设置也不碰。有的软件自己画界面，读不到东西，这时用截图看。",
+    "en": "\n- You can operate inside desktop apps: ui_read reads a window's buttons, text boxes and lists (no need to "
+          "ask; faster and cheaper than a screenshot, so prefer it), ui_click presses a button, ui_type puts text "
+          "into a text box, ui_key presses a key or shortcut (Yunyun asks the user first; they can allow an app for "
+          "this chat). Use refs from the latest ui_read (like u5); they change every time. Irreversible things "
+          "(send, delete, pay, close) are confirmed every time. In chat apps (WeChat, QQ …) only type, never send: "
+          "tell the user it's ready so they press send themselves. Password fields, terminals, the Run box and "
+          "security settings are off-limits. Some apps draw their own interface and show nothing; take a "
+          "screenshot then.",
+    "ja": "\n- デスクトップのソフトの中も操作できます：ui_read でウィンドウのボタン・入力欄・リストを読み（確認不要。"
+          "スクリーンショットより速くて安いので優先してください）、ui_click でボタンを押し、ui_type で入力欄に文字を入れ、"
+          "ui_key でキーやショートカットを押します（芸芸が先にユーザーに確認します。「このソフトは全部許可」もできます）。"
+          "最新の ui_read の番号（例えば u5）を使ってください。読むたびに番号は変わります。送信・削除・支払い・閉じるなど"
+          "取り消せないものは毎回確認します。チャットソフト（WeChat、QQ など）では入力だけで送信はせず、"
+          "準備できたらユーザーに送信ボタンを押してもらってください。パスワード欄、ターミナル、「ファイル名を指定して実行」、"
+          "セキュリティ設定には触れません。独自の画面を描くソフトは何も読めないので、そのときはスクリーンショットで見てください。",
+}
+# 打开软件那句里"打开以后不能操作里面"：有 _DESKTOP_UI 时去掉
+_APPS_NO_INSIDE = {   # (原来的, 换成)
+    "zh": ("；打开以后你看不到、也不能操作软件里面（点按钮、打字），需要的话请用户自己操作。", "。"),
+    "en": (" Once it's open you can't see or operate inside it (click buttons, type); ask the user to do that part.",
+           ""),
+    "ja": ("開いた後のソフトの中は見ることも操作（ボタンを押す、入力する）もできないので、必要ならユーザーに操作してもらってください。",
+           ""),
+}
+
 # 芸芸的浏览器（阶段 6.2：tools/browser.py）
 _BROWSER = {
     "zh": "\n- 你有自己的浏览器（一个用户看得见的 Edge 窗口，登录状态和用户自己的浏览器分开）：browser_open 打开网页、"
@@ -361,10 +393,12 @@ def character(language, personality="default", personality_text=""):
 
 
 def persona(language, working=False, project_notes="", web_search=True, notebook=None, screen=False, apps=False,
-            browser=False, personality="default", personality_text="", user_name="", rapport=(), chats=()):
+            browser=False, personality="default", personality_text="", user_name="", rapport=(), chats=(),
+            desktop=False):
     """这种语言的人设（不认识的语言用中文）。working：选了工作文件夹；project_notes：工作文件夹里 CLAUDE.md 的内容；
     web_search：有没有网页搜索工具（DeepSeek 这类没有）；notebook：记事本的目录 (关于用户的几行, 这个项目的几行)，
     None = 不用记事本；screen：有没有截图工具；apps：有没有打开软件的工具；browser：有没有芸芸的浏览器；
+    desktop：有没有操作桌面软件的工具（11.6b）；
     personality / personality_text：芸芸的性格（"default" / "custom"）和设置里写的那段话（见 character）；
     user_name：怎么称呼用户（空 = 叫"你"）；rapport：生效的相处笔记（每条一行，rapport.active_lines）；
     chats：最近几段对话的摘要（每段一行，recollections.recent_lines）。"""
@@ -372,6 +406,8 @@ def persona(language, working=False, project_notes="", web_search=True, notebook
         language = "zh"
     web = _WEB[language][0 if web_search else 1]
     limits = _SCREEN[language][0 if screen else 1] + "\n" + _APPS[language][0 if apps else 1]
+    if apps and desktop:
+        limits = limits.replace(*_APPS_NO_INSIDE[language]) + _DESKTOP_UI[language]
     if apps:
         limits += _DESKTOP[language]
     if browser:

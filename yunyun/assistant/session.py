@@ -52,6 +52,8 @@ _TOOL_TEXT = {
     protocol.CANCEL_REMINDER_TOOL: "assistant_tool_reminders",
     protocol.COPY_TO_CLIPBOARD_TOOL: "assistant_tool_copy", protocol.READ_CLIPBOARD_TOOL: "assistant_tool_read_clipboard",
     protocol.LIST_WINDOWS_TOOL: "assistant_tool_windows", protocol.WINDOW_ACTION_TOOL: "assistant_tool_windows",
+    protocol.UI_READ_TOOL: "assistant_tool_ui_read", protocol.UI_CLICK_TOOL: "assistant_tool_ui_click",
+    protocol.UI_TYPE_TOOL: "assistant_tool_ui_type", protocol.UI_KEY_TOOL: "assistant_tool_ui_key",
 }
 SETTINGS_ERRORS = {"no_key", "auth", "model", "budget", "reply_budget"}   # 这几种错误在设置页能改好（界面可以给个"去设置"）
 UNDO_NOTE = transcripts.UNDO_NOTE   # 历史对话读回来时要认出它、去掉它，所以放在 transcripts 里

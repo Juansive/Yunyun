@@ -69,22 +69,30 @@ def title_key(request):
     if request.kind == "edit":
         return "assistant_confirm_write" if request.tool == "Write" else "assistant_confirm_edit"
     if request.kind in ("edit_sensitive", "write_outside", "screenshot", "open_app", "clipboard") \
-            or request.kind in WEB_KINDS:
+            or request.kind in WEB_KINDS or request.kind in UI_KINDS:
         return f"assistant_confirm_{request.kind}"
     return "assistant_confirm_other"
 
 
 WEB_KINDS = ("web_click", "web_type", "web_select", "web_download")   # 网页上点击、输入、选择（6.2b）、下载（6.2c）
+UI_KINDS = ("ui_read", "ui_click", "ui_type", "ui_key")                # 软件里读窗口、点击、输入、按键（11.6b）
 WEB_ROLES = ("button", "link", "textbox", "searchbox", "combobox", "checkbox", "radio", "tab", "menuitem", "option",
              "switch", "listbox", "img")
+# 桌面软件的控件种类（UI 自动化的叫法）→ 网页那套叫法，共用"按钮「保存」"这些说法
+UI_ROLES = {"splitbutton": "button", "hyperlink": "link", "edit": "textbox", "document": "textbox", "list": "listbox",
+            "radiobutton": "radio", "tabitem": "tab", "listitem": "option", "treeitem": "option", "dataitem": "option",
+            "image": "img"}
 
 
 def element_text(element):
-    """快照里的那一行 → 给人看的：button "提交订单" → 按钮「提交订单」；认不得的原样。"""
-    match = re.match(r'^(\w+)\s+"(.*)"$', element.strip())
-    if match and match.group(1) in WEB_ROLES:
-        return i18n.tr("assistant_web_element", i18n.tr(f"assistant_web_role_{match.group(1)}"), match.group(2))
-    return element.strip()
+    """快照里的那一行 → 给人看的：button "提交订单" → 按钮「提交订单」；认不得的原样。
+    桌面软件的那一行开头有 "- "、后面可能带 value= / (checked) 这些，也认（11.6b）。"""
+    line = re.sub(r"^-\s+", "", element.strip())
+    match = re.match(r'^(\w+)\s+"(.*?)"(\s.*)?$', line)
+    role = UI_ROLES.get(match.group(1), match.group(1)) if match else ""
+    if role in WEB_ROLES:
+        return i18n.tr("assistant_web_element", i18n.tr(f"assistant_web_role_{role}"), match.group(2))
+    return line
 
 
 def note_key(request):
@@ -93,6 +101,8 @@ def note_key(request):
         return "assistant_confirm_note_web_download"
     if request.danger and request.kind in WEB_KINDS:
         return "assistant_confirm_note_web_risky"
+    if request.danger and request.kind in UI_KINDS:
+        return "assistant_confirm_note_ui_risky"
     if request.danger and request.kind == "command":
         return "assistant_confirm_note_danger"
     if request.kind == "edit_sensitive":
@@ -136,6 +146,17 @@ def detail_html(request, workspace):
             rows.append(f'<div style="color:#6B7280;">'
                         f'{html.escape(i18n.tr("assistant_confirm_download_to", str(paths.downloads_dir())))}</div>')
         return "".join(rows)
+    if request.kind in UI_KINDS:   # 哪个软件、哪个控件（芸芸自己看的）、要输入的字 / 要按的键
+        rows = [f'<div style="color:#6B7280;">{html.escape(request.scope)}</div>' if request.scope else "",
+                f'<div><b>{html.escape(element_text(request.element))}</b></div>' if request.element else ""]
+        if request.kind == "ui_type":
+            rows.append(f'<div {MONO}>{html.escape(str(data.get("text", "")))}</div>')
+        elif request.kind == "ui_key":
+            rows.append(f'<div {MONO}>{html.escape(i18n.tr("assistant_confirm_ui_keys", str(data.get("keys", ""))))}'
+                        f'</div>')
+        elif request.kind == "ui_read":
+            rows.append(f'<div style="color:#6B7280;">{html.escape(i18n.tr("assistant_confirm_ui_read_note"))}</div>')
+        return "".join(rows)
     path = relative_path(str(data.get("file_path") or data.get("notebook_path") or data.get("path") or ""), workspace)
     head = f'<b>{html.escape(path)}</b>' if path else ""
     if request.tool in ("Glob", "Grep"):
@@ -168,6 +189,10 @@ def remember_text(request):
         return i18n.tr("assistant_confirm_remember_clipboard")
     if request.kind in WEB_KINDS:
         return i18n.tr("assistant_confirm_remember_web", request.scope)
+    if request.kind == "ui_read":
+        return i18n.tr("assistant_confirm_remember_ui_read")
+    if request.kind in UI_KINDS:
+        return i18n.tr("assistant_confirm_remember_ui", request.scope)
     return i18n.tr("assistant_confirm_remember_edit")
 
 
