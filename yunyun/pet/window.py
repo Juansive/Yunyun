@@ -12,7 +12,8 @@ import math
 import threading
 from dataclasses import fields
 
-from PySide6.QtCore import QElapsedTimer, QPoint, QPointF, QRect, QSettings, QSize, Qt, QTimer, QUrl, Signal
+from PySide6.QtCore import (QAbstractAnimation, QElapsedTimer, QPoint, QPointF, QRect, QSettings, QSize, Qt, QTimer,
+                            QUrl, QVariantAnimation, Signal)
 from PySide6.QtGui import QDesktopServices, QGuiApplication, QPainter, QPixmap
 from PySide6.QtWidgets import QApplication, QWidget
 
@@ -20,7 +21,7 @@ from yunyun import i18n, logs, shortcut
 from yunyun.notify import reminders
 from yunyun.features import assistant_available
 from yunyun.ai import settings as ai_settings
-from yunyun.pet import winapi
+from yunyun.pet import sound, winapi
 from yunyun.pet.badge import Badge
 from yunyun.pet.bubble import BubbleStack
 from yunyun.pet.card_deck import CardDeck, MailCard, mailbox_label
@@ -34,6 +35,21 @@ _ANNOUNCED_VERSION_KEY = "update/announced"   # 已经说过的新版本号
 _POSITION_KEY = "window/position"
 _SCALE_KEY = "window/scale"   # 芸芸的大小（1.0 = 默认）
 _AI_OFFERED_KEY = "onboarding/ai_offered"  # 是否已经引导过"设置 AI"（只引导一次）
+_BOUNCE_SOUND_KEY = "pet/bounce_sound"     # 双击 / 一直点时"啵"一声（设置 → 通用，默认开）
+
+
+def hop_shape(u, amp=1.0):
+    """弹一下的样子（u：这一下进行到哪了，0～1）→ (横向缩放, 纵向缩放, 跳起多高 0～1)。
+    先往下压扁（蓄力）→ 弹起来（身子拉长一点）→ 落地再压一下，三段首尾都回到原样，接得上。"""
+    if u < 0.18:                      # 蓄力：压扁
+        squash = 0.16 * amp * math.sin(math.pi * u / 0.18)
+        return 1 + 0.6 * squash, 1 - squash, 0.0
+    if u < 0.82:                      # 在空中：拉长一点
+        v = (u - 0.18) / 0.64
+        stretch = 0.05 * amp * math.sin(math.pi * v)
+        return 1 - 0.5 * stretch, 1 + stretch, amp * math.sin(math.pi * v)
+    squash = 0.10 * amp * math.sin(math.pi * (u - 0.82) / 0.18)   # 落地：再压一下
+    return 1 + 0.6 * squash, 1 - squash, 0.0
 
 log = logging.getLogger(__name__)
 
@@ -78,6 +94,9 @@ class PetWindow(QWidget):
     COVERED_RATIO = 0.9     # 被挡住多少比例才算"被挡住"（0~1）
     RESUME_DELAY_MS = 500   # 露出来后，先定格多久再恢复（毫秒）
     SHORT_SAY_MS = 2000     # 简短提示（比如"现在没有新邮件"）显示多久（毫秒）
+    HOP_MS = 280            # 弹一下多久（双击弹两下；一直点就一直弹，2026-10-16 用户要的，参考 DeepSeek"大肥鱼"）
+    MAX_HOPS = 3            # 最多攒几下还没弹的（停手以后不会弹个没完）
+    HOP_HEIGHT = 0.7        # 跳多高：边距的几成（满一个边距时，占位图顶上的"Z"会碰到窗口边被裁掉）
     SAVE_POS_DELAY_MS = 500 # 拖动停下多久后保存位置（毫秒）
     SWAY_TICK_MS = 16       # 被拎着摆动时多久算一帧（约每秒 60 帧，只在拎着的时候运行）
 
@@ -187,6 +206,14 @@ class PetWindow(QWidget):
         self._sway = Sway()
         self._sway_clock = QElapsedTimer()   # 量两帧之间实际隔了多久（定时器不是绝对准时的）
         self._sway_timer = QTimer(self, interval=self.SWAY_TICK_MS, timeout=self._sway_tick)
+
+        # 双击弹两下、一直点一直弹：一下一下排着弹，每弹一下"啵"一声（sound.play）
+        self._hop = QVariantAnimation(self, startValue=0.0, endValue=1.0, duration=self.HOP_MS,
+                                      valueChanged=lambda _: self.update(), finished=self._next_hop)
+        self._hops = 0            # 还要弹几下
+        self._hop_amp = 0.8       # 这一下弹多高（连着弹时高低错开一点，看着更活泼；第一下是高的那个）
+        self._poking = False      # 双击以后接着点：每点一下多弹一下，不再做单击的事
+        self._poke_clock = QElapsedTimer()   # 离上一次点隔了多久（超过系统的双击间隔就不算接着点了）
 
         self._task_done.connect(self._on_task_done)
         self.set_state(PetState.IDLE)
@@ -635,6 +662,13 @@ class PetWindow(QWidget):
         x = (self.width() - size.width()) / 2   # 居中
         y = (self.height() - size.height()) / 2
         painter = QPainter(self)
+        if self._hop.state() == QAbstractAnimation.State.Running:   # 弹一下：以脚下中间为准压扁 / 拉长、往上跳
+            sx, sy, lift = hop_shape(self._hop.currentValue(), self._hop_amp)
+            foot = QPointF(self.width() / 2, self.height() - self._margin())
+            painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+            painter.translate(foot.x(), foot.y() - lift * self.HOP_HEIGHT * self._margin())   # 跳起来不出窗口
+            painter.scale(sx, sy)
+            painter.translate(-foot.x(), -foot.y())
         if self._lifted and self._sway.angle:
             # 绕"后颈"（头顶正中）转一个角度：先把原点挪到支点，转，再挪回来
             painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)   # 转动后边缘不出锯齿
@@ -690,16 +724,52 @@ class PetWindow(QWidget):
             # 没拖过阈值、松开时离按下的位置也很近 → 算单击；否则是一次拖动
             moved = (event.globalPosition().toPoint() - self._press_pos).manhattanLength()
             if not self._dragging and moved < QApplication.startDragDistance():
-                if self._assistant is not None:
+                if self._poking and self._poke_clock.elapsed() < QApplication.doubleClickInterval():
+                    self.bounce(1)             # 双击以后接着点：再弹一下（第一下已经做过单击的事了）
+                elif self._assistant is not None:
+                    self._poking = False
                     self._assistant.summon()   # 助手模式开着：左键 = 唤出输入框和卡片（2026-10-08 用户要求）
                 else:
+                    self._poking = False
                     self.clicked.emit()
+                self._poke_clock.restart()
             if self._dragging:
                 self._end_drag()
 
             self._drag_offset = None
             self._press_pos = None
             self.setCursor(Qt.CursorShape.OpenHandCursor)
+
+    def mouseDoubleClickEvent(self, event):
+        """双击（第一下已经照常做了单击的事）：弹两下；已经在弹（一直在点）就再多弹一下。"""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._poking = True
+            self._poke_clock.restart()
+            self.bounce(1 if self._hop.state() == QAbstractAnimation.State.Running else 2)
+
+    def bounce(self, hops=1):
+        """再弹 hops 下（排着弹，最多攒 MAX_HOPS 下），每弹一下"啵"一声。"""
+        self._hops = min(self._hops + hops, self.MAX_HOPS)
+        if self._hop.state() != QAbstractAnimation.State.Running:
+            self._next_hop()
+
+    def _next_hop(self):
+        if self._hops <= 0:
+            self.update()   # 弹完了：回到原样
+            return
+        self._hops -= 1
+        self._hop_amp = 0.8 if self._hop_amp == 1.0 else 1.0
+        self._hop.start()
+        quiet = self.quiet_hours is not None and self.quiet_hours.active
+        if self.bounce_sound and not quiet:   # 免打扰时段只弹不出声
+            sound.play("bounce")
+
+    @property
+    def bounce_sound(self):
+        return QSettings().value(_BOUNCE_SOUND_KEY, True, type=bool)
+
+    def set_bounce_sound(self, on):
+        QSettings().setValue(_BOUNCE_SOUND_KEY, bool(on))
 
     def _begin_drag(self):
         """开始拖动：有"被拎起来"的图就换上（像拎小猫的后颈），没有就保持原来的画面。"""

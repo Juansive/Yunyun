@@ -125,6 +125,11 @@ def no_real_assistant(monkeypatch, tmp_path):
         raise RuntimeError("测试里不许真的开浏览器（要测就用 tools/try_browser.py）")
     monkeypatch.setattr(browser, "start_playwright", no_browser)
     monkeypatch.setattr(browser, "PROFILE_DIR", tmp_path / "assistant_browser")
+    # 双击的"啵"（2026-10-16）：绝不真的出声，放过的记在 sound.played 里
+    from yunyun.pet import sound
+    played = []
+    monkeypatch.setattr(sound, "_play_file", played.append)
+    monkeypatch.setattr(sound, "played", played, raising=False)
     # 电源和程序（11.6e）：绝不真的锁屏 / 睡眠 / 关机、不结束你真的程序（假的进程表 FAKE_PROCESSES；做过的记在 processes.done）
     from yunyun.assistant import processes
     done = []

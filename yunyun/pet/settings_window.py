@@ -230,8 +230,10 @@ class GeneralPage(QWidget):
 
         self._on_top = Toggle(tr("menu_always_on_top"))
         self._autostart = Toggle(tr("menu_autostart"))
+        self._bounce_sound = Toggle(tr("setting_bounce_sound"))   # 双击芸芸弹两下时"啵啵"（2026-10-16）
         form.addRow(self._on_top)
         form.addRow(self._autostart)
+        form.addRow(self._bounce_sound)
         self._auto_update = Toggle(tr("setting_auto_update"))   # 新版本提醒（pet.updates 可能是 None，比如测试里）
         self._auto_update.setToolTip(tr("setting_auto_update_tip"))
         if pet.updates is not None:
@@ -276,6 +278,7 @@ class GeneralPage(QWidget):
         self._size_reset.clicked.connect(lambda: self._size.setValue(100))
         self._on_top.toggled.connect(pet.set_always_on_top)
         self._autostart.toggled.connect(pet.set_autostart)
+        self._bounce_sound.toggled.connect(pet.set_bounce_sound)
         if pet.updates is not None:
             self._auto_update.toggled.connect(pet.updates.set_auto_check)
         self._shortcut_button.clicked.connect(pet.create_desktop_shortcut)
@@ -291,6 +294,7 @@ class GeneralPage(QWidget):
             (self._on_top, lambda: self._on_top.setChecked(self._pet.always_on_top)),
             (self._autostart, lambda: self._autostart.setChecked(shortcut.is_autostart_enabled())),
             (self._size, lambda: self._size.setValue(round(self._pet.scale * 100))),
+            (self._bounce_sound, lambda: self._bounce_sound.setChecked(self._pet.bounce_sound)),
         ]
         if self._pet.updates is not None:
             updates.append((self._auto_update, lambda: self._auto_update.setChecked(self._pet.updates.auto_check)))

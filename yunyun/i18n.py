@@ -49,6 +49,8 @@ TEXTS = {
     "button_create": {"zh": "创建", "en": "Create", "ja": "作成"},
     "menu_open_logs": {"zh": "打开日志文件夹", "en": "Open Log Folder", "ja": "ログフォルダーを開く"},
     "menu_autostart": {"zh": "开机时启动", "en": "Start with Windows", "ja": "Windows 起動時に開始"},
+    "setting_bounce_sound": {"zh": "双击芸芸时出声（啵啵）", "en": "Sound when you double-click Yunyun (boing)",
+                             "ja": "ダブルクリックで音を鳴らす（ぽよん）"},
     "autostart_on": {
         "zh": "好哒，以后开机我就自己出来陪你～",
         "en": "Got it! I'll show up by myself when you turn on your PC~",

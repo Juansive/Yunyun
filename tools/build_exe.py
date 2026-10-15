@@ -260,6 +260,7 @@ def run_pyinstaller(edition, icon, version_file):
         "--paths", str(ROOT),          # 让 PyInstaller 找得到 yunyun 包
         "--add-data", f"{ASSETS / '*.png'}{os.pathsep}assets/pet",   # 芸芸的图片 → exe 里的 assets/pet
         "--add-data", f"{ROOT / 'assets' / 'ui' / '*.svg'}{os.pathsep}assets/ui",   # 设置窗口的小图标（theme.py）
+        "--add-data", f"{ROOT / 'assets' / 'sounds' / '*.wav'}{os.pathsep}assets/sounds",   # 双击的"啵"（pet/sound.py）
         "--distpath", str(dist_dir(edition)), "--workpath", str(BUILD / "pyinstaller" / edition),
         "--specpath", str(BUILD / edition),
     ]
