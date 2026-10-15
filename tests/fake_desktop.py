@@ -58,6 +58,7 @@ class FakeDesktopBackend:
         self.done = []       # 做过的：("press", 名字) / ("value", 名字, 字) / ("focus", 名字) / ("keys", 修饰键, 键) / ("text", 字)
         self.reads = 0
         self.cover = None    # window_at() 时挡在那一点上的窗口
+        self.lazy = {}       # 窗口 → 前几次读只读到窗口本身（像 QQ 这类网页技术做的软件第一次被读时）
         self.last_read = None
 
     def windows(self):
@@ -69,6 +70,9 @@ class FakeDesktopBackend:
     def read(self, hwnd):
         self.reads += 1
         self.last_read = hwnd
+        if self.lazy.get(hwnd):
+            self.lazy[hwnd] -= 1
+            return [Node("window", self.controls[hwnd][0].name, 0)]
         return [Node(n.role, n.name, n.depth, n.actions, n.enabled, n.offscreen, n.password, n.value, n.state,
                      handle=(hwnd, i), rect=n.rect) for i, n in enumerate(self.controls[hwnd])]
 

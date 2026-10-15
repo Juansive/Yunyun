@@ -33,6 +33,8 @@ from yunyun.assistant.protocol import UI_KEY_TOOL, UI_READ_TOOL
 log = logging.getLogger(__name__)
 
 SETTLE_S = 0.5          # 点 / 输入 / 按键之后等多久再读（让软件把界面改好）
+RETRY_S = 0.5           # 读出来什么都不能操作时，等多久再读（见 Desktop._read）
+CHROMIUM_TRIES = 4      # 网页技术做的软件最多读几次（最多多等 1.5 秒）；别的软件 2 次
 NAME_CHARS = 120        # 控件的名字、值太长就截短（多半是一大段内容）
 VALUE_CHARS = 300
 CONTEXT_CHARS = 400     # 窗口里的说明文字留多少（点"确定 / 是"时看是不是撤不回的事，permissions.is_risky_ui）
@@ -317,8 +319,15 @@ class Desktop:
         return await self._read(await self._target(wanted))
 
     async def _read(self, window, note=""):
-        nodes = await self._run(lambda b: b.read(window.hwnd))
-        text, refs, offscreen = render(nodes[1:])
+        # 读出来一个能操作的都没有：等一下再读。网页技术做的软件（QQ、VS Code、飞书……窗口类 Chrome_WidgetWin_*）
+        # 第一次有人来读时才开始准备界面信息，过一会儿才有（2026-10-16 用户实测：QQ 第一次读不到，再读就有了）
+        tries = CHROMIUM_TRIES if window.window_class.startswith("Chrome_WidgetWin") else 2
+        for attempt in range(tries):
+            nodes = await self._run(lambda b: b.read(window.hwnd))
+            text, refs, offscreen = render(nodes[1:])
+            if refs or attempt == tries - 1:
+                break
+            await asyncio.sleep(RETRY_S)
         self._window, self._refs, self._context = window, refs, context_text(nodes)
         notes = [note] if note else []
         if offscreen:

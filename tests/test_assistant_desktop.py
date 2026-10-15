@@ -284,6 +284,21 @@ def test_keys_are_only_sent_when_the_window_is_really_in_front():
         run(desk.key("hyper+x", "", comes_to_front))
 
 
+def test_reads_again_when_an_app_is_still_preparing(monkeypatch):
+    """QQ 这类网页技术做的软件第一次被读时什么都没有，过一会儿才有（用户实测）：读不到能操作的就等一下再读。"""
+    monkeypatch.setattr(desktop_module, "RETRY_S", 0)
+    desk = new_desktop()
+
+    async def main():
+        await desk._run(lambda b: None)
+        desk._backend.lazy = {204: 2, 202: 5}
+        view = await desk.read("w204")                                         # QQ（Chrome_WidgetWin_1）：第三次读到了
+        assert '- edit "输入" [ref=u1]' in view.snapshot and desk._backend.reads == 3
+        view = await desk.read("w202")                                         # 别的软件只多读一次
+        assert "Nothing here can be operated" in view.note and desk._backend.reads == 5
+    run(main())
+
+
 def test_closed_window_is_explained():
     desk = new_desktop()
     run(desk.read())
