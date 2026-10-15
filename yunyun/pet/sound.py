@@ -19,7 +19,7 @@ log = logging.getLogger(__name__)
 BUNDLED = "bounce"
 EXTRA = {   # 名字 → (字节数, SHA-256)：B 站"250个meme音效合集"切出来的（来源和编号见 sounds/README.md）
     "man": (78_534, "3eb7512fcbf60635e96bd0ed27266f9324fa0b6f423dceb206b9ff90d86267eb"),
-    "manbo": (53_858, "2a284131e523e546ddb49201f073d70d147df81232f5c575fd3b22c8e694205b"),
+    "manbo": (41_500, "346a451374eae88c9ef71be9ec49ce99050c319ed4e13cd239ab924ec62bc0a5"),
     "chicken": (56_054, "5347e55aa726450e6433dc90077b3bfef9cf016cbd16717f03e7eef0ac5667f0"),
     "gugugaga": (103_686, "a037e3b41c1cac726a50feed2ce8c09158cec3b4561c4c1067345a7e47d6ed08"),
 }
