@@ -37,9 +37,11 @@ def reminder_text(event):
 class WatchReminder(QObject):
     SAY_MS = 8000
 
-    def __init__(self, pet):
+    def __init__(self, pet, skip=None):
+        """skip(event) 为真的不提醒（8.6b：这件"等你确认"已经有芸芸的确认卡片了）。"""
         super().__init__(pet)
         self._pet = pet
+        self._skip = skip
         self.notice = AssistantNotice(stack=1)
         self.notice.clicked.connect(self._on_notice_clicked)
         self._event = None   # 角落小条说的是哪一件事（点它时切到那个 Claude Code）
@@ -48,6 +50,8 @@ class WatchReminder(QObject):
     def on_event(self, event, force=False):
         """收到一件事。force：设置页的"发一条测试提醒"（你正看着设置窗口，照样提醒）。"""
         if event.event not in REMIND_EVENTS:   # 在干活、闲着……只用来换样子（pet/watch_activity.py）
+            return
+        if not force and self._skip is not None and self._skip(event):
             return
         if not force and looking_at(event):
             log.info("旁观模式：你正看着 Claude Code，不提醒")

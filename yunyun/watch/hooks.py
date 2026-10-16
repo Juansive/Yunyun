@@ -2,7 +2,8 @@
 
 加的 hook 都是运行 relay.py（开发版：pythonw relay.py；打包版：芸芸.exe --watch-relay），事件见 EVENTS：
 - 阶段 8：Stop 做完一轮；Notification 等你确认 / 让你选（还有"闲着"：被打断时靠它知道不忙了）；
-- 8.6a（2026-10-16）芸芸跟着换样子：UserPromptSubmit 开始干活、PostToolUse 用完一个工具（批准完接着干）、PermissionRequest 要你批准、
+- 8.6a（2026-10-16）芸芸跟着换样子：UserPromptSubmit 开始干活、PostToolUse / PostToolUseFailure 用完一个工具（批准完接着干）、
+  PermissionRequest 要你批准（8.6b 芸芸的确认卡片）、
   StopFailure 出错停下、SessionEnd 会话结束。只用来换样子的放在后台跑（"async"），一点都不拖慢 Claude Code。
 - **写成"程序 + 参数"**（"command" 是程序路径、"args" 是参数，Claude Code 2.1.139 起）：不经过命令行解释，
   路径里有空格、中文都没事。10-16 实测：Windows 上 hook 的命令现在是交给 PowerShell 解释的，以前那种
@@ -31,6 +32,7 @@ NOTIFICATION_MATCHER = "permission_prompt|elicitation_dialog|idle_prompt"
 EVENTS = {   # 事件 → (matcher, 最多跑几秒, 后台跑)。要等芸芸回话的两个比 relay.REPLY_EVENTS 长一点；别的 relay 几十毫秒就完
     "UserPromptSubmit": (None, 10, True),
     "PostToolUse": (None, 10, True),
+    "PostToolUseFailure": (None, 10, True),   # 工具跑了但出错（8.6b：批准过的那件事做完了，卡片收起）
     "PermissionRequest": (None, 600, False),
     "Notification": (NOTIFICATION_MATCHER, 10, True),
     "Stop": (None, 90, False),

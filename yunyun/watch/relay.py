@@ -13,6 +13,7 @@
 """
 import ctypes
 import getpass
+import hashlib
 import json
 import os
 import re
@@ -25,11 +26,14 @@ MAX_TEXT = 200
 MAX_ANCESTORS = 12
 NOTIFICATIONS = {"permission_prompt": "permission", "elicitation_dialog": "choice",   # 通知种类 → 事件
                  "idle_prompt": "idle"}   # 闲着等你（被你按 Esc 打断时不会有 Stop，靠它知道不忙了；不提醒）
-HOOK_EVENTS = {"UserPromptSubmit": "busy", "PostToolUse": "busy",   # hook 事件 → 发给芸芸的事件（Stop、Notification 另算）
-               "PermissionRequest": "approval", "StopFailure": "failed", "SessionEnd": "end"}
+HOOK_EVENTS = {"UserPromptSubmit": "busy", "PostToolUse": "busy", "PostToolUseFailure": "busy",   # hook 事件 → 发给芸芸的事件
+               "PermissionRequest": "approval", "StopFailure": "failed", "SessionEnd": "end"}   # （Stop、Notification 另算）
+TOOL_DONE = ("PostToolUse", "PostToolUseFailure")   # 一个工具做完了（带指纹：芸芸据此知道你在 Claude 那边批准过了，收起卡片）
 REPLY_EVENTS = {"approval": 590, "stop": 60}   # 要等芸芸回话的事件 → 最多等几秒（比 hooks.py 里给它的超时短）
-REMIND_EVENTS = ("stop", "permission", "choice")   # 要提醒你的（才查祖先进程、控制台窗口）
+REMIND_EVENTS = ("stop", "permission", "choice")   # 要提醒你的
+WINDOW_EVENTS = (*REMIND_EVENTS, "approval")   # 要看你是不是正看着 Claude Code 的（才查祖先进程、控制台窗口）
 MAX_REPLY = 8192
+MAX_INPUT = 48_000   # 要批准的那件事（tool_input）最多带多少字给芸芸：卡片上看个大概，全文在 Claude 那边
 POLL_S = 0.02
 
 
@@ -60,11 +64,35 @@ def message_from(hook):
         return None
     message = {"event": event, "session": str(hook.get("session_id") or "")[:100], "cwd": str(hook.get("cwd") or ""),
                "text": text}
-    if event == "approval":
+    if name == "PermissionRequest" or name in TOOL_DONE:
         message["tool"] = str(hook.get("tool_name") or "")[:100]
+        message["fp"] = fingerprint(hook.get("tool_name"), hook.get("tool_input"))
+    if event == "approval":   # 8.6b：芸芸的确认卡片上要写清它要做什么（只走本机的管道，不记日志）
+        message["input"] = trimmed(hook.get("tool_input"))
     if event in REPLY_EVENTS:
         message["reply"] = True
     return message
+
+
+def fingerprint(tool, tool_input):
+    """一次工具调用的指纹：要批准的那件事 ↔ 后来做完的那件事对得上（PermissionRequest 里没有 tool_use_id）。"""
+    raw = json.dumps([tool, tool_input], ensure_ascii=False, sort_keys=True, default=str)
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
+
+
+def trimmed(tool_input, limit=MAX_INPUT):
+    """要批准的那件事 → 发给芸芸的：只留一层（里面的列表 / 字典变成一段文字），太长的字段截断到总共不超过 limit 字。"""
+    if not isinstance(tool_input, dict):
+        return {}
+    fields = {str(key)[:100]: value if isinstance(value, (str, int, float, bool)) or value is None
+              else json.dumps(value, ensure_ascii=False, default=str) for key, value in list(tool_input.items())[:30]}
+    chars = limit
+    while chars > 50:
+        result = {key: value[:chars] if isinstance(value, str) else value for key, value in fields.items()}
+        if len(json.dumps(result, ensure_ascii=False)) <= limit:
+            return result
+        chars //= 2
+    return {}
 
 
 def hook_output(event, reply):
@@ -199,7 +227,7 @@ def main():
         hook = json.loads(read_stdin() or b"{}")
         message = message_from(hook) if isinstance(hook, dict) else None
         if message:
-            if message["event"] in REMIND_EVENTS:
+            if message["event"] in WINDOW_EVENTS:
                 message["ancestors"] = ancestors(os.getpid())
                 message["console"] = console_window()
             reply = send(message, os.environ.get("YUNYUN_WATCH_PIPE") or PIPE_NAME, REPLY_EVENTS.get(message["event"], 0))

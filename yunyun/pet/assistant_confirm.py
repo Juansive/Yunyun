@@ -252,7 +252,7 @@ class AssistantConfirm(SidePanel):
         self._reason.setStyleSheet(_REASON_STYLE)
         self._reason.returnPressed.connect(self._deny)
         layout.addWidget(self._reason)
-        buttons = QHBoxLayout()
+        buttons = self._button_row = QHBoxLayout()   # 旁观的确认卡片（pet/watch_approvals.py）往里加"去看看"
         buttons.setSpacing(8)
         self._deny_button = make_button(_DENY_STYLE, self._deny)
         self._remember_button = make_button(_SECONDARY_STYLE, lambda: self._answer(True, remember=True))

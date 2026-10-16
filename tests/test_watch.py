@@ -120,7 +120,8 @@ def test_connect_adds_our_hooks_keeps_everything_else_and_backs_up(tmp_path):
     assert data["hooks"]["Notification"][0]["matcher"] == "permission_prompt|elicitation_dialog|idle_prompt"
     assert set(data["hooks"]) == {"Stop", "PreToolUse", *watch_hooks.EVENTS}  # 8.6a：开始干活、批准、出错……都接上了
     background = {event for event, groups in data["hooks"].items() for g in groups for h in g["hooks"] if h.get("async")}
-    assert background == {"UserPromptSubmit", "PostToolUse", "Notification", "StopFailure", "SessionEnd"}   # 只换样子的在后台跑
+    assert background == {"UserPromptSubmit", "PostToolUse", "PostToolUseFailure", "Notification", "StopFailure",
+                          "SessionEnd"}                                  # 只换样子的在后台跑
     assert data["hooks"]["PermissionRequest"][0]["hooks"][0]["timeout"] == 600  # 等你在芸芸这边批准（8.6b）
     assert watch_hooks.status(path, RELAY_CMD) == "connected"
 

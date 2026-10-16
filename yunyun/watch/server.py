@@ -7,19 +7,19 @@
 import json
 import logging
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from PySide6.QtCore import QObject, Signal
-from PySide6.QtNetwork import QLocalServer
+from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from shiboken6 import isValid
 
-from yunyun.watch.relay import MAX_ANCESTORS, MAX_TEXT, PIPE_NAME
+from yunyun.watch.relay import MAX_ANCESTORS, MAX_INPUT, MAX_TEXT, PIPE_NAME
 
 log = logging.getLogger(__name__)
 
 EVENTS = ("stop", "permission", "choice",   # 要提醒你的（阶段 8）
-          "busy", "approval", "idle", "failed", "end")   # 只用来换样子的（8.6a）
-MAX_LINE = 8192   # 一条消息最多多少字节（正常的不到 1 KB）
+          "busy", "approval", "idle", "failed", "end")   # 换样子的（8.6a）；approval 还要弹确认卡片（8.6b）
+MAX_LINE = 4 * MAX_INPUT   # 一条消息最多多少字节（要批准的那件事带着它的内容，中文一个字 3 字节；别的不到 1 KB）
 MAX_PENDING = 64  # 最多同时留着几条没回话的（正常一两条）
 
 
@@ -32,8 +32,10 @@ class WatchEvent:
     ancestors: tuple = ()    # hook 脚本的祖先进程（Claude Code、终端 / 桌面版……）
     console: int = 0         # 控制台窗口句柄（老式控制台里跑时有）
     session: str = ""        # 哪一段对话（同时开着几个 Claude Code 时分开算）
-    tool: str = ""           # 要批准的是哪个工具（approval）
+    tool: str = ""           # 要批准的 / 刚做完的是哪个工具（approval、工具做完的 busy）
     reply_id: int = 0        # 不是 0：relay 在等回话（answer）
+    fp: str = ""             # 那一次工具调用的指纹（批准的 ↔ 做完的对得上，见 relay.fingerprint）
+    input: dict = field(default_factory=dict)   # 要批准的那件事（approval：命令、要改的文件……，确认卡片上显示）
 
     @property
     def project(self):
@@ -53,9 +55,10 @@ def parse(line, reply_id=0):
     ancestors = tuple(int(p) for p in ancestors[:MAX_ANCESTORS] if isinstance(p, int) and p > 0) \
         if isinstance(ancestors, list) else ()
     console = data.get("console") if isinstance(data.get("console"), int) else 0
+    tool_input = data.get("input") if data["event"] == "approval" and isinstance(data.get("input"), dict) else {}
     return WatchEvent(data["event"], str(data.get("cwd") or "")[:1000], str(data.get("text") or "")[:MAX_TEXT],
                       ancestors, max(console, 0), str(data.get("session") or "")[:100], str(data.get("tool") or "")[:100],
-                      reply_id if data.get("reply") is True else 0)
+                      reply_id if data.get("reply") is True else 0, str(data.get("fp") or "")[:64], tool_input)
 
 
 class WatchServer(QObject):
@@ -108,6 +111,11 @@ class WatchServer(QObject):
         """收到 event 的人要过后再回话（比如等你在确认卡片上点）：先别自动回空的。"""
         if event.reply_id in self._pending:
             self._held.add(event.reply_id)
+
+    def waiting(self, event):
+        """relay 还在等这件事的回话吗（没回过、它也还没走：超时了 / Claude Code 停了 / 打断了，它就走了）。"""
+        socket = self._pending.get(event.reply_id)
+        return socket is not None and isValid(socket) and socket.state() == QLocalSocket.LocalSocketState.ConnectedState
 
     def answer(self, event, reply=None):
         """回 relay 一句（reply：dict，见 relay.hook_output；None / 空的 = 照常进行）。relay 已经走了（超时、Claude Code 停了）就算了。"""

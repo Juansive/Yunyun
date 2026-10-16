@@ -20,14 +20,28 @@ from yunyun.watch.server import WatchEvent, WatchServer
 
 # ---------- hook 脚本：新的几个事件、回话 ----------
 
-@pytest.mark.parametrize("name, event", [("UserPromptSubmit", "busy"), ("PostToolUse", "busy"), ("PermissionRequest", "approval"),
-                                         ("StopFailure", "failed"), ("SessionEnd", "end")])
+@pytest.mark.parametrize("name, event", [("UserPromptSubmit", "busy"), ("PostToolUse", "busy"), ("PostToolUseFailure", "busy"),
+                                         ("PermissionRequest", "approval"), ("StopFailure", "failed"), ("SessionEnd", "end")])
 def test_new_hooks_become_events(name, event):
-    message = relay.message_from({"hook_event_name": name, "session_id": "s1", "cwd": "F:\\code\\proj",
-                                  "tool_name": "Bash", "prompt": "我的秘密问题", "tool_input": {"command": "rm -rf x"}})
+    hook = {"hook_event_name": name, "session_id": "s1", "cwd": "F:\\code\\proj", "tool_name": "Bash",
+            "prompt": "我的秘密问题", "tool_input": {"command": "rm -rf x", "description": "清理"}}
+    message = relay.message_from(hook)
     assert message["event"] == event and message["session"] == "s1" and message["text"] == ""
-    assert "我的秘密问题" not in json.dumps(message, ensure_ascii=False) and "rm -rf" not in json.dumps(message)   # 不带内容
-    assert ("reply" in message) == (event == "approval") and (message.get("tool") == "Bash") == (event == "approval")
+    assert "我的秘密问题" not in json.dumps(message, ensure_ascii=False)   # 你问的话从来不带
+    assert ("reply" in message) == (event == "approval")
+    tool_event = name in ("PermissionRequest", "PostToolUse", "PostToolUseFailure")
+    assert (message.get("tool") == "Bash") == tool_event and bool(message.get("fp")) == tool_event
+    assert ("rm -rf" in json.dumps(message)) == (event == "approval")   # 要批准的那件事带着（卡片上要看），做完的只带指纹
+    if tool_event:   # 批准的 ↔ 做完的指纹对得上
+        assert message["fp"] == relay.fingerprint("Bash", {"description": "清理", "command": "rm -rf x"})
+
+
+def test_long_input_is_trimmed_to_fit():
+    big = {"file_path": "F:\\a.txt", "content": "字" * 200_000, "edits": [{"old": "x" * 10, "new": "y"}]}
+    trimmed = relay.trimmed(big)
+    assert len(json.dumps(trimmed, ensure_ascii=False)) <= relay.MAX_INPUT and trimmed["file_path"] == "F:\\a.txt"
+    assert trimmed["content"].startswith("字") and isinstance(trimmed["edits"], str)   # 里面的列表变成一段文字
+    assert relay.trimmed("not a dict") == {}
 
 
 def test_only_known_replies_become_hook_output():

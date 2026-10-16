@@ -132,12 +132,15 @@ def connect_watch(app, pet, machine=None):
     """旁观模式（阶段 8）：开本机通道收你自己的 Claude Code 的 hook（没连接时也开着，几乎不占东西），收到就提醒你；
     8.6a 起芸芸还跟着它换样子（machine：状态机）。和助手模式无关（不 import 助手的代码）。返回一个有 close() 的对象（退出时关掉）。"""
     from yunyun.pet.watch_activity import WatchActivity
+    from yunyun.pet.watch_approvals import WatchApprovals
     from yunyun.pet.watch_reminder import WatchReminder
     from yunyun.watch.server import WatchServer
     server = WatchServer(parent=app)
-    reminder = WatchReminder(pet)
+    approvals = WatchApprovals(pet, server)   # 8.6b：它要你批准时芸芸弹确认卡片
+    reminder = WatchReminder(pet, skip=approvals.handles)   # 有卡片在等的"等你确认"就不再提醒一遍
     activity = WatchActivity(app)
     server.event_received.connect(activity.on_event)   # 先换样子再提醒：做完时先不忙了，再冒"做完了"的气泡
+    server.event_received.connect(approvals.on_event)  # 要在 server 自动放行之前 hold 住（同一个线程里，按连接的顺序）
     server.event_received.connect(reminder.on_event)
     if machine is not None:
         activity.activity_changed.connect(machine.set_watch)
@@ -146,6 +149,7 @@ def connect_watch(app, pet, machine=None):
     class Watch:
         @staticmethod
         def close():
+            approvals.close()   # 还在等的先放行（Claude Code 照常问你）
             server.close()
             reminder.close()
     return Watch
