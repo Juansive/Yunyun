@@ -31,8 +31,10 @@ def ask(provider, api_key, model, messages, **kwargs):
                 use_proxy=not provider.local, **kwargs)              # 本机 / 局域网的模型不走系统代理
 
 
-def chat(base_url, api_key, model, messages, extra=None, max_tokens=200, temperature=0.7, timeout=30, use_proxy=True):
-    """OpenAI 兼容格式：发送一次对话，返回模型回答的文字。api_key 为空时不发 Key（本地模型一般不需要）。"""
+def chat(base_url, api_key, model, messages, extra=None, max_tokens=200, temperature=0.7, timeout=30, use_proxy=True,
+         usage=None):
+    """OpenAI 兼容格式：发送一次对话，返回模型回答的文字。api_key 为空时不发 Key（本地模型一般不需要）。
+    usage：给一个 dict 就把这次用了多少 token 加进去（评测用，见 count_usage）。"""
     body = {
         "model": model,
         "messages": messages,
@@ -42,10 +44,21 @@ def chat(base_url, api_key, model, messages, extra=None, max_tokens=200, tempera
     }
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
     data = _post_json(base_url.rstrip("/") + "/chat/completions", body, timeout, headers=headers, use_proxy=use_proxy)
+    tokens = (data.get("usage") or {}) if isinstance(data, dict) else {}
+    count_usage(usage, tokens.get("prompt_tokens"), tokens.get("completion_tokens"))
     try:
         return data["choices"][0]["message"]["content"] or ""
     except (KeyError, IndexError, TypeError) as e:
         raise AIError("返回格式不对", kind="bad_response", detail=str(data)[:300]) from e
+
+
+def count_usage(usage, prompt_tokens, completion_tokens):
+    """把一次调用的 token 数加进 usage（{"input", "output", "calls"}）；usage 是 None 就不记。服务商没报 token 数时按 0 算。"""
+    if usage is None:
+        return
+    usage["input"] = usage.get("input", 0) + (prompt_tokens or 0)
+    usage["output"] = usage.get("output", 0) + (completion_tokens or 0)
+    usage["calls"] = usage.get("calls", 0) + 1
 
 
 # 本地模型最多用四分之一的 CPU 线程（至少 2 个）。实测（20 线程的笔记本，只用 CPU）：
@@ -62,7 +75,7 @@ def load_ollama_model(provider, model, timeout=120):
     _post_ollama(provider.base_url.rstrip("/") + "/api/generate", body, timeout)
 
 
-def chat_ollama(base_url, model, messages, extra=None, max_tokens=200, temperature=0.7, timeout=120):
+def chat_ollama(base_url, model, messages, extra=None, max_tokens=200, temperature=0.7, timeout=120, usage=None):
     """本机 Ollama 的原生接口：发送一次对话，返回模型回答的文字。
 
     没用 Ollama 的"OpenAI 兼容接口"，因为只有原生接口能传 think（关掉思考模式）和 keep_alive（多久卸载模型）。
@@ -84,6 +97,8 @@ def chat_ollama(base_url, model, messages, extra=None, max_tokens=200, temperatu
             raise
         body.pop("think")
         data = _post_ollama(url, body, timeout)
+    if isinstance(data, dict):
+        count_usage(usage, data.get("prompt_eval_count"), data.get("eval_count"))
     try:
         return data["message"]["content"] or ""
     except (KeyError, TypeError) as e:

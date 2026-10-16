@@ -30,3 +30,5 @@ reminders.json
 assistant_spending.json
 # Archify 画的图（开发用，不进公开仓库）
 .archify/
+# 邮件 agent 评测跑出来的结果（模型回答 + 分数），要用的再挑出来
+tools/mail_eval/results/

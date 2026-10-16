@@ -57,6 +57,17 @@ def test_chat_sends_openai_format(monkeypatch):
     assert captured["body"]["model"] == "m1" and captured["body"]["thinking"] == {"type": "disabled"}
 
 
+def test_usage_counts_tokens_when_asked(monkeypatch):
+    """评测要知道用了多少 token：给了 usage 就累加进去；服务商没报就按 0 算。"""
+    usage = {}
+    reply = {"choices": [{"message": {"content": "OK"}}], "usage": {"prompt_tokens": 120, "completion_tokens": 8}}
+    monkeypatch.setattr(client.urllib.request, "urlopen", fake_urlopen(reply))
+    client.chat("https://x.com/v4", "k", "m", [], usage=usage)
+    monkeypatch.setattr(client.urllib.request, "urlopen", fake_urlopen({"choices": [{"message": {"content": "OK"}}]}))
+    client.chat("https://x.com/v4", "k", "m", [], usage=usage)
+    assert usage == {"input": 120, "output": 8, "calls": 2}
+
+
 @pytest.mark.parametrize("code, kind", [(401, "auth"), (403, "auth"), (429, "rate_limit"), (500, "other")])
 def test_chat_http_errors(monkeypatch, code, kind):
     payload = {"error": {"message": "something bad"}}
@@ -181,6 +192,14 @@ def test_ollama_uses_native_api_without_key_or_proxy(monkeypatch, no_system_prox
     assert body["stream"] is False and body["think"] is False          # 一次返回；关掉思考模式
     assert body["keep_alive"] == "30s" and body["options"]["num_predict"] == 50   # 30 秒后卸载模型
     assert 2 <= body["options"]["num_thread"] == client.OLLAMA_THREADS             # 少用几个线程，不拖卡电脑
+
+
+def test_ollama_usage(monkeypatch, no_system_proxy):
+    usage = {}
+    reply = {"message": {"content": "OK"}, "done": True, "prompt_eval_count": 300, "eval_count": 15}
+    monkeypatch.setattr(client._NO_PROXY, "open", fake_urlopen(reply))
+    client.ask(OLLAMA, "", "qwen3:1.7b", [{"role": "user", "content": "hi"}], usage=usage)
+    assert usage == {"input": 300, "output": 15, "calls": 1}
 
 
 def test_ollama_errors_are_easy_to_understand(monkeypatch, no_system_proxy):
