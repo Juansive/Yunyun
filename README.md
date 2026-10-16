@@ -166,7 +166,7 @@ a small bar pops up above the taskbar — click it to switch to Claude Code. Yun
 - Turn it on: Settings → "Watch" → "Connect my Claude Code". This adds a few hooks to `C:\Users\you\.claude\settings.json`
   (they run Yunyun's tiny script when Claude Code starts working, needs you or finishes — a few dozen milliseconds, the ones that only change her look run in the background, and nothing happens if Yunyun isn't running). The file is backed up in the same folder first; your own hooks and other settings are left alone.
 - Claude Code windows that are already open need to be restarted. Click "Send a test reminder" to see what it looks like.
-- Used Watch mode before? If the page says to reconnect, click "Reconnect" once (newer Claude Code runs hooks through PowerShell, and the old connection may not remind you at all).
+- Used Watch mode before? If the page says to reconnect, click "Reconnect" once (the new connection also works on PCs where Claude Code runs hooks through PowerShell).
 - Don't want it any more? "Disconnect" removes only Yunyun's hooks.
 
 ## Privacy

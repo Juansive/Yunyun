@@ -148,11 +148,11 @@ TEXTS = {
                              "en": "Only half connected (the settings may have been edited by hand): click \"Reconnect\"",
                              "ja": "半分だけ接続されています（設定を手で変えたかも）：「再接続」で直せます"},
     "watch_status_outdated": {
-        "zh": "芸芸更新过，要重新连接一下：点\"重新连接\"，她才能跟着 Claude Code 换样子（以前的连接在新版 Claude Code 里可能根本不提醒）",
-        "en": "Yunyun has been updated — click \"Reconnect\" so she can follow Claude Code's activity (the old connection "
-              "may not remind you at all with newer Claude Code)",
+        "zh": "芸芸更新过，要重新连接一下：点\"重新连接\"，她才能跟着 Claude Code 换样子，你也能在她的卡片上批准",
+        "en": "Yunyun has been updated — click \"Reconnect\" so she can follow Claude Code's activity and let you approve "
+              "from her card",
         "ja": "芸芸が更新されました。「再接続」を押すと Claude Code に合わせて様子が変わるようになります"
-              "（以前の接続は新しい Claude Code では通知が出ないことがあります）"},
+              "（芸芸のカードから許可もできます）"},
     "watch_status_broken": {"zh": "Claude Code 的设置文件看不懂（不是合法的 JSON），芸芸不会动它，请先修好",
                             "en": "Claude Code's settings file isn't valid JSON; Yunyun won't touch it — please fix it first",
                             "ja": "Claude Code の設定ファイルが正しい JSON ではありません。芸芸は触りません。先に直してください"},

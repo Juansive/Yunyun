@@ -93,7 +93,9 @@ def test_relay_waits_for_yunyun_and_prints_her_answer(qapp, server):
     assert process.poll() is None                                        # 还在等芸芸回话
     assert server.answer(event, {"decision": "block", "reason": "再跑一遍测试"})
     assert wait_until(qapp, lambda: process.poll() is not None, timeout=30)
-    assert process.returncode == 0 and json.loads(process.stdout.read()) == {"decision": "block", "reason": "再跑一遍测试"}
+    out = process.stdout.read()
+    assert process.returncode == 0 and json.loads(out) == {"decision": "block", "reason": "再跑一遍测试"}
+    assert out.isascii()                                                 # 中文是 \uXXXX：Claude Code 按什么编码读都不乱
     assert not server.answer(event, {})                                  # 回过了：不会回第二次
 
 

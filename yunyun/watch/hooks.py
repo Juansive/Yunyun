@@ -6,8 +6,9 @@
   PermissionRequest 要你批准（8.6b 芸芸的确认卡片）、
   StopFailure 出错停下、SessionEnd 会话结束。只用来换样子的放在后台跑（"async"），一点都不拖慢 Claude Code。
 - **写成"程序 + 参数"**（"command" 是程序路径、"args" 是参数，Claude Code 2.1.139 起）：不经过命令行解释，
-  路径里有空格、中文都没事。10-16 实测：Windows 上 hook 的命令现在是交给 PowerShell 解释的，以前那种
-  `"路径" --watch-relay` 在 PowerShell 里是语法错误，hook 根本跑不起来（旧的连接在设置页显示"要重新连接"）。
+  路径里有空格、中文都没事。10-16 实测：有的地方 hook 的命令是交给 PowerShell 解释的（芸芸带的 Claude Code 就是；
+  桌面版在装了 Git Bash 的电脑上用的是 Git Bash，老写法照样能跑），以前那种 `"路径" --watch-relay` 在 PowerShell 里
+  是语法错误，hook 根本跑不起来（旧的连接在设置页显示"要重新连接"）。
   老版本不认 "args"、只运行程序：芸芸.exe 不带参数、标准输入是管道时也当 hook 处理（tools/exe_entry.py），不会开出一个芸芸。
 
 规矩（改的是你自己的设置，要格外小心）：

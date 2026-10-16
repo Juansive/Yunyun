@@ -232,8 +232,8 @@ def main():
                 message["console"] = console_window()
             reply = send(message, os.environ.get("YUNYUN_WATCH_PIPE") or PIPE_NAME, REPLY_EVENTS.get(message["event"], 0))
             output = hook_output(message["event"], reply)
-            if output:   # 写底层描述符：pythonw 下 sys.stdout 是 None
-                os.write(1, json.dumps(output, ensure_ascii=False).encode("utf-8"))
+            if output:   # 写底层描述符（pythonw 下 sys.stdout 是 None）；中文写成 \uXXXX：不管对方按什么编码读都不会乱码
+                os.write(1, json.dumps(output).encode("ascii"))
     except FileNotFoundError:   # 芸芸没开：正常，悄悄退出
         pass
     except (OSError, ValueError) as e:
