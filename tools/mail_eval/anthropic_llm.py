@@ -24,7 +24,8 @@ class AnthropicLLM:
 
     def reply(self, messages, tools, max_tokens):
         system, converted = to_anthropic(messages)
-        request = {"model": self.model, "max_tokens": max_tokens, "temperature": TEMPERATURE, "messages": converted,
+        # SDK 1.x 的参数里没有 temperature 了（新模型不收）；Haiku 4.5 的接口还认，和别的模型一样设 0.3
+        request = {"model": self.model, "max_tokens": max_tokens, "messages": converted, "extra_body": {"temperature": TEMPERATURE},
                    **({"system": system} if system else {}), **({"tools": to_anthropic_tools(tools)} if tools else {})}
         try:
             response = self.client.messages.create(**request)

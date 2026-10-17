@@ -219,7 +219,7 @@ def test_anthropic_llm_request_and_reply():
     llm = AnthropicLLM("claude-haiku-4-5", "sk-test")
     llm.client = NS(messages=NS(create=create))
     reply = llm.reply([{"role": "system", "content": "规矩"}, {"role": "user", "content": "新邮件"}], TOOLS, 600)
-    assert (sent["model"], sent["max_tokens"], sent["system"], sent["temperature"]) == ("claude-haiku-4-5", 600, "规矩", 0.3)
+    assert (sent["model"], sent["max_tokens"], sent["system"], sent["extra_body"]) == ("claude-haiku-4-5", 600, "规矩", {"temperature": 0.3})
     assert [t["name"] for t in sent["tools"]] == [t["function"]["name"] for t in TOOLS]
     assert reply.text == "我先看看原来的邮件" and [(c.id, c.name, c.arguments) for c in reply.tool_calls] == [
         ("toolu_9", "read_earlier_mails", {})]
