@@ -208,6 +208,7 @@ def test_cards_carry_agent_suggestions_and_history_feeds_its_inbox(qapp, world):
     pet._on_badge_clicked()
     assert wait_until(qapp, lambda: not mail.fetching)
     cards = {c.bubble: c for c in pet._deck._cards}
-    assert [s.text for s in cards["AI：标题11来啦！"].suggestions] == ["组会"]
+    [row] = cards["AI：标题11来啦！"].suggestions                       # 卡片上一行：⏰ 时间 组会 [加提醒] [不用]
+    assert row.label.startswith("⏰") and row.label.endswith("组会") and row.accept == "加提醒" and row.action.text == "组会"
     assert cards["AI：标题12来啦！"].suspicious and not cards["AI：标题10来啦！"].suspicious
     assert sorted(m.subject for m in mail.inbox.snapshot()) == ["标题10", "标题11", "标题12"]

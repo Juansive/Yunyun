@@ -225,3 +225,97 @@ def test_note_and_detail_lines(qapp, pet):
     h = deck.height()
     pet.set_mail_note("AI 暂时没回应，我先用标题告诉你～")
     assert deck.height() > h                      # 底部多了一行提示
+
+
+# ---------- 邮件 agent 的提醒建议（E6b） ----------
+
+def suggestion_card(*rows, suspicious=False):
+    c = card(1)
+    c.suggestions, c.suspicious = list(rows), suspicious
+    return c
+
+
+def soon(hours=3):
+    from datetime import datetime, timedelta
+    return (datetime.now() + timedelta(hours=hours)).replace(second=0, microsecond=0)
+
+
+def add_row(text="组会", when=None, repeat=""):
+    from yunyun.ai.mail_agent import Suggestion
+    from yunyun.pet.suggestions import card_suggestions
+    return card_suggestions([Suggestion("add", text, when or soon(), repeat=repeat)], [])[0]
+
+
+def button(deck, row, accept):
+    """当前卡片上第 row 条建议的按钮中心（窗口坐标）。"""
+    rect = next(r for i, a, r in deck._button_rects() if i == row and a == accept)
+    return (rect.center() + deck._current_front_rect().topLeft()).toPoint()
+
+
+def test_suggestion_buttons_emit_and_do_not_expand(qapp, pet):
+    deck = pet._deck
+    deck.suggestion_chosen.disconnect(pet._on_suggestion_chosen)   # 这里只看按钮发不发信号，不真的去加
+    pet.begin_mail_batch()
+    plain = deck._collapsed_height()
+    pet.add_mail_card(suggestion_card(add_row()))
+    assert deck._collapsed_height() > plain + deck.BUTTON_H     # 多了一行字 + 一行按钮
+    chosen = []
+    deck.suggestion_chosen.connect(lambda *args: chosen.append(args))
+    click(deck, button(deck, 0, True))
+    click(deck, button(deck, 0, False))
+    assert chosen == [(0, 0, True), (0, 0, False)] and not deck.expanded
+    press(deck, button(deck, 0, True))                          # 按下后挪到别处再松开：不算
+    release(deck, front_center(deck) + QPoint(0, -30))
+    assert len(chosen) == 2
+    deck.grab()                                                 # 画得出来
+
+
+def test_clicking_add_creates_the_reminder(qapp, pet):
+    from yunyun.notify import reminders
+    deck = pet._deck
+    pet.begin_mail_batch()
+    when = soon()
+    pet.add_mail_card(suggestion_card(add_row("组会", when, "weekly"), add_row("回复阿杰")))
+    first, second = deck.card(0).suggestions
+    assert first.label.endswith("组会 · 每周") and first.accept == "加提醒"
+    click(deck, button(deck, 0, True))
+    assert first.state == "done" and first.message == "✓ 已加提醒"
+    assert [(r.text, r.repeat) for r in reminders.load()] == [("组会", "weekly")]
+    height = deck._collapsed_height()
+    click(deck, button(deck, 1, False))                          # 第二条点"不用"：这一行收起来，提醒没加
+    assert second.state == "dismissed" and deck._collapsed_height() < height and len(reminders.load()) == 1
+    assert [i for i, _, _ in deck._button_rects()] == []          # 做完的那条换成了"✓ 已加提醒"，没有按钮了
+    deck.grab()
+
+
+def test_failed_suggestion_says_why(qapp, pet):
+    deck = pet._deck
+    pet.begin_mail_batch()
+    pet.add_mail_card(suggestion_card(add_row(when=soon(-2))))  # 两小时前：已经过了
+    click(deck, button(deck, 0, True))
+    row = deck.card(0).suggestions[0]
+    assert (row.state, row.message) == ("failed", "没加上：这个时间已经过了")
+
+
+def test_suspicious_cards_get_a_tag(qapp, pet):
+    deck = pet._deck
+    pet.begin_mail_batch()
+    pet.add_mail_card(card(1))
+    plain = deck._collapsed_height()
+    pet.add_mail_card(suggestion_card(suspicious=True))
+    assert deck._collapsed_height() > plain and deck._tag_height(deck.card(1)) > 0
+    deck.grab()
+
+
+def test_card_labels_for_move_and_cancel():
+    from datetime import datetime
+    from yunyun.ai.mail_agent import Suggestion
+    from yunyun.notify.reminders import Reminder
+    from yunyun.pet.suggestions import card_suggestions
+    i18n._current = "zh"
+    now = datetime(2026, 10, 21, 8, 30)
+    existing = [Reminder("t1", "组会", "2026-10-21T13:30"), Reminder("t4", "评测方法讲座", "2026-10-28T13:30")]
+    rows = card_suggestions([Suggestion("move", when=datetime(2026, 10, 22, 9, 0), target="t1"),
+                             Suggestion("cancel", target="t4"), Suggestion("cancel", target="t9")], existing, now)
+    assert [(r.label, r.accept) for r in rows] == [("⏰ 组会：今天 13:30 → 明天 09:00", "改"),
+                                                  ("⏰ 取消「评测方法讲座」", "取消")]   # 不在了的 t9 不显示

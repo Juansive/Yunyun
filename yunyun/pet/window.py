@@ -21,7 +21,7 @@ from yunyun import i18n, logs, shortcut
 from yunyun.notify import reminders
 from yunyun.features import assistant_available
 from yunyun.ai import settings as ai_settings
-from yunyun.pet import sound, winapi
+from yunyun.pet import sound, suggestions, winapi
 from yunyun.pet.badge import Badge
 from yunyun.pet.bubble import BubbleStack
 from yunyun.pet.card_deck import CardDeck, MailCard, mailbox_label
@@ -167,6 +167,7 @@ class PetWindow(QWidget):
         # ---- 卡片堆：点小红点后，处理好的邮件一张张出现在这里 ----
         self._deck = CardDeck(self)
         self._deck.closed.connect(self._on_deck_closed)
+        self._deck.suggestion_chosen.connect(self._on_suggestion_chosen)   # 卡片上点了"加提醒 / 不用"
         self._deck_accepting = False  # 这一轮处理的结果还要不要放进卡片堆（用户中途收起就不要了）
 
         # 退出要"快速双击"：第一下启动这个定时器，定时器还在跑时点第二下才真正退出。
@@ -566,6 +567,15 @@ class PetWindow(QWidget):
     def _on_deck_closed(self):
         if self._mail_processing:
             self._deck_accepting = False  # 还在处理就被收起了：后面的结果不放进来，也不算处理过
+
+    def _on_suggestion_chosen(self, card_index, row, accept):
+        """卡片上的提醒建议：点了"加提醒 / 改 / 取消"就去做（做完让闹钟重新排），点了"不用"就收起这一条。"""
+        suggestion = self._deck.card(card_index).suggestions[row]
+        if not accept:
+            suggestion.state = "dismissed"
+        elif suggestions.apply(suggestion) and getattr(self, "reminder_clock", None) is not None:
+            self.reminder_clock.check()
+        self._deck.refresh()
 
     # ---------- 小红点 ----------
 

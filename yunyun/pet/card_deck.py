@@ -12,6 +12,8 @@
 - 滚轮 / 上下方向键：切换卡片（平滑滑动）
 - 单击当前卡片：按下时微微下沉，松开后平滑展开，显示原始的标题、发件人、时间、附件；再点一下平滑缩回
 - 添加了两个以上邮箱时，底部右边有个小标签写着是哪个邮箱收的（mailbox_label）
+- 邮件 agent 开着时（完整版，设置 → 提醒）：那句话下面一行一条提醒建议，右边两个小按钮（加提醒 / 不用……），
+  点了发 suggestion_chosen，由芸芸窗口去做（pet/suggestions.py），做完卡片上写"✓ 已加"；像是诈骗的左上角一个红色小标
 - 单击后面露出来的卡片：直接跳到那张
 - 按 Esc、点卡片堆外面：收起
 
@@ -29,6 +31,17 @@ from PySide6.QtWidgets import QApplication, QWidget
 from yunyun import i18n
 from yunyun.pet import winapi
 from yunyun.pet.bubble import animate, blend, place_block
+from yunyun.pet.theme import ACCENT
+
+
+@dataclass
+class CardSuggestion:
+    """卡片上的一条提醒建议（邮件 agent 提的）：label 写着要做什么；点了 accept 按钮，芸芸窗口去加 / 改 / 取消（pet/suggestions.py）。"""
+    label: str
+    accept: str                 # 按钮上的字："加提醒" / "改" / "取消"
+    action: object = None       # 交给 suggestions.apply 的东西（mail_agent.Suggestion）
+    state: str = "pending"      # pending 等你点 / done 做好了 / failed 没做成 / dismissed 点了"不用"（不再显示）
+    message: str = ""           # done / failed 时那一行字
 
 
 @dataclass
@@ -41,7 +54,7 @@ class MailCard:
     attachments: list[str] = field(default_factory=list)
     mailbox: str = ""            # 底部右边的邮箱小标签（mailbox_label 算的；空 = 不标）
     mailbox_address: str = ""    # 展开后"收件邮箱"那一行（有标签时才有）
-    suggestions: list = field(default_factory=list)   # 邮件 agent 的提醒建议（有 op / text / when / target / repeat）
+    suggestions: list = field(default_factory=list)   # [CardSuggestion]：邮件 agent 的提醒建议
     suspicious: bool = False     # 邮件 agent 认为是钓鱼 / 诈骗：左上角标出来
 
 
@@ -71,8 +84,11 @@ class CardDeck(QWidget):
     EXPAND_MS = 280       # 展开 / 缩回的时长
     PRESS_SCALE = 0.035   # 按下时缩小多少（3.5%）
     PRESS_SINK = 2.0      # 按下时往下沉多少像素
+    BUTTON_H = 20         # 建议右边小按钮的高度
+    ROW_GAP = 6           # 两条建议之间
 
     closed = Signal()     # 用户收起了卡片堆
+    suggestion_chosen = Signal(int, int, bool)   # (第几张卡片, 第几条建议, True = 点了"加提醒 / 改 / 取消"，False = "不用")
 
     def __init__(self, owner):
         super().__init__(owner)  # owner = 芸芸窗口：成为它的从属窗口
@@ -92,6 +108,7 @@ class CardDeck(QWidget):
         self._anchor = QRect()
         self._placement = None
         self._wheel_accum = 0      # 触摸板滚动很细碎，攒够一格再翻页
+        self._pressed_button = None   # 按下时点中的建议按钮：(第几条建议, 是不是"加提醒")
         self._was_active = False
         self._closed_at = 0.0
 
@@ -162,6 +179,13 @@ class CardDeck(QWidget):
         self._note = text
         self._relayout()
 
+    def card(self, index):
+        return self._cards[index]
+
+    def refresh(self):
+        """建议的状态变了（点了、做好了）：重新量高度、重画。"""
+        self._relayout()
+
     def follow(self, anchor):
         self._anchor = QRect(anchor)
         if self.isVisible():
@@ -214,11 +238,51 @@ class CardDeck(QWidget):
         return min(h, fm.lineSpacing() * max_lines) if max_lines else h
 
     def _collapsed_height(self):
-        """所有卡片收起时用同一个高度：后面的卡片才能整齐地从下面露出一条边。"""
+        """所有卡片收起时用同一个高度：后面的卡片才能整齐地从下面露出一条边（有建议的那张高，其余的就空一点）。"""
         text_w = self.CARD_W - 2 * self.PAD - 30  # 右上角给"2 / 5"留位置
-        bubble_h = max((self._text_height(c.bubble, self._bubble_font, text_w, self.BUBBLE_LINES)
-                        for c in self._cards), default=0)
+        bubble_h = max((self._tag_height(c) + self._text_height(c.bubble, self._bubble_font, text_w, self.BUBBLE_LINES)
+                        + self._suggestions_height(c) for c in self._cards), default=0)
         return self.PAD + bubble_h + 8 + QFontMetrics(self._small_font).lineSpacing() + self.PAD
+
+    def _tag_height(self, card):
+        """左上角"⚠ 像是诈骗"小标占的高度。"""
+        return QFontMetrics(self._small_font).height() + 8 if card.suspicious else 0
+
+    def _shown_suggestions(self, card):
+        """要画的建议：[(第几条, CardSuggestion)]，点了"不用"的不画。"""
+        return [(i, s) for i, s in enumerate(card.suggestions) if s.state != "dismissed"]
+
+    def _suggestions_height(self, card):
+        rows = self._shown_suggestions(card)
+        if not rows:
+            return 0
+        line = QFontMetrics(self._small_font).lineSpacing()
+        return 12 + sum(line + (4 + self.BUTTON_H if s.state == "pending" else 2 + line) + self.ROW_GAP for _, s in rows)
+
+    def _suggestion_rows(self, card, top):
+        """建议一条条放在哪（卡片里的坐标，从 top 往下）：[(第几条, CardSuggestion, 文字框, 状态框, [(按钮框, 是不是"加提醒", 字)])]。"""
+        fm = QFontMetrics(self._small_font)
+        line, pad, w = fm.lineSpacing(), self.PAD, self.CARD_W
+        y, rows = top + 12, []
+        for i, s in self._shown_suggestions(card):
+            text = QRectF(pad, y, w - 2 * pad, line)
+            y += line
+            buttons, status = [], QRectF()
+            if s.state == "pending":
+                y += 4
+                right = w - pad
+                for accept, label in ((False, i18n.tr("card_suggest_dismiss")), (True, s.accept)):
+                    bw = fm.horizontalAdvance(label) + 20
+                    buttons.insert(0, (QRectF(right - bw, y, bw, self.BUTTON_H), accept, label))
+                    right -= bw + 6
+                y += self.BUTTON_H
+            else:
+                y += 2
+                status = QRectF(pad, y, w - 2 * pad, line)
+                y += line
+            rows.append((i, s, text, status, buttons))
+            y += self.ROW_GAP
+        return rows
 
     def _detail_lines(self, card):
         tr = i18n.tr
@@ -237,7 +301,8 @@ class CardDeck(QWidget):
     def _expanded_height(self):
         card = self._cards[self._current]
         text_w = self.CARD_W - 2 * self.PAD
-        h = self.PAD + self._text_height(card.bubble, self._bubble_font, text_w - 30) + 14
+        h = (self.PAD + self._tag_height(card) + self._text_height(card.bubble, self._bubble_font, text_w - 30)
+             + self._suggestions_height(card) + 14)
         for line in self._detail_lines(card):
             h += self._text_height(line, self._small_font, text_w) + 4
         return h + self.PAD
@@ -414,16 +479,27 @@ class CardDeck(QWidget):
             p.drawText(QRectF(w - pad - 40, pad - 2, 40, 16), Qt.AlignmentFlag.AlignRight,
                        f"{index + 1} / {len(self._cards)}")
 
+        fm = QFontMetrics(self._small_font)
+        top = pad + self._tag_height(card)
+        if card.suspicious:                                     # 左上角红色小标"⚠ 像是诈骗"
+            label = i18n.tr("card_suspicious")
+            tag = QRectF(pad, pad - 2, fm.horizontalAdvance(label) + 14, fm.height() + 4)
+            p.setPen(Qt.PenStyle.NoPen)
+            p.setBrush(QColor("#FDECEA"))
+            p.drawRoundedRect(tag, 7, 7)
+            p.setPen(QColor("#C5221F"))
+            p.drawText(tag, Qt.AlignmentFlag.AlignCenter, label)
+
         text_w = w - 2 * pad - 30
         bubble_h = self._text_height(card.bubble, self._bubble_font, text_w,
                                      None if detail > 0 else self.BUBBLE_LINES)
         p.setFont(self._bubble_font)
         p.setPen(QColor("#222222"))
-        p.drawText(QRectF(pad, pad, text_w, bubble_h), Qt.TextFlag.TextWordWrap, card.bubble)
+        p.drawText(QRectF(pad, top, text_w, bubble_h), Qt.TextFlag.TextWordWrap, card.bubble)
 
         p.setFont(self._small_font)
         base_opacity = p.opacity()
-        fm = QFontMetrics(self._small_font)
+        self._paint_suggestions(p, card, top + bubble_h)
 
         # 收起时底部那行"发件人 · 时间"（右边是邮箱小标签）：展开过程中先淡出
         footer = 1.0 - min(detail / 0.35, 1.0)
@@ -449,7 +525,7 @@ class CardDeck(QWidget):
         if shown <= 0.01:
             return
         p.setOpacity(base_opacity * shown)
-        y = pad + bubble_h + 6 + (1 - shown) * 6
+        y = top + bubble_h + self._suggestions_height(card) + 6 + (1 - shown) * 6
         p.setPen(QPen(QColor("#E8EAED"), 1))
         p.drawLine(int(pad), int(y), int(w - pad), int(y))
         y += 8
@@ -459,7 +535,46 @@ class CardDeck(QWidget):
             p.drawText(QRectF(pad, y, w - 2 * pad, lh), Qt.TextFlag.TextWordWrap, line)
             y += lh + 4
 
+    def _paint_suggestions(self, p, card, top):
+        """那句话下面的提醒建议：虚线隔开，一行写要做什么，下面一行右边是按钮（做完了就换成"✓ 已加"）。"""
+        rows = self._suggestion_rows(card, top)
+        if not rows:
+            return
+        fm = QFontMetrics(self._small_font)
+        p.setPen(QPen(QColor("#DADCE0"), 1, Qt.PenStyle.DashLine))
+        p.drawLine(int(self.PAD), int(top + 6), int(self.CARD_W - self.PAD), int(top + 6))
+        for _, s, text, status, buttons in rows:
+            p.setPen(QColor("#3C4043"))
+            p.drawText(text, 0, fm.elidedText(s.label, Qt.TextElideMode.ElideRight, int(text.width())))
+            for rect, accept, label in buttons:
+                p.setPen(Qt.PenStyle.NoPen if accept else QPen(QColor("#DADCE0"), 1))
+                p.setBrush(QColor(ACCENT) if accept else QColor("#FFFFFF"))
+                p.drawRoundedRect(rect, self.BUTTON_H / 2, self.BUTTON_H / 2)
+                p.setPen(QColor("#FFFFFF") if accept else QColor("#5F6368"))
+                p.drawText(rect, Qt.AlignmentFlag.AlignCenter, label)
+            if s.state != "pending":
+                p.setPen(QColor("#188038") if s.state == "done" else QColor("#C5221F"))
+                p.drawText(status, 0, fm.elidedText(s.message, Qt.TextElideMode.ElideRight, int(status.width())))
+
     # ---------- 交互 ----------
+
+    def _button_at(self, pos):
+        """pos（窗口坐标）点中了当前卡片上的哪个建议按钮：(第几条建议, 是不是"加提醒")；没点中返回 None。"""
+        if not self._cards or self.animating or abs(self._current - self._pos) > 1e-3:
+            return None
+        local = pos - self._current_front_rect().topLeft()
+        for i, accept, rect in self._button_rects():
+            if rect.contains(local):
+                return i, accept
+        return None
+
+    def _button_rects(self):
+        """当前卡片上建议按钮的位置（卡片里的坐标）：[(第几条建议, 是不是"加提醒", 框)]。"""
+        card = self._cards[self._current]
+        text_w = self.CARD_W - 2 * self.PAD - 30
+        bubble_h = self._text_height(card.bubble, self._bubble_font, text_w, None if self._expanded else self.BUBBLE_LINES)
+        rows = self._suggestion_rows(card, self.PAD + self._tag_height(card) + bubble_h)
+        return [(i, accept, rect) for i, _, _, _, buttons in rows for rect, accept, _ in buttons]
 
     def _card_at(self, pos):
         """pos（窗口坐标）点中了第几张卡片；没点中返回 None。从最近的往最远的找。"""
@@ -477,11 +592,19 @@ class CardDeck(QWidget):
     def mousePressEvent(self, event):
         if event.button() != Qt.MouseButton.LeftButton or not self._cards or self.animating:
             return
+        self._pressed_button = self._button_at(event.position())
+        if self._pressed_button is not None:
+            return                      # 点的是建议的按钮：不下沉、不展开
         self._pressed_index = self._card_at(event.position())
         if self._pressed_index == self._current:
             self._animate_press(1.0)    # 按下：微微下沉
 
     def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton and self._pressed_button is not None:
+            pressed, self._pressed_button = self._pressed_button, None
+            if self._button_at(event.position()) == pressed:   # 在同一个按钮上松开才算
+                self.suggestion_chosen.emit(self._current, *pressed)
+            return
         if event.button() != Qt.MouseButton.LeftButton or self._pressed_index is None:
             return
         pressed, self._pressed_index = self._pressed_index, None

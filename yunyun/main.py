@@ -26,6 +26,7 @@ from yunyun.notify.quiet import QuietHours
 from yunyun.pet.card_deck import MailCard, mailbox_label
 from yunyun.pet.sprites import load_sprites
 from yunyun.pet.state import StateMachine
+from yunyun.pet.suggestions import card_suggestions
 from yunyun.pet.reminder_clock import ReminderClock
 from yunyun.pet.tray import PetTray
 from yunyun.pet.window import PetWindow
@@ -196,7 +197,7 @@ def connect_mail(mail, pet, machine, history=None, quiet=None, inbox=None):
             attachments=message.attachments,
             mailbox=label,
             mailbox_address=address if label else "",
-            suggestions=list(description.suggestions),
+            suggestions=card_suggestions(description.suggestions, reminders.load()) if description.suggestions else [],
             suspicious=description.suspicious,
         ))
         mail.mark_handled(address, message.uid)  # 放进卡片堆了，才算处理过
