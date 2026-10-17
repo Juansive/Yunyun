@@ -6,7 +6,10 @@ import time
 
 import pytest
 
+from datetime import datetime
+
 from yunyun import ai, i18n
+from yunyun.ai.mail_agent import Inbox, Suggestion
 from yunyun.main import connect_mail
 from yunyun.mail import service as service_module
 from yunyun.mail.imap_client import MailAccount, MailboxStatus
@@ -33,7 +36,10 @@ def world(qapp, tmp_path, monkeypatch):
 
     def slow_ai(address, message):
         time.sleep(0.15)
-        return ai.Description(f"AI：标题{message.uid}来啦！", "ok")
+        if message.uid == 11:   # 邮件 agent 给了一条提醒建议
+            return ai.Description(f"AI：标题{message.uid}来啦！", "ok",
+                                  suggestions=[Suggestion("add", "组会", datetime(2026, 10, 22, 9, 0))])
+        return ai.Description(f"AI：标题{message.uid}来啦！", "ok", suspicious=message.uid == 12)
 
     mail = service_module.MailService(tracker=MailTracker(tmp_path / "s.json"), process_message=slow_ai)
     mail._load_accounts()
@@ -45,7 +51,8 @@ def world(qapp, tmp_path, monkeypatch):
     machine.state_changed.connect(pet.set_state)
     history = MailHistory(tmp_path / "history.db")
     pet.history = history
-    connect_mail(mail, pet, machine, history)
+    mail.inbox = Inbox()   # 测试里要看邮件 agent 的收件箱
+    connect_mail(mail, pet, machine, history, inbox=mail.inbox)
 
     def poll():
         mail.poll_now()
@@ -194,3 +201,13 @@ def test_quiet_hours_only_count_new_mail(qapp, tmp_path, monkeypatch):
     assert machine.state is PetState.SLEEPING           # 继续睡，不激动
     assert pet._badge._text == "2"                      # 数字照常 +2
     assert not pet._corner_badge.isVisible()            # 不跳到任务栏角落
+
+
+def test_cards_carry_agent_suggestions_and_history_feeds_its_inbox(qapp, world):
+    mail, pet, machine = world
+    pet._on_badge_clicked()
+    assert wait_until(qapp, lambda: not mail.fetching)
+    cards = {c.bubble: c for c in pet._deck._cards}
+    assert [s.text for s in cards["AI：标题11来啦！"].suggestions] == ["组会"]
+    assert cards["AI：标题12来啦！"].suspicious and not cards["AI：标题10来啦！"].suspicious
+    assert sorted(m.subject for m in mail.inbox.snapshot()) == ["标题10", "标题11", "标题12"]

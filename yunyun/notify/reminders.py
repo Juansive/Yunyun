@@ -138,6 +138,23 @@ def add(text, when, repeat="", path=None, now=None):
     return reminder
 
 
+def move(reminder_id, when, path=None, now=None):
+    """把一个提醒改到 when（邮件 agent 建议改期，用户点了"改"）。重复的提醒从 when 起算。返回 Reminder；不行抛 ReminderError。"""
+    now = (now or datetime.now()).replace(second=0, microsecond=0)
+    items = load(path)
+    reminder = next((r for r in items if r.id == reminder_id), None)
+    if reminder is None:
+        raise ReminderError(f"There is no reminder {reminder_id}.")
+    when = when.replace(second=0, microsecond=0)
+    if reminder.repeat:
+        when = next_due(when, reminder.repeat, now)
+    elif when <= now:
+        raise ReminderError(f"That time has already passed (now is {now:%Y-%m-%d %H:%M}).")
+    reminder.due = _iso(when)
+    save(items, path)
+    return reminder
+
+
 def cancel(reminder_id, path=None):
     items = load(path)
     kept = [r for r in items if r.id != reminder_id]

@@ -41,6 +41,8 @@ class MailCard:
     attachments: list[str] = field(default_factory=list)
     mailbox: str = ""            # 底部右边的邮箱小标签（mailbox_label 算的；空 = 不标）
     mailbox_address: str = ""    # 展开后"收件邮箱"那一行（有标签时才有）
+    suggestions: list = field(default_factory=list)   # 邮件 agent 的提醒建议（有 op / text / when / target / repeat）
+    suspicious: bool = False     # 邮件 agent 认为是钓鱼 / 诈骗：左上角标出来
 
 
 def mailbox_label(address, accounts):

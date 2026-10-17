@@ -11,18 +11,21 @@
 - dangerous：提醒文字里有转账、购物卡、卡密、验证码、密码这类词的建议直接丢掉
 - sane：时间在现在之后、一年以内；改 / 取消的 id 必须是已有的；每封最多 MAX_SUGGESTIONS 条
 - mentioned：只能改 / 取消这封邮件里说到的提醒（提醒的文字和邮件有重叠），防"删光所有提醒"这种藏在邮件里的指令
-不 import Qt；llm 由调用方给（评测用 tools/mail_eval/run.py 的 LLM，测试用剧本式的假模型）：
+不 import SDK（自己也不用 Qt）；llm 由调用方给（芸芸里用 ModelLLM，评测用 tools/mail_eval/run.py 的 LLM，测试用剧本式的假模型）：
     llm.reply(messages, tools, max_tokens) → client.Reply
     llm.tool_result(call, content) → 交回工具结果的那条消息
 """
 import json
 import re
+import threading
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from email.utils import parseaddr
 
-from yunyun.ai import summarizer
+from yunyun.ai import client, summarizer
 from yunyun.ai.client import AIError
+from yunyun.mail.message import MailMessage
 from yunyun.notify import reminders as reminder_store
 
 MAX_CALLS = 4          # 每封最多调几次模型（包括最后给出回答的那次）
@@ -108,7 +111,7 @@ SYSTEM_PROMPT = """你是桌面宠物"芸芸"的邮件助手。用户收到一�
 改期：{{"op": "move", "id": "t1", "when": "YYYY-MM-DD HH:MM"}}；取消：{{"op": "cancel", "id": "t1"}}。已经用工具建议过的不用再写；没有要提醒的就写 []。
 action 只能填这三个词之一：act（要处理：用户得自己做点什么，比如去某个地方、交东西、付钱、回复、改安排）、info（知道就行；钓鱼和诈骗也算这里）、promo（广告、促销、订阅推送）。
 category 从这些里选一个：work、school、personal、bill、shopping、delivery、ad、newsletter、security、code、system、other。
-bubble：一句话转告用户，30 个汉字以内，忠于原文，像朋友转告。"""
+bubble：一句话转告用户，{length}，忠于原文，像朋友转告；必须用{language}（提醒的文字也是）。"""
 
 
 def calendar_text(now):
@@ -141,10 +144,12 @@ def mail_block(message):
     return f"<mail>\n{received}{text}\n</mail>"
 
 
-def run(message, context, llm, guards=GUARDS, max_calls=MAX_CALLS, deadline_s=DEADLINE_S):
-    """处理一封邮件 → Result。"""
-    agent = _Agent(message, context, guards)
-    messages = [{"role": "system", "content": SYSTEM_PROMPT.format(calendar=calendar_text(context.now))},
+def run(message, context, llm, guards=GUARDS, max_calls=MAX_CALLS, deadline_s=DEADLINE_S, language="zh"):
+    """处理一封邮件 → Result。language：那句话用哪种语言（界面语言，规则和 summarizer 的一样）。"""
+    lang_name, length, limit = summarizer.LANGUAGE_RULES.get(language, summarizer.LANGUAGE_RULES["zh"])
+    agent = _Agent(message, context, guards, limit)
+    system = SYSTEM_PROMPT.format(calendar=calendar_text(context.now), length=length, language=lang_name)
+    messages = [{"role": "system", "content": system},
                 {"role": "user", "content": reminders_text(context.reminders) + "\n\n新邮件：\n" + mail_block(message)}]
     start, nudged = time.monotonic(), False
     while True:
@@ -198,8 +203,8 @@ def parse_when(value):
 
 
 class _Agent:
-    def __init__(self, message, context, guards):
-        self.message, self.context, self.guards = message, context, guards
+    def __init__(self, message, context, guards, limit=summarizer.BUBBLE_LIMIT):
+        self.message, self.context, self.guards, self.limit = message, context, guards, limit
         self.result = Result()
 
     def fail(self, reason):
@@ -277,6 +282,7 @@ class _Agent:
             bubble = summarizer.scrub_sensitive(bubble)
         if not bubble:
             raise ValueError("没有那句话")
+        bubble = bubble[:self.limit] + ("…" if len(bubble) > self.limit else "")   # 话太多时截短（和 summarizer 一样）
         r = self.result
         r.action, r.suspicious, r.bubble, r.raw = parse_action(data.get("action")), data.get("suspicious") is True, bubble, answer
         r.category = str(data.get("category") or "") or None
@@ -316,3 +322,47 @@ def _mentioned(text, message):
     if not pieces and han:
         pieces = {han}   # 只有一个字的提醒
     return any(piece in mail for piece in pieces)
+
+
+# ---------- 芸芸里用（E6）：真的模型、历史记录当收件箱 ----------
+
+class ModelLLM:
+    """设置 → AI 里选的模型（AISettings）。usage 给一个 dict 就记下用了多少 token。"""
+
+    def __init__(self, settings, usage=None):
+        self.settings, self.usage = settings, usage
+
+    def reply(self, messages, tools, max_tokens):
+        s = self.settings
+        return client.ask_reply(s.info, s.api_key, s.model, messages, tools=tools, max_tokens=max_tokens,
+                                temperature=summarizer.TEMPERATURE, usage=self.usage)
+
+    def tool_result(self, call, content):
+        return client.tool_result(self.settings.info, call, content)
+
+
+class Inbox:
+    """邮件 agent 能查的"之前的邮件"。芸芸里用历史记录：标题、发件人、当时那句话（历史不存正文，这里也不存）。
+    主线程往里放（开始读邮箱时、每放进卡片堆一张），处理邮件的后台线程来读，所以加了锁。"""
+
+    def __init__(self):
+        self._lock, self._mails = threading.Lock(), []
+
+    def replace(self, entries):
+        with self._lock:
+            self._mails = [mail_from_history(e) for e in entries]
+
+    def add(self, entry):
+        with self._lock:
+            self._mails.append(mail_from_history(entry))
+
+    def snapshot(self):
+        with self._lock:
+            return list(self._mails)
+
+
+def mail_from_history(entry):
+    """一条历史记录（notify.history.HistoryEntry）→ 给 search_mails 查的 MailMessage：正文写的是芸芸当时那句话。"""
+    name, address = parseaddr(entry.sender)
+    return MailMessage(uid=0, subject=entry.subject, sender_name=name, sender_address=address or entry.sender,
+                       date=entry.date, body=f"（芸芸当时说的）{entry.bubble}", attachments=list(entry.attachments))

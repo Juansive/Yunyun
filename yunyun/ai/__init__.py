@@ -7,9 +7,9 @@ AI 没设置、调用失败、或按隐私规则不交给 AI（privacy.py）时�
 """
 import logging
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
-from yunyun.ai import ollama_service, privacy
+from yunyun.ai import mail_agent, ollama_service, privacy
 from yunyun.ai import settings as ai_settings
 from yunyun.ai.client import AIError, load_ollama_model
 from yunyun.ai.summarizer import fallback_bubble, summarize
@@ -24,15 +24,27 @@ class Description:
     bubble: str                 # 芸芸要说的话
     status: str                 # "ok" / "not_configured"（还没设置 AI）/ "failed"（调用失败）/ "private"（按隐私规则没交给 AI）
     error: AIError | None = None
+    suggestions: list = field(default_factory=list)   # 邮件 agent 的提醒建议（mail_agent.Suggestion），卡片上让用户点
+    suspicious: bool = False                          # 邮件 agent 认为是钓鱼 / 诈骗
 
 
-def describe(message, language, account=""):
-    """account：收到这封邮件的邮箱（隐私规则可以按邮箱设）。"""
+def describe(message, language, account="", context=None):
+    """account：收到这封邮件的邮箱（隐私规则可以按邮箱设）。
+
+    context：给了（一个返回 mail_agent.Context 的函数，只有完整版给）、而且设置里开了"从邮件里建议提醒"，
+    就交给邮件 agent（会多调一两次模型）；它没做成就照旧一句话。
+    """
     if privacy.load_rules().is_private(account, message.sender_address):
         return Description("🔒 " + fallback_bubble(message), "private")
     settings = ai_settings.load_settings()
     if settings is None:
         return Description(fallback_bubble(message), "not_configured")
+    if context is not None and ai_settings.suggestions_enabled():
+        result = mail_agent.run(message, context(), mail_agent.ModelLLM(settings), language=language)
+        if not result.fallback:   # 只记数量，不记内容
+            log.info("邮件 agent：%d 次调用，%d 条建议，拦下 %d 条", result.calls, len(result.suggestions), len(result.dropped))
+            return Description(result.bubble, "ok", suggestions=result.suggestions, suspicious=result.suspicious)
+        log.info("邮件 agent 没做成（%s），照旧一句话", result.fallback)
     try:
         return Description(summarize(message, language, settings), "ok")
     except AIError as e:

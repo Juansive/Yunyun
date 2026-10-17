@@ -6,17 +6,20 @@
 import logging
 import sys
 import time
+from datetime import datetime
 
 from PySide6.QtCore import QTimer
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QSystemTrayIcon
 
-from yunyun import ai, config, i18n, logs, single_instance
+from yunyun import ai, config, features, i18n, logs, single_instance
 from yunyun.activity.keyboard import KeyboardMonitor
+from yunyun.ai import mail_agent
 from yunyun.config import ConfigError
 from yunyun.mail import accounts
 from yunyun.mail.imap_client import MailError
 from yunyun.mail.service import MailService
+from yunyun.notify import reminders
 from yunyun.notify.history import HistoryEntry, MailHistory, default_path as history_path
 from yunyun.notify.update import UpdateChecker
 from yunyun.notify.quiet import QuietHours
@@ -65,10 +68,16 @@ def main():
     pet.speaking_changed.connect(machine.set_talking)       # 头顶有气泡 → 说话的样子（气泡都消失了再回去）
 
     # ---- 邮件：后台定时检查 → 小红点；点小红点 → 读邮件 → AI 写一句提醒 ----
-    # describe 在后台线程里运行（要联网）；语言在调用时读取，切换语言后立刻生效
-    mail = MailService(process_message=lambda address, message: ai.describe(message, i18n.current_language(), address))
+    # describe 在后台线程里运行（要联网）；语言在调用时读取，切换语言后立刻生效。
+    # 完整版还能交给邮件 agent（设置 → 提醒里开）：它看得到已有的提醒和历史记录（inbox）
+    inbox = mail_agent.Inbox()
+    agent_context = ((lambda: mail_agent.Context(datetime.now(), reminders.load(), inbox.snapshot()))
+                     if features.assistant_available() else None)
+    mail = MailService(process_message=lambda address, message: ai.describe(message, i18n.current_language(), address,
+                                                                            agent_context))
     history = MailHistory(history_path())   # 展示过的卡片存 7 天，可以找回
     pet.history = history
+    inbox.replace(history.recent())
 
     # ---- 免打扰：时段内芸芸睡觉，新邮件只安静地计数 ----
     quiet = QuietHours()
@@ -86,7 +95,7 @@ def main():
     pet.updates = updates
     updates.found.connect(pet.on_new_version)
 
-    connect_mail(mail, pet, machine, history, quiet)
+    connect_mail(mail, pet, machine, history, quiet, inbox)
     connect_assistant(pet, machine)
     watch = connect_watch(app, pet, machine)
 
@@ -155,10 +164,11 @@ def connect_watch(app, pet, machine=None):
     return Watch
 
 
-def connect_mail(mail, pet, machine, history=None, quiet=None):
+def connect_mail(mail, pet, machine, history=None, quiet=None, inbox=None):
     """用信号把邮件服务和芸芸连起来（单独写成函数，测试里也能直接用）。
 
-    history：可选，记录展示过的卡片；quiet：可选，免打扰时段（期间新邮件只计数）。
+    history：可选，记录展示过的卡片；quiet：可选，免打扰时段（期间新邮件只计数）；
+    inbox：可选，邮件 agent 能查的旧邮件（mail_agent.Inbox），放进历史的卡片也放进去。
     """
     batch = {"id": ""}  # 当前这一轮处理的编号（用开始时间），历史记录按"批"分组
     pet.mail_accounts = lambda: mail.accounts   # "刚才的邮件"、历史页标邮箱时要知道现在有哪些邮箱
@@ -186,11 +196,16 @@ def connect_mail(mail, pet, machine, history=None, quiet=None):
             attachments=message.attachments,
             mailbox=label,
             mailbox_address=address if label else "",
+            suggestions=list(description.suggestions),
+            suspicious=description.suspicious,
         ))
         mail.mark_handled(address, message.uid)  # 放进卡片堆了，才算处理过
         if history is not None:
-            history.add(HistoryEntry(description.bubble, message.subject, message.sender,
-                                     message.date, message.attachments, time.time(), batch["id"], address))
+            entry = HistoryEntry(description.bubble, message.subject, message.sender,
+                                 message.date, message.attachments, time.time(), batch["id"], address)
+            history.add(entry)
+            if inbox is not None:
+                inbox.add(entry)
 
     def on_fetch_started():
         ai.prepare()                     # 本地模型：趁读邮箱的时候提前启动 Ollama、加载模型

@@ -14,6 +14,7 @@ from yunyun.ai.providers import CUSTOM, DEFAULT_PROVIDER, PROVIDERS, custom_prov
 
 KEYRING_SERVICE = "yunyun-ai"  # 凭据管理器里显示的名字；每个服务商存一个 Key
 _CUSTOM_KEYS = ("custom_base_url", "custom_model")
+SUGGEST_KEY = "suggest_reminders"   # config.yaml 的 ai.suggest_reminders：邮件 agent 开没开
 
 
 @dataclass
@@ -81,7 +82,20 @@ def save_settings(settings):
         ai.update(custom_base_url=settings.base_url, custom_model=settings.model)
     else:
         ai.update({k: old[k] for k in _CUSTOM_KEYS if k in old})   # 留着以前填的自定义地址
+    if SUGGEST_KEY in old:
+        ai[SUGGEST_KEY] = old[SUGGEST_KEY]                          # 换服务商不关掉"从邮件里建议提醒"
     config["ai"] = ai
+    cfg.save_config(config)
+
+
+def suggestions_enabled():
+    """设置 → 提醒 →"从邮件里建议提醒"开着没有（邮件 agent，只在完整版；默认关）。"""
+    return bool(_saved_ai().get(SUGGEST_KEY, False))
+
+
+def set_suggestions_enabled(on):
+    config = cfg.load_config_or_empty()
+    config["ai"] = {**(config.get("ai") or {}), SUGGEST_KEY: bool(on)}
     cfg.save_config(config)
 
 
