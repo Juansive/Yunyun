@@ -30,7 +30,7 @@ def context(case, cases):
 
 
 def calls(*items):
-    """模型这一步要调用的工具：calls(("list_reminders", {}), ("suggest_move", {"id": "t1", ...}))。"""
+    """模型这一步要调用的工具：calls(("read_earlier_mails", {}), ("suggest_move", {"id": "t1", ...}))。"""
     tool_calls = [ToolCall(f"c{i}", name, args, json.dumps(args, ensure_ascii=False) if args is not None else "{坏")
                   for i, (name, args) in enumerate(items)]
     message = {"role": "assistant", "content": "", "tool_calls": [{"id": c.id, "function": {"name": c.name}} for c in tool_calls]}
@@ -70,21 +70,23 @@ class ScriptedLLM:
 
 
 def test_reschedule_with_tools(cases):
-    """改期：先看已有的提醒和原来的邮件，再建议把 t1 挪到周四。"""
+    """改期：已有的提醒在提示词里；先看原来的邮件，再建议把 t1 挪到周四。"""
     m17 = cases["m17"]
-    llm = ScriptedLLM(calls(("list_reminders", {}), ("read_earlier_mails", {})),
+    llm = ScriptedLLM(calls(("read_earlier_mails", {})),
                       calls(("suggest_move", {"id": "t1", "when": "2026-10-22 09:00"})),
                       final(bubble="组会改到明天上午 10 点啦"))
     result = run(m17.message, context(m17, cases), llm)
     assert (result.fallback, result.calls, result.bubble) == ("", 3, "组会改到明天上午 10 点啦")
     assert [(s.op, s.target, s.when) for s in result.suggestions] == [("move", "t1", datetime(2026, 10, 22, 9, 0))]
-    first_results = [m["content"] for m in llm.seen[1] if m["role"] == "tool"]   # 第二次请求时交回的
-    assert first_results[0] == "t1 · 2026-10-21 Wed 13:30 · once · 组会"
-    assert first_results[1].startswith("<mail>\n收到时间：2026-10-19 09:07") and "本周组会安排" in first_results[1]
+    earlier = [m["content"] for m in llm.seen[1] if m["role"] == "tool"]   # 第二次请求时交回的
+    assert earlier[0].startswith("<mail>\n收到时间：2026-10-19 09:07") and "本周组会安排" in earlier[0]
     assert llm.results() == ["已记下这条建议。"]
     system, user = llm.seen[0][0]["content"], llm.seen[0][1]["content"]
     assert "现在是 2026-10-21 08:30（10-21周三）" in system and "下周：10-26周一" in system
-    assert user.startswith("新邮件：\n<mail>") and user.endswith("</mail>")
+    assert user.startswith("已有的提醒：\nt1 · 2026-10-21 Wed 13:30 · once · 组会\n\n新邮件：\n<mail>")
+    assert user.endswith("</mail>")
+    assert run(cases["m01"].message, context(cases["m01"], cases), llm := ScriptedLLM(final())).calls == 1
+    assert llm.seen[0][1]["content"].startswith("已有的提醒：\n（没有）\n\n新邮件：")
 
 
 def test_injected_cancel_is_blocked(cases):
@@ -150,10 +152,13 @@ def test_reminders_written_in_the_final_json_count_too(cases):
     reminders = [{"op": "add", "text": "组会", "when": "2026-10-21 13:00"}, {"op": "cancel", "id": "t1"}]
     result = run(m01.message, context(m01, cases), ScriptedLLM(final(reminders=reminders)))
     assert [(s.op, s.text) for s in result.suggestions] == [("add", "组会")] and result.calls == 1
+    # 用工具提过、最后的 JSON 里又写了一遍：只算一条
+    llm = ScriptedLLM(calls(("suggest_reminder", {"text": "组会", "when": "2026-10-21 13:00"})), final(reminders=reminders[:1]))
+    assert len(run(m01.message, context(m01, cases), llm).suggestions) == 1
 
 
 @pytest.mark.parametrize("steps, reason", [
-    ([calls(("list_reminders", {}))] * 4, "too_many_calls"),
+    ([calls(("read_earlier_mails", {}))] * 4, "too_many_calls"),
     ([Reply("我觉得是组会", [], {"role": "assistant", "content": "我觉得是组会"})] * 2, "bad_answer"),
     ([AIError("限流", kind="rate_limit")], "rate_limit"),
     ([calls(("suggest_reminder", {"text": "组会", "when": "2026-10-21 13:00"})), final(bubble=""), final(bubble="")],
@@ -220,5 +225,5 @@ def test_round_trip_through_a_real_http_server(cases):
     assert [(s.op, s.target) for s in result.suggestions] == [("move", "t1")] and result.bubble == "组会改到明天上午 10 点"
     first, second = (r["body"] for r in server.requests)
     assert [t["function"]["name"] for t in first["tools"]] == [
-        "list_reminders", "read_earlier_mails", "suggest_reminder", "suggest_move", "suggest_cancel"]
+        "read_earlier_mails", "suggest_reminder", "suggest_move", "suggest_cancel"]
     assert second["messages"][-1] == {"role": "tool", "tool_call_id": "call_1", "content": "已记下这条建议。"}

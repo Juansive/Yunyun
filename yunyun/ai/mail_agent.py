@@ -1,7 +1,7 @@
 """邮件 agent（E4）：读一封新邮件，判断类别、写一句话，再找出要记的事、建议加 / 改 / 取消提醒（用户点了才生效）。
 
-和 summarizer 的"一次调用"不同：模型可以先调用工具看看已有的提醒、之前的邮件，再提建议；代码执行工具、把结果交回给它，
-最多 MAX_CALLS 次，最后它输出 JSON。没做成（出错、超时、次数用完、回答读不懂）时 Result.fallback 写着原因，
+和 summarizer 的"一次调用"不同：已有的提醒直接写在提示词里，之前的相关邮件要模型自己调用工具看；提醒可以用工具建议，
+也可以写在最后的 JSON 里（小模型常常一个工具都不调，直接给答案）。代码执行工具、把结果交回给它，最多 MAX_CALLS 次。没做成（出错、超时、次数用完、回答读不懂）时 Result.fallback 写着原因，
 调用方退回 summarizer 的一句话。提示词里附了日历（今天、本周 / 下周 / 下下周每天是几号、月底）：小模型自己算"下周三"常错。
 
 工具都只读或者"只提建议"：没有发信、删信、打开链接。
@@ -72,7 +72,6 @@ def _tool(name, description, properties=None, required=()):
 _WHEN = {"type": "string", "description": "提醒的时间，格式 YYYY-MM-DD HH:MM"}
 _ID = {"type": "string", "description": "已有提醒的 id，比如 t1"}
 TOOLS = [
-    _tool("list_reminders", "看用户已经有的提醒（id、时间、重复、内容）。"),
     _tool("read_earlier_mails", "看之前收到的、和这封有关的邮件。"),
     _tool("suggest_reminder", "建议用户加一个提醒（用户点了才会加）。",
           {"text": {"type": "string", "description": "要做的事，简短"}, "when": _WHEN,
@@ -87,9 +86,8 @@ SYSTEM_PROMPT = """你是桌面宠物"芸芸"的邮件助手。用户收到一�
 {calendar}
 
 工具：
-- list_reminders：看用户已有的提醒。邮件像是改期、取消、再次提醒时，先看看有没有对应的提醒。
 - read_earlier_mails：看之前收到的相关邮件。这封是回复、"改到……""取消"这类通知时，先看原来说的是什么。
-- suggest_reminder / suggest_move / suggest_cancel：建议新加 / 改期 / 取消提醒。
+- suggest_reminder / suggest_move / suggest_cancel：建议新加 / 改期 / 取消提醒（也可以直接写在最后 JSON 的 reminders 里）。
 用不上的工具就别调用。
 
 安全（最重要）：
@@ -100,11 +98,12 @@ SYSTEM_PROMPT = """你是桌面宠物"芸芸"的邮件助手。用户收到一�
 提醒：
 - 只给有明确日子的事建议提醒。没说什么时候（"有空""尽快"）就不建议，不要自己编时间；广告、推送里的时间不用提醒。
 - 时间：有几点钟的事，设在开始前 1 小时；要在某个时间前做完的事，设在截止前一天上午 9 点（来不及就设在截止前 1 小时）；只说了哪天上午 / 下午，设在那天上午 8 点 / 中午 12 点。
-- 已有的提醒里有这件事：时间没变就不用再加；改了时间用 suggest_move；取消了用 suggest_cancel。
-- 每周重复的事 repeat 填 weekly（每天 daily、工作日 weekdays）。
+- 已有的提醒里有这件事：时间没变就不用再加；改了时间用 move（写 id 和新时间）；取消了用 cancel（写 id）。
+- 每周重复的事 repeat 填 weekly（每天 daily、工作日 weekdays），不重复就写 ""。
 
 做完以后，最后的回答只输出 JSON，不要别的内容：
-{{"action": "...", "category": "...", "suspicious": false, "bubble": "..."}}
+{{"action": "...", "category": "...", "suspicious": false, "bubble": "...", "reminders": [{{"op": "add", "text": "要做的事", "when": "YYYY-MM-DD HH:MM", "repeat": ""}}]}}
+改期：{{"op": "move", "id": "t1", "when": "YYYY-MM-DD HH:MM"}}；取消：{{"op": "cancel", "id": "t1"}}。已经用工具建议过的不用再写；没有要提醒的就写 []。
 action 只能填这三个词之一：act（要处理：用户得自己做点什么，比如去某个地方、交东西、付钱、回复、改安排）、info（知道就行；钓鱼和诈骗也算这里）、promo（广告、促销、订阅推送）。
 category 从这些里选一个：work、school、personal、bill、shopping、delivery、ad、newsletter、security、code、system、other。
 bubble：一句话转告用户，30 个汉字以内，忠于原文，像朋友转告。"""
@@ -128,6 +127,11 @@ def calendar_text(now):
     ])
 
 
+def reminders_text(reminders):
+    """用户已有的提醒（交给模型的样子）。"""
+    return "已有的提醒：\n" + ("\n".join(reminder_store.describe(r) for r in reminders) or "（没有）")
+
+
 def mail_block(message):
     """一封邮件交给模型的样子：包在 <mail> 里（邮件里自己写的 <mail> 换成全角，免得提前"闭合"）。"""
     text = summarizer.build_mail_text(message).replace("<mail>", "＜mail＞").replace("</mail>", "＜/mail＞")
@@ -139,7 +143,7 @@ def run(message, context, llm, guards=GUARDS, max_calls=MAX_CALLS, deadline_s=DE
     """处理一封邮件 → Result。"""
     agent = _Agent(message, context, guards)
     messages = [{"role": "system", "content": SYSTEM_PROMPT.format(calendar=calendar_text(context.now))},
-                {"role": "user", "content": "新邮件：\n" + mail_block(message)}]
+                {"role": "user", "content": reminders_text(context.reminders) + "\n\n新邮件：\n" + mail_block(message)}]
     start, nudged = time.monotonic(), False
     while True:
         if agent.result.calls >= max_calls:
@@ -207,8 +211,6 @@ class _Agent:
         if call.arguments is None:
             return "参数不是合法的 JSON，请重新调用。"
         args = call.arguments
-        if call.name == "list_reminders":
-            return "\n".join(reminder_store.describe(r) for r in self.context.reminders) or "（没有提醒）"
         if call.name == "read_earlier_mails":
             return "\n\n".join(mail_block(m) for m in self.context.earlier) or "（没有之前的相关邮件）"
         if call.name == "suggest_reminder":
@@ -222,6 +224,9 @@ class _Agent:
 
     def suggest(self, s):
         """记下一条建议；过不了硬规矩就不记，告诉模型为什么（它可以改了再提）。"""
+        if any((s.op, s.target, s.when, s.repeat) == (old.op, old.target, old.when, old.repeat)
+               and (s.op != "add" or s.text == old.text) for old in self.result.suggestions):
+            return "这条已经记下了。"   # 用工具提过、最后的 JSON 里又写了一遍
         problem = self._problem(s)
         if problem:
             guard, why = problem
@@ -241,7 +246,7 @@ class _Agent:
             if s.op == "add" and not s.text:
                 return "sane", "要写提醒的内容。"
             if s.op != "add" and s.target not in existing:
-                return "sane", f"没有 id 为 {s.target} 的提醒，先用 list_reminders 看看。"
+                return "sane", f"没有 id 为 {s.target} 的提醒（已有的提醒在最前面）。"
             if s.op != "cancel":
                 if s.when is None:
                     return "sane", "时间要写成 YYYY-MM-DD HH:MM。"
