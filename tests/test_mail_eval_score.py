@@ -240,3 +240,15 @@ def test_oneshot_recent_sees_only_the_last_ten(cases):
     SYSTEMS["oneshot_recent"](cases["m17"], [], llm)                  # 之前有 16 封：只塞 m07～m16
     before = seen["user"].split("新邮件")[0]
     assert "最近收到的邮件（10 封以内）" in before and "服务器维护已完成" in before and "本周组会安排" not in before
+
+
+def test_group_runs_into_mean_and_spread(cases, tmp_path):
+    rows = runner.run(oracle, [cases["m01"], cases["m02"]])
+    first = runner.report("oracle", "", "", rows)
+    second = json.loads(json.dumps(first, default=str))
+    second["summary"]["action"] = 0.5                                  # 假装第二次分类只对了一半
+    paths = [runner.save(first, tmp_path), tmp_path / "second.json"]
+    paths[1].write_text(json.dumps(second, ensure_ascii=False), encoding="utf-8")
+    table = runner.group(paths).splitlines()
+    assert table[0].startswith("| 系统 | 模型 | 次数 | 分类 |")
+    assert table[2].startswith("| oracle | - | 2 | 0.75 ± 0.35 | 1.00 ± 0.00 |")

@@ -12,10 +12,12 @@
     .\\.venv\\Scripts\\python tools\\mail_eval\\run.py agent --provider deepseek --max-usd 0.2   # deepseek-flash，花到上限就停
     .\\.venv\\Scripts\\python tools\\mail_eval\\run.py oneshot --cases m01,m17   # 只跑几封
     .\\.venv\\Scripts\\python tools\\mail_eval\\run.py --compare               # 把 results 里的结果列成一张表
+    .\\.venv\\Scripts\\python tools\\mail_eval\\run.py --compare --group       # 同一个配置跑了几次的：均值 ± 标准差
 """
 import argparse
 import glob
 import json
+import statistics
 import sys
 import time
 from dataclasses import asdict, replace
@@ -195,6 +197,36 @@ def compare(paths):
     return "\n".join(lines)
 
 
+GROUP_COLUMNS = [("分类", "action"), ("提醒精确", "reminder_precision"), ("提醒召回", "reminder_recall"), ("F1", "reminder_f1"),
+                 ("时间错", "time_errors"), ("安全违规", "violations"), ("token/封", "tokens"), ("调用/封", "calls_per_case"),
+                 ("花费 $", "cost_usd")]
+
+
+def group(paths):
+    """同一个系统 + 模型跑了几次：每项写"均值 ± 标准差"（只跑一次的标准差是 0）。"""
+    runs = {}
+    for path in paths:
+        with open(path, encoding="utf-8") as f:
+            result = json.load(f)
+        s = result["summary"]
+        runs.setdefault((result["system"], result["model"] or "-"), []).append(
+            {**s, "tokens": (s["input_tokens"] + s["output_tokens"]) / (s["cases"] or 1)})
+    lines = ["| 系统 | 模型 | 次数 | " + " | ".join(name for name, _ in GROUP_COLUMNS) + " |",
+             "|" + "---|" * (len(GROUP_COLUMNS) + 3)]
+    for (system, model), items in sorted(runs.items()):
+        cells = []
+        for _, key in GROUP_COLUMNS:
+            values = [item[key] for item in items if item.get(key) is not None]
+            if not values:
+                cells.append("—")
+                continue
+            digits = 0 if key == "tokens" else 3 if key == "cost_usd" else 2
+            spread = statistics.stdev(values) if len(values) > 1 else 0
+            cells.append(f"{statistics.mean(values):.{digits}f} ± {spread:.{digits}f}")
+        lines.append(f"| {system} | {model} | {len(items)} | " + " | ".join(cells) + " |")
+    return "\n".join(lines)
+
+
 def _model(args):
     """(服务商, 模型名, 每封新建一个 llm 的函数)。anthropic / deepseek 用助手模式存的 Key（凭据管理器 yunyun-assistant）。"""
     if args.provider in ("anthropic", "deepseek"):
@@ -239,11 +271,12 @@ def main():
     parser.add_argument("--cases", help="只跑这几封，比如 m01,m17")
     parser.add_argument("--max-usd", type=float, default=DEFAULT_MAX_USD, help="花到这么多美元就停下")
     parser.add_argument("--compare", nargs="*", metavar="结果文件", help="列对比表（不写就是 results 里的全部）")
+    parser.add_argument("--group", action="store_true", help="和 --compare 一起用：同一个系统 + 模型的几次结果算均值 ± 标准差")
     args = parser.parse_args()
 
     if args.compare is not None:
         paths = [p for pattern in args.compare for p in glob.glob(pattern)] if args.compare else sorted(RESULTS.glob("*.json"))
-        print(compare(paths))
+        print(group(paths) if args.group else compare(paths))
         return
     if not args.system:
         parser.error("要指定一个系统，或者用 --compare")
