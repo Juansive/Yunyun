@@ -690,6 +690,11 @@ TEXTS = {
         "ja": "プロバイダーの応答を解釈できません。別のモデルを試してください。",
     },
     "ai_error_other": {"zh": "出错了。", "en": "Something went wrong.", "ja": "エラーが発生しました。"},
+    "ai_error_no_tools": {
+        "zh": "这个模型不支持工具调用，换一个模型试试。",
+        "en": "This model doesn't support tool calling. Try another model.",
+        "ja": "このモデルはツール呼び出しに対応していません。別のモデルを試してください。",
+    },
     "ai_error_not_running": {
         "zh": "没找到 Ollama，或者它没能启动：请先安装 Ollama（装好就行，芸芸会在需要时自动启动它），再试一次。",
         "en": "Couldn't find or start Ollama. Please install Ollama (that's all — I'll start it when needed), then try again.",

@@ -8,48 +8,132 @@
 
 本机的 Ollama 用它自己的接口 POST {base_url}/api/chat（见 chat_ollama），格式很像，回答在 message.content。
 外部只需要调用 ask()：它按服务商的接口格式选用 chat() 或 chat_ollama()。
+
+工具调用（邮件 agent 用，E3）：ask_reply(..., tools=[...]) 返回整个 Reply——模型可能不直接回答，而是说"我要调用某个工具"
+（Reply.tool_calls）。调用方去执行，把 Reply.message 和每个工具的结果（tool_result()）接在 messages 后面再问一次，
+直到模型给出回答。工具的说明两家都用 OpenAI 的格式：{"type": "function", "function": {"name", "description", "parameters"}}；
+不一样的地方（参数是 JSON 字符串还是对象、结果消息怎么写）都在这里处理掉。
 """
 import contextlib
 import json
 import os
+import re
 import socket
 import urllib.error
 import urllib.request
+from dataclasses import dataclass, field
 
 from yunyun.ai import ollama_service
 from yunyun.ai.errors import AIError  # noqa: F401  别的模块习惯从这里 import AIError
 
 
+@dataclass
+class ToolCall:
+    id: str
+    name: str
+    arguments: dict | None   # 解析好的参数；模型写的不是合法的 JSON 对象时是 None（把错误当成工具结果告诉它）
+    raw: str = ""            # 参数原文
+
+
+@dataclass
+class Reply:
+    text: str
+    tool_calls: list[ToolCall] = field(default_factory=list)
+    message: dict = field(default_factory=dict)   # 这条回答本身：要接着问的话，原样放回 messages
+    truncated: bool = False                       # 写到 max_tokens 被截断了
+
+
 def ask(provider, api_key, model, messages, **kwargs):
     """按服务商的接口格式发一次对话，返回回答的文字（summarizer 和设置页的"测试"都用它）。"""
+    return ask_reply(provider, api_key, model, messages, **kwargs).text
+
+
+def ask_reply(provider, api_key, model, messages, tools=None, **kwargs):
+    """和 ask() 一样，但返回整个 Reply。tools：工具的说明；模型不支持工具时抛 AIError(kind="no_tools")。"""
     if provider.api == "ollama":
         with ollama_service.session(provider.base_url):   # 需要时才启动 Ollama，用完空闲一会儿再关
-            return chat_ollama(provider.base_url, model, messages, extra=provider.extra, **kwargs)
+            return chat_ollama_reply(provider.base_url, model, messages, extra=provider.extra, tools=tools, **kwargs)
     kwargs.setdefault("max_tokens", provider.max_tokens)
     kwargs.setdefault("timeout", 120 if provider.local else 30)   # 本地模型第一次要先读进内存，多等一会儿
-    return chat(provider.base_url, api_key, model, messages, extra=provider.extra,
-                use_proxy=not provider.local, **kwargs)              # 本机 / 局域网的模型不走系统代理
+    return chat_reply(provider.base_url, api_key, model, messages, extra=provider.extra,
+                      use_proxy=not provider.local, tools=tools, **kwargs)   # 本机 / 局域网的模型不走系统代理
+
+
+def tool_result(provider, call, content):
+    """把一个工具的结果（文字）交回给模型的那条消息：OpenAI 兼容接口按 id 对上，Ollama 按工具名。"""
+    if provider.api == "ollama":
+        return {"role": "tool", "content": content, "tool_name": call.name}
+    return {"role": "tool", "tool_call_id": call.id, "content": content}
 
 
 def chat(base_url, api_key, model, messages, extra=None, max_tokens=200, temperature=0.7, timeout=30, use_proxy=True,
          usage=None):
     """OpenAI 兼容格式：发送一次对话，返回模型回答的文字。api_key 为空时不发 Key（本地模型一般不需要）。
     usage：给一个 dict 就把这次用了多少 token 加进去（评测用，见 count_usage）。"""
+    return chat_reply(base_url, api_key, model, messages, extra, max_tokens, temperature, timeout, use_proxy, usage).text
+
+
+def chat_reply(base_url, api_key, model, messages, extra=None, max_tokens=200, temperature=0.7, timeout=30,
+               use_proxy=True, usage=None, tools=None):
+    """OpenAI 兼容格式，返回 Reply。工具调用在 choices[0].message.tool_calls，参数是 JSON 字符串。"""
     body = {
         "model": model,
         "messages": messages,
         "max_tokens": max_tokens,
         "temperature": temperature,   # 越高越有创意、越低越稳定
         **(extra or {}),              # ** 把字典展开合并进来
+        **({"tools": tools} if tools else {}),
     }
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
-    data = _post_json(base_url.rstrip("/") + "/chat/completions", body, timeout, headers=headers, use_proxy=use_proxy)
+    with _tool_errors(tools):
+        data = _post_json(base_url.rstrip("/") + "/chat/completions", body, timeout, headers=headers, use_proxy=use_proxy)
     tokens = (data.get("usage") or {}) if isinstance(data, dict) else {}
     count_usage(usage, tokens.get("prompt_tokens"), tokens.get("completion_tokens"))
     try:
-        return data["choices"][0]["message"]["content"] or ""
-    except (KeyError, IndexError, TypeError) as e:
+        choice = data["choices"][0]
+        message = choice["message"]
+        text = message.get("content") or ""
+    except (KeyError, IndexError, TypeError, AttributeError) as e:
         raise AIError("返回格式不对", kind="bad_response", detail=str(data)[:300]) from e
+    calls = _tool_calls(message)
+    echo = {"role": "assistant", "content": text}
+    if calls:
+        echo["tool_calls"] = [{"id": c.id, "type": "function", "function": {"name": c.name, "arguments": c.raw}}
+                              for c in calls]
+    return Reply(text, calls, echo, choice.get("finish_reason") == "length")
+
+
+def _tool_calls(message):
+    """回答里的工具调用。参数：OpenAI 给的是 JSON 字符串，Ollama（和个别兼容接口）给的是对象；没给 id 的按顺序编一个。"""
+    calls = []
+    for index, item in enumerate(message.get("tool_calls") or []):
+        function = item.get("function") if isinstance(item, dict) else None
+        if not isinstance(function, dict):
+            continue
+        arguments = function.get("arguments")
+        if isinstance(arguments, str):
+            raw = arguments
+            try:
+                arguments = json.loads(arguments) if arguments.strip() else {}
+            except ValueError:
+                arguments = None
+        else:
+            raw = json.dumps(arguments or {}, ensure_ascii=False)
+            arguments = arguments or {}
+        calls.append(ToolCall(str(item.get("id") or f"call_{index}"), str(function.get("name") or ""),
+                              arguments if isinstance(arguments, dict) else None, raw))
+    return calls
+
+
+@contextlib.contextmanager
+def _tool_errors(tools):
+    """发了工具、服务商回 400 说不支持工具（tools / function calling）：换成 kind="no_tools"，提示换个模型。"""
+    try:
+        yield
+    except AIError as e:
+        if tools and e.status == 400 and re.search(r"tool|function", e.detail or "", re.IGNORECASE):
+            e.kind = "no_tools"
+        raise
 
 
 def count_usage(usage, prompt_tokens, completion_tokens):
@@ -81,28 +165,42 @@ def chat_ollama(base_url, model, messages, extra=None, max_tokens=200, temperatu
     没用 Ollama 的"OpenAI 兼容接口"，因为只有原生接口能传 think（关掉思考模式）和 keep_alive（多久卸载模型）。
     timeout 比在线服务长：第一次要先把模型从硬盘读进内存，没有显卡的电脑上生成也慢一些。
     """
+    return chat_ollama_reply(base_url, model, messages, extra, max_tokens, temperature, timeout, usage).text
+
+
+def chat_ollama_reply(base_url, model, messages, extra=None, max_tokens=200, temperature=0.7, timeout=120, usage=None,
+                      tools=None):
+    """Ollama 原生接口，返回 Reply。工具调用在 message.tool_calls，参数是对象、没有 id。"""
     body = {
         "model": model,
         "messages": messages,
         "stream": False,              # 一次性返回整个回答（不要一个字一个字地流式返回）
         "options": {"num_predict": max_tokens, "temperature": temperature, **OLLAMA_OPTIONS},
         **(extra or {}),
+        **({"tools": tools} if tools else {}),
     }
     url = base_url.rstrip("/") + "/api/chat"
-    try:
-        data = _post_ollama(url, body, timeout)
-    except AIError as e:
-        # 有的模型本来就不会"思考"，旧版本的 Ollama 收到 think 参数会报错：去掉它再试一次
-        if "think" not in body or "think" not in e.detail.lower():
-            raise
-        body.pop("think")
-        data = _post_ollama(url, body, timeout)
+    with _tool_errors(tools):
+        try:
+            data = _post_ollama(url, body, timeout)
+        except AIError as e:
+            # 有的模型本来就不会"思考"，旧版本的 Ollama 收到 think 参数会报错：去掉它再试一次
+            if "think" not in body or "think" not in e.detail.lower():
+                raise
+            body.pop("think")
+            data = _post_ollama(url, body, timeout)
     if isinstance(data, dict):
         count_usage(usage, data.get("prompt_eval_count"), data.get("eval_count"))
     try:
-        return data["message"]["content"] or ""
-    except (KeyError, TypeError) as e:
+        message = data["message"]
+        text = message.get("content") or ""
+    except (KeyError, TypeError, AttributeError) as e:
         raise AIError("返回格式不对", kind="bad_response", detail=str(data)[:300]) from e
+    calls = _tool_calls(message)
+    echo = {"role": "assistant", "content": text}
+    if calls:
+        echo["tool_calls"] = [{"function": {"name": c.name, "arguments": c.arguments or {}}} for c in calls]
+    return Reply(text, calls, echo, data.get("done_reason") == "length")
 
 
 def _post_ollama(url, body, timeout):

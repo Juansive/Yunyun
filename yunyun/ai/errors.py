@@ -7,6 +7,7 @@ class AIError(Exception):
     e.kind 给界面做多语言："auth" Key 不对 / "rate_limit" 调用太频繁或额度用完 /
     "not_found" 地址或模型名不对（HTTP 404）/ "network" 网络问题 / "bad_response" 返回内容看不懂 / "other" 其他；
     本地模型还有："not_running" 没装 / 没能启动 Ollama / "model_missing" Ollama 里还没有这个模型。
+    带工具调用时还有："no_tools" 这个模型不支持工具调用。
     e.detail 是服务器的原话，方便排查；e.status 是 HTTP 状态码（没有就是 None）。
     """
 
