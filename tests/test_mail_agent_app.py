@@ -126,3 +126,11 @@ def test_mail_agent_stays_light():
     """邮件 agent 在芸芸进程的后台线程里跑：不能带进 Agent SDK / anthropic（Qt 芸芸进程里本来就有）。"""
     from test_assistant_imports import modules_after, top_level
     assert not top_level(modules_after("import yunyun.ai.mail_agent")) & {"claude_agent_sdk", "anthropic"}
+
+
+def test_reminders_page_has_the_switch(qapp):
+    from yunyun.pet.reminders_page import RemindersPage
+    page = RemindersPage()
+    assert not page._from_mail.isChecked()
+    page._from_mail.setChecked(True)                       # 设置 → 提醒 → "从邮件里建议提醒"
+    assert ai_settings.suggestions_enabled() and RemindersPage()._from_mail.isChecked()

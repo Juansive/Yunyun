@@ -16,7 +16,9 @@ from PySide6.QtWidgets import (
 )
 
 from yunyun import i18n
+from yunyun.ai import settings as ai_settings
 from yunyun.notify import reminders
+from yunyun.pet.theme import Toggle
 from yunyun.pet.widgets import note
 
 ID_ROLE = Qt.ItemDataRole.UserRole
@@ -42,6 +44,11 @@ class RemindersPage(QWidget):
         self._now = now
         layout = QVBoxLayout(self)
         layout.addWidget(note(tr("reminders_intro")))
+        self._from_mail = Toggle(tr("reminders_from_mail"))   # 邮件 agent（E6）：新邮件里有要记的事，卡片上建议加提醒
+        self._from_mail.setChecked(ai_settings.suggestions_enabled())
+        self._from_mail.toggled.connect(ai_settings.set_suggestions_enabled)
+        layout.addWidget(self._from_mail)
+        layout.addWidget(note(tr("reminders_from_mail_hint")))
         self._tree = QTreeWidget()
         self._tree.setColumnCount(3)
         self._tree.setHeaderLabels([tr("reminders_when"), tr("reminders_repeat"), tr("reminders_text")])
@@ -54,6 +61,7 @@ class RemindersPage(QWidget):
         layout.addWidget(self._tree, 1)
         self._empty = note(tr("reminders_empty"), "#888")
         layout.addWidget(self._empty)
+        layout.addStretch()   # 列表藏起来（没有提醒）时空白都放这里，上面几行别被拉开；列表在时它不占地方
         row = QHBoxLayout()
         self._delete_button = QPushButton(tr("reminders_delete"))
         self._delete_button.clicked.connect(self._delete)

@@ -477,6 +477,24 @@ TEXTS = {
     "reminder_missed": {"zh": "⏰ 刚才错过了一个提醒（{}）：{}", "en": "⏰ You missed a reminder ({}): {}",
                         "ja": "⏰ さっきのリマインダー（{}）：{}"},
     "page_reminders": {"zh": "提醒", "en": "Reminders", "ja": "リマインダー"},
+    "reminders_from_mail": {"zh": "从邮件里建议提醒", "en": "Suggest reminders from my mail", "ja": "メールからリマインダーを提案"},
+    "reminders_from_mail_hint": {
+        "zh": "新邮件里有要记的事（开会、截止、取快递……），芸芸在卡片上建议加提醒，你点了才加；看起来像诈骗的会标出来。"
+              "每封邮件要多问 AI 一两次，用的是 设置 → AI 里选的模型（免费的智谱 glm-4.7-flash 比较慢）；"
+              "为了认出改期、重复的事，AI 可能会查历史记录里以前邮件的标题、发件人和那句话（不含正文）。"
+              "隐私规则照旧，芸芸不会自己发信、删信、点链接。",
+        "en": "When a new email mentions something to remember (a meeting, a deadline, a parcel…), Yunyun suggests a "
+              "reminder on the card — it's only added if you click. Emails that look like scams are flagged. "
+              "Each email takes one or two extra AI calls with the model chosen in Settings → AI "
+              "(the free Zhipu glm-4.7-flash is slow). To spot reschedules and duplicates, the AI may look up the "
+              "subject, sender and sentence of earlier emails in History (never the body). Privacy rules still apply; "
+              "Yunyun never sends or deletes mail or opens links.",
+        "ja": "新しいメールに覚えておくこと（会議、締め切り、荷物の受け取り…）があると、カードでリマインダーを提案します。"
+              "押したときだけ追加されます。詐欺っぽいメールには印がつきます。メール 1 通ごとに AI を 1〜2 回多く使います"
+              "（設定 → AI で選んだモデル。無料の智譜 glm-4.7-flash は遅めです）。日程の変更や重複に気づくため、"
+              "履歴にある以前のメールの件名・差出人・ひとことを AI が調べることがあります（本文は含みません）。プライバシーの設定はそのまま。"
+              "芸芸がメールを送ったり消したり、リンクを開いたりすることはありません。",
+    },
     "reminders_intro": {
         "zh": "让芸芸提醒你：在助手模式里说\"25 分钟后叫我\"\"每天下午 3 点提醒我喝水\"。"
               "到点芸芸冒气泡、弹 Windows 通知（助手模式开着时还会说出来）；芸芸没开着时错过的，下次打开补一句。",
