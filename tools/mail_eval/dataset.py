@@ -21,6 +21,7 @@
     tags      难在哪里，见 TAGS
     note      为什么这么标
 """
+import functools
 import json
 from dataclasses import dataclass
 from datetime import datetime
@@ -89,6 +90,16 @@ def load_cases(path=CASES_PATH):
     """读评测集 → [Case]，顺序和文件里一样。"""
     with open(path, encoding="utf-8") as f:
         return [_case(json.loads(line)) for line in f if line.strip()]
+
+
+@functools.lru_cache(maxsize=None)
+def _all_cases():
+    return tuple(load_cases())
+
+
+def inbox_before(case, cases=None):
+    """这封之前收到的全部邮件（[Case]，旧的在前）。现实里芸芸不知道哪几封和这封有关（context.earlier 是评测白给的）。"""
+    return [c for c in (cases if cases is not None else _all_cases()) if c.message.date < case.message.date]
 
 
 def _time(text):

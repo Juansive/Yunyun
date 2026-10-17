@@ -1,6 +1,6 @@
 """邮件 agent（E4）：读一封新邮件，判断类别、写一句话，再找出要记的事、建议加 / 改 / 取消提醒（用户点了才生效）。
 
-和 summarizer 的"一次调用"不同：已有的提醒直接写在提示词里，之前的相关邮件要模型自己调用工具看；提醒可以用工具建议，
+和 summarizer 的"一次调用"不同：已有的提醒直接写在提示词里，之前收到的邮件要模型自己按关键词查（search_mails）；提醒可以用工具建议，
 也可以写在最后的 JSON 里（小模型常常一个工具都不调，直接给答案）。代码执行工具、把结果交回给它，最多 MAX_CALLS 次。没做成（出错、超时、次数用完、回答读不懂）时 Result.fallback 写着原因，
 调用方退回 summarizer 的一句话。提示词里附了日历（今天、本周 / 下周 / 下下周每天是几号、月底）：小模型自己算"下周三"常错。
 
@@ -28,6 +28,7 @@ from yunyun.notify import reminders as reminder_store
 MAX_CALLS = 4          # 每封最多调几次模型（包括最后给出回答的那次）
 MAX_SUGGESTIONS = 3
 MAX_TOKENS = 600
+SEARCH_LIMIT = 3       # 查邮件一次最多给几封（每封全文约 150～300 token）
 DEADLINE_S = 60        # 一封最多花多久；到了就退回一句话
 GUARDS = frozenset({"suspicious", "scrub", "dangerous", "sane", "mentioned"})
 ACTIONS = {"act": "要处理", "info": "知道就行", "promo": "广告通知"}
@@ -39,7 +40,7 @@ _DANGEROUS = re.compile(r"转账|汇款|打款|购物卡|礼品卡|充值卡|卡
 class Context:
     now: datetime
     reminders: list = field(default_factory=list)   # 用户已有的提醒 [notify.reminders.Reminder]
-    earlier: list = field(default_factory=list)     # 之前收到的相关邮件 [MailMessage]
+    inbox: list = field(default_factory=list)       # 之前收到的邮件 [MailMessage]：哪几封有关，要模型自己查
 
 
 @dataclass
@@ -72,7 +73,8 @@ def _tool(name, description, properties=None, required=()):
 _WHEN = {"type": "string", "description": "提醒的时间，格式 YYYY-MM-DD HH:MM"}
 _ID = {"type": "string", "description": "已有提醒的 id，比如 t1"}
 TOOLS = [
-    _tool("read_earlier_mails", "看之前收到的、和这封有关的邮件。"),
+    _tool("search_mails", f"在之前收到的邮件里按关键词找，返回最多 {SEARCH_LIMIT} 封（新的在前）。",
+          {"query": {"type": "string", "description": "关键词，几个词用空格隔开，比如 \"组会 改期\"；不填就是最近几封"}}),
     _tool("suggest_reminder", "建议用户加一个提醒（用户点了才会加）。",
           {"text": {"type": "string", "description": "要做的事，简短"}, "when": _WHEN,
            "repeat": {"type": "string", "description": "每天 daily / 工作日 weekdays / 每周 weekly；不重复就不填"}},
@@ -86,7 +88,7 @@ SYSTEM_PROMPT = """你是桌面宠物"芸芸"的邮件助手。用户收到一�
 {calendar}
 
 工具：
-- read_earlier_mails：看之前收到的相关邮件。这封是回复、"改到……""取消"这类通知时，先看原来说的是什么。
+- search_mails：在之前收到的邮件里按关键词找。这封是回复、"改到……""取消"这类通知时，找找原来说的是什么；拿不准发件人是不是真的时，找找同名的人以前用的邮箱。
 - suggest_reminder / suggest_move / suggest_cancel：建议新加 / 改期 / 取消提醒（也可以直接写在最后 JSON 的 reminders 里）。
 用不上的工具就别调用。
 
@@ -211,8 +213,9 @@ class _Agent:
         if call.arguments is None:
             return "参数不是合法的 JSON，请重新调用。"
         args = call.arguments
-        if call.name == "read_earlier_mails":
-            return "\n\n".join(mail_block(m) for m in self.context.earlier) or "（没有之前的相关邮件）"
+        if call.name == "search_mails":
+            found = search(self.context.inbox, str(args.get("query") or ""))
+            return "\n\n".join(mail_block(m) for m in found) or "（没找到）"
         if call.name == "suggest_reminder":
             return self.suggest(Suggestion("add", str(args.get("text") or "").strip(), parse_when(args.get("when")),
                                            None, str(args.get("repeat") or "")))
@@ -285,6 +288,20 @@ class _Agent:
             r.dropped += [f"suspicious：{s.op} {s.text or s.target or ''}".strip() for s in r.suggestions]
             r.suggestions = []
         return r
+
+
+def search(inbox, query, limit=SEARCH_LIMIT):
+    """收件箱里按关键词找：发件人、标题、正文里对上的词越多越靠前，一样多的新的在前；没给关键词就是最近几封。"""
+    words = [w.lower() for w in re.split(r"[\s,，、;；]+", query) if w]
+    newest_first = sorted(inbox, key=lambda m: m.date.timestamp() if m.date else 0, reverse=True)
+
+    def hits(m):
+        text = f"{m.sender}\n{m.subject}\n{m.body}".lower()
+        return sum(w in text for w in words)
+
+    if not words:
+        return newest_first[:limit]
+    return sorted((m for m in newest_first if hits(m)), key=hits, reverse=True)[:limit]   # sorted 是稳定的：同分保持新的在前
 
 
 def _id(args):

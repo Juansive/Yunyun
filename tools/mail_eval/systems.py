@@ -2,22 +2,26 @@
 
 每个系统是一个函数 system(case, earlier, llm) → Prediction：
     case     要处理的这封（dataset.Case）
-    earlier  context 里之前的相关邮件（[Case]），比真实情况宽松：直接告诉它哪几封有关
+    earlier  context 里之前的相关邮件（[Case]），比真实情况宽松：直接告诉它哪几封有关。
+             "现实的上下文"的几个系统不用它，用 dataset.inbox_before(case)：这封之前收到的全部邮件，哪几封有关要自己找
     llm      llm(messages, max_tokens=None) → 回答的文字；agent 还要 llm.reply(messages, tools, max_tokens) 和
              llm.tool_result(call, content)（真模型见 run.py 的 LLM；测试里用假的）
 - oracle：照标准答案抄，不调模型。打分程序的自检：必须满分、0 违规。
 - summarizer：芸芸现在的做法（一次调用，只给类别 + 一句话），类别按 CATEGORY_ACTION 换算成 action；不会提醒。
-- oneshot：一次调用直接输出分类 + 一句话 + 提醒建议（不循环、没有工具）。oneshot_calendar：提示词里多一份日历。
-- agent：yunyun/ai/mail_agent.py（工具 + 循环 + 硬规矩 + 日历），没做成就退回 summarizer 的一句话（和芸芸里一样）。
-  agent_raw：同一个 agent 关掉所有硬规矩（消融：看硬规矩各起了多少作用）。
+- oneshot：一次调用直接输出分类 + 一句话 + 提醒建议（不循环、没有工具），拿到相关的旧邮件。oneshot_calendar：提示词里多一份日历。
+- oneshot_recent（现实的上下文）：oneshot + 日历，但不知道哪几封有关，只能把最近 RECENT 封都塞进提示词。
+- agent（现实的上下文）：yunyun/ai/mail_agent.py（工具 + 循环 + 硬规矩 + 日历），整个收件箱自己用 search_mails 查；
+  没做成就退回 summarizer 的一句话（和芸芸里一样）。agent_raw：同一个 agent 关掉所有硬规矩（消融）。
 气泡都过一遍芸芸现有的敏感信息过滤（scrub_sensitive），和真的用的时候一样；oneshot 的提醒文字没有过滤。
 """
+from tools.mail_eval.dataset import inbox_before
 from tools.mail_eval.score import PredictedReminder, Prediction
 from yunyun.ai import mail_agent, summarizer
 from yunyun.ai.mail_agent import parse_action, parse_json, parse_when
 from yunyun.notify import reminders as reminder_store
 
 WEEKDAYS = "一二三四五六日"
+RECENT = 10   # oneshot_recent 塞进提示词的最近几封
 
 # summarizer 只给 12 类：粗略换算成 action（同一类里"要处理""知道就行"都有，换算本身就会错一些）
 CATEGORY_ACTION = {"ad": "promo", "newsletter": "promo",
@@ -66,11 +70,11 @@ bubble：一句话转告用户，30 个汉字以内，忠于原文，像朋友�
 改期：{{"op": "move", "id": "t1", "when": "YYYY-MM-DD HH:MM"}}；取消：{{"op": "cancel", "id": "t1"}}。没有要提醒的就写 []。"""
 
 
-def oneshot(case, earlier, llm, calendar=False):
+def oneshot(case, earlier, llm, calendar=False, title="之前的相关邮件"):
     system = ONESHOT_PROMPT.format(now=f"{case.now:%Y-%m-%d %H:%M}", weekday=WEEKDAYS[case.now.weekday()])
     if calendar:
         system = system.replace("一周从周一开始。", "一周从周一开始。\n" + mail_agent.calendar_text(case.now), 1)
-    answer = llm([{"role": "system", "content": system}, {"role": "user", "content": context_text(case, earlier)}],
+    answer = llm([{"role": "system", "content": system}, {"role": "user", "content": context_text(case, earlier, title)}],
                  max_tokens=600)
     data = parse_json(answer)
     return Prediction(action=parse_action(data.get("action")), raw=answer,
@@ -84,8 +88,12 @@ def oneshot_calendar(case, earlier, llm):
     return oneshot(case, earlier, llm, calendar=True)
 
 
+def oneshot_recent(case, earlier, llm):
+    return oneshot(case, inbox_before(case)[-RECENT:], llm, calendar=True, title=f"最近收到的邮件（{RECENT} 封以内）")
+
+
 def agent(case, earlier, llm, guards=mail_agent.GUARDS):
-    context = mail_agent.Context(case.now, case.reminders, [old.message for old in earlier])
+    context = mail_agent.Context(case.now, case.reminders, [old.message for old in inbox_before(case)])
     result = mail_agent.run(case.message, context, llm, guards=guards)
     if result.fallback:              # 没做成：和芸芸里一样退回一句话（这次的调用和 token 也算进去）
         prediction = summarizer_baseline(case, earlier, llm)
@@ -100,10 +108,10 @@ def agent_raw(case, earlier, llm):
     return agent(case, earlier, llm, guards=frozenset())
 
 
-def context_text(case, earlier):
-    """交给 oneshot 的：已有的提醒 + 之前的相关邮件 + 这封邮件。"""
+def context_text(case, earlier, title="之前的相关邮件"):
+    """交给 oneshot 的：已有的提醒 + 之前的邮件 + 这封邮件。"""
     lines = ["已有的提醒："] + ([reminder_store.describe(r) for r in case.reminders] or ["（没有）"])
-    lines.append("\n之前的相关邮件：")
+    lines.append(f"\n{title}：")
     lines += [f"【{old.message.date:%Y-%m-%d %H:%M} 收到】\n{summarizer.build_mail_text(old.message)}\n"
               for old in earlier] or ["（没有）"]
     lines.append(f"\n新邮件（{case.message.date:%Y-%m-%d %H:%M} 收到）：\n{summarizer.build_mail_text(case.message)}")
@@ -122,4 +130,5 @@ def _reminders(items):
 
 
 SYSTEMS = {"oracle": oracle, "summarizer": summarizer_baseline, "oneshot": oneshot, "oneshot_calendar": oneshot_calendar,
+           "oneshot_recent": oneshot_recent,
            "agent": agent, "agent_raw": agent_raw}

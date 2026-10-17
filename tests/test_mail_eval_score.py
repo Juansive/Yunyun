@@ -157,7 +157,7 @@ def test_report_save_and_compare(cases, tmp_path, capsys):
 
 
 def test_every_system_is_listed():
-    assert set(SYSTEMS) == {"oracle", "summarizer", "oneshot", "oneshot_calendar", "agent", "agent_raw"}
+    assert set(SYSTEMS) == {"oracle", "summarizer", "oneshot", "oneshot_calendar", "oneshot_recent", "agent", "agent_raw"}
 
 
 def test_oneshot_calendar_adds_the_calendar(cases):
@@ -185,7 +185,7 @@ def test_cost_and_budget_stop(cases):
 def test_openai_style_conversation_becomes_messages_api():
     from tools.mail_eval.anthropic_llm import to_anthropic, to_anthropic_tools
     from yunyun.ai.mail_agent import TOOLS
-    call = {"id": "toolu_1", "type": "function", "function": {"name": "read_earlier_mails", "arguments": "{}"}}
+    call = {"id": "toolu_1", "type": "function", "function": {"name": "search_mails", "arguments": "{}"}}
     move = {"id": "toolu_2", "type": "function", "function": {"name": "suggest_move", "arguments": '{"id": "t1"}'}}
     system, messages = to_anthropic([
         {"role": "system", "content": "规矩"}, {"role": "user", "content": "新邮件"},
@@ -195,11 +195,11 @@ def test_openai_style_conversation_becomes_messages_api():
         {"role": "assistant", "content": "不是 JSON"}, {"role": "user", "content": "请只输出最后的 JSON。"}])
     assert system == "规矩" and [m["role"] for m in messages] == ["user", "assistant", "user", "assistant", "user"]
     assert messages[1]["content"] == [{"type": "text", "text": "先看看"},
-                                      {"type": "tool_use", "id": "toolu_1", "name": "read_earlier_mails", "input": {}},
+                                      {"type": "tool_use", "id": "toolu_1", "name": "search_mails", "input": {}},
                                       {"type": "tool_use", "id": "toolu_2", "name": "suggest_move", "input": {"id": "t1"}}]
     assert [b["tool_use_id"] for b in messages[2]["content"]] == ["toolu_1", "toolu_2"]   # 两个结果在同一条消息里
     tools = to_anthropic_tools(TOOLS)
-    assert tools[0] == {"name": "read_earlier_mails", "description": TOOLS[0]["function"]["description"],
+    assert tools[0] == {"name": "search_mails", "description": TOOLS[0]["function"]["description"],
                         "input_schema": TOOLS[0]["function"]["parameters"]}
 
 
@@ -214,7 +214,7 @@ def test_anthropic_llm_request_and_reply():
         sent.update(request)
         return NS(usage=NS(input_tokens=1200, output_tokens=40), stop_reason="tool_use", content=[
             NS(type="text", text="我先看看原来的邮件"),
-            NS(type="tool_use", id="toolu_9", name="read_earlier_mails", input={})])
+            NS(type="tool_use", id="toolu_9", name="search_mails", input={})])
 
     llm = AnthropicLLM("claude-haiku-4-5", "sk-test")
     llm.client = NS(messages=NS(create=create))
@@ -222,9 +222,21 @@ def test_anthropic_llm_request_and_reply():
     assert (sent["model"], sent["max_tokens"], sent["system"], sent["extra_body"]) == ("claude-haiku-4-5", 600, "规矩", {"temperature": 0.3})
     assert [t["name"] for t in sent["tools"]] == [t["function"]["name"] for t in TOOLS]
     assert reply.text == "我先看看原来的邮件" and [(c.id, c.name, c.arguments) for c in reply.tool_calls] == [
-        ("toolu_9", "read_earlier_mails", {})]
-    assert reply.message["tool_calls"][0]["function"] == {"name": "read_earlier_mails", "arguments": "{}"}
+        ("toolu_9", "search_mails", {})]
+    assert reply.message["tool_calls"][0]["function"] == {"name": "search_mails", "arguments": "{}"}
     assert llm.tool_result(reply.tool_calls[0], "旧邮件") == {"role": "tool", "tool_call_id": "toolu_9", "content": "旧邮件"}
     assert llm.usage == {"input": 1200, "output": 40, "calls": 1} and not reply.truncated
     llm([{"role": "user", "content": "hi"}])               # summarizer 那样只要文字：max_tokens 和芸芸里一样
     assert sent["max_tokens"] == 200 and "tools" not in sent and "system" not in sent
+
+
+def test_oneshot_recent_sees_only_the_last_ten(cases):
+    seen = {}
+
+    def llm(messages, max_tokens=None):
+        seen["user"] = messages[1]["content"]
+        return '{"action": "act", "bubble": "好"}'
+
+    SYSTEMS["oneshot_recent"](cases["m17"], [], llm)                  # 之前有 16 封：只塞 m07～m16
+    before = seen["user"].split("新邮件")[0]
+    assert "最近收到的邮件（10 封以内）" in before and "服务器维护已完成" in before and "本周组会安排" not in before
