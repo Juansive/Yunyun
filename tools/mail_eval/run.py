@@ -33,7 +33,7 @@ from yunyun.ai.summarizer import TEMPERATURE           # noqa: E402
 RESULTS = Path(__file__).with_name("results")
 RETRY_WAITS = (10, 30, 60)   # 限流 / 网络不稳时等一会儿再试（免费模型常见：glm-4.7-flash 两个请求同时发就限流）
 TIMEOUT = 120                # 免费模型要排队：一个字的回答实测也要 14 秒
-FREE = {("zhipu", "glm-4.7-flash"), ("siliconflow", "Qwen/Qwen3-8B")}   # 免费的在线模型；本地模型也不花钱
+FREE = {("zhipu", "glm-4.7-flash"), ("zhipu", "glm-4-flash-250414"), ("siliconflow", "Qwen/Qwen3-8B")}   # 免费的在线模型；本地模型也不花钱
 
 
 class LLM:

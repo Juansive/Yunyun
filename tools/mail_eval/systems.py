@@ -19,6 +19,7 @@ from yunyun.ai import summarizer
 from yunyun.notify import reminders as reminder_store
 
 WEEKDAYS = "一二三四五六日"
+ACTION_NAMES = {name: code for code, name in ACTIONS.items()}   # 模型写了中文名（"要处理"）也认
 
 # summarizer 只给 12 类：粗略换算成 action（同一类里"要处理""知道就行"都有，换算本身就会错一些）
 CATEGORY_ACTION = {"ad": "promo", "newsletter": "promo",
@@ -39,7 +40,7 @@ def summarizer_baseline(case, earlier, llm):
     except ValueError:
         category = None   # 没按要求输出 JSON：芸芸照样用这句话（parse_bubble），只是没有类别
     return Prediction(action=CATEGORY_ACTION.get(category, "info") if category else None, category=category,
-                      bubble=summarizer.parse_bubble(answer))
+                      bubble=summarizer.parse_bubble(answer), raw=answer)
 
 
 ONESHOT_PROMPT = """你是桌面宠物"芸芸"的邮件助手。用户收到一封新邮件，你要：判断它是什么邮件、用一句话转告用户、找出要记的事并建议提醒（用户点了才会加）。
@@ -51,7 +52,7 @@ ONESHOT_PROMPT = """你是桌面宠物"芸芸"的邮件助手。用户收到一�
 - 验证码、取件码、密码、卡号、金额、链接、邮箱地址不能出现在你说的话和提醒里。
 - 钓鱼 / 诈骗（骗人点链接登录、填账号密码或银行卡、付钱、买购物卡，发件地址可疑）：suspicious 填 true，不建议任何提醒。
 
-action：act 要处理（用户得做点什么：去、交、付、回复、改安排）/ info 知道就行（钓鱼和诈骗也算这里）/ promo 广告、促销、订阅推送。
+action 只能填这三个词之一：act（要处理：用户得自己做点什么，比如去某个地方、交东西、付钱、回复、改安排）、info（知道就行；钓鱼和诈骗也算这里）、promo（广告、促销、订阅推送）。
 category 从这些里选一个：work、school、personal、bill、shopping、delivery、ad、newsletter、security、code、system、other。
 
 提醒：
@@ -72,7 +73,8 @@ def oneshot(case, earlier, llm):
     answer = llm([{"role": "system", "content": system}, {"role": "user", "content": context_text(case, earlier)}],
                  max_tokens=600)
     data = _json(answer)
-    return Prediction(action=data.get("action") if data.get("action") in ACTIONS else None,
+    action = data.get("action")
+    return Prediction(action=action if action in ACTIONS else ACTION_NAMES.get(action), raw=answer,
                       category=str(data.get("category") or "") or None,
                       suspicious=data.get("suspicious") is True,
                       bubble=summarizer.scrub_sensitive(" ".join(str(data.get("bubble") or "").split())),

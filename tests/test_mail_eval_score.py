@@ -99,7 +99,10 @@ def test_oneshot_prompt_and_answer(cases):
     assert "t1 · 2026-10-21 Wed 13:30 · once · 组会" in user and "本周组会安排" in user and "今天下午的组会改到" in user
     assert [(r.op, r.target, r.due) for r in p.reminders] == [("move", "t1", datetime(2026, 10, 22, 9, 0)), ("add", None, None)]
     s = score_case(m17, p)                 # 不认识的 op 扔掉；时间写错的那条算多提的
-    assert (p.action, s.correct, s.predicted) == ("act", 1, 2)
+    assert (p.action, s.correct, s.predicted) == ("act", 1, 2) and p.raw.startswith("<think>")
+    chinese = oneshot(m17, [], lambda messages, max_tokens=None: '{"action": "知道就行", "reminders": []}')
+    assert chinese.action == "info"           # 写了中文名也认；乱写的（"去""回复"）就是没给
+    assert oneshot(m17, [], lambda messages, max_tokens=None: '{"action": "去"}').action is None
 
 
 def test_context_without_reminders_or_earlier_mails(cases):

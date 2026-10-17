@@ -29,6 +29,7 @@ class Prediction:
     bubble: str = ""
     reminders: list[PredictedReminder] = field(default_factory=list)
     error: str = ""               # 调用失败 / 回答读不懂：这封按"什么都没给"打分
+    raw: str = ""                 # 模型的原始回答（看错题用，不打分）
 
 
 @dataclass
