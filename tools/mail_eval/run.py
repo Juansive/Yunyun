@@ -30,6 +30,7 @@ sys.path.insert(0, str(ROOT))   # 直接运行这个脚本时，让下面能 imp
 from tools.mail_eval import score as scoring           # noqa: E402
 from tools.mail_eval.dataset import load_cases         # noqa: E402
 from tools.mail_eval.systems import SYSTEMS            # noqa: E402
+from yunyun.ai.mail_agent import parse_when            # noqa: E402
 from yunyun.ai import settings as ai_settings          # noqa: E402
 from yunyun.ai.client import AIError, ask, ask_reply, tool_result   # noqa: E402
 from yunyun.ai.providers import PROVIDERS, custom_provider   # noqa: E402
@@ -129,10 +130,26 @@ def cost(provider, model, rows):
 def save(result, folder=RESULTS):
     folder.mkdir(exist_ok=True)
     name = f"{result['system']}_{result['model'] or 'none'}_{datetime.now():%Y%m%d-%H%M%S}".replace("/", "-").replace(":", "-")
-    path = folder / f"{name}.json"
+    return _write(result, folder / f"{name}.json")
+
+
+def _write(result, path):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(result, f, ensure_ascii=False, indent=1, default=lambda o: o.isoformat(timespec="minutes"))
     return path
+
+
+def rescore(path, cases_by_id):
+    """标准答案改了以后，按新答案给旧结果重新打分：模型的回答原样留着（不调模型、不花钱），写回原来的文件。"""
+    with open(path, encoding="utf-8") as f:
+        result = json.load(f)
+    for row in result["cases"]:
+        p = row["prediction"]
+        reminders = [scoring.PredictedReminder(**{**r, "due": parse_when(r["due"]) if r["due"] else None})
+                     for r in p["reminders"]]
+        row["score"] = asdict(scoring.score_case(cases_by_id[row["id"]], scoring.Prediction(**{**p, "reminders": reminders})))
+    again = report(result["system"], result["provider"], result["model"], result["cases"])
+    return _write({**again, "finished": result["finished"]}, path)
 
 
 # ---------- 打印 ----------
@@ -271,9 +288,17 @@ def main():
     parser.add_argument("--cases", help="只跑这几封，比如 m01,m17")
     parser.add_argument("--max-usd", type=float, default=DEFAULT_MAX_USD, help="花到这么多美元就停下")
     parser.add_argument("--compare", nargs="*", metavar="结果文件", help="列对比表（不写就是 results 里的全部）")
+    parser.add_argument("--rescore", nargs="*", metavar="结果文件", help="标准答案改了以后重新打分（不写就是 results 里的全部，含子文件夹）")
     parser.add_argument("--group", action="store_true", help="和 --compare 一起用：同一个系统 + 模型的几次结果算均值 ± 标准差")
     args = parser.parse_args()
 
+    if args.rescore is not None:
+        paths = [p for pattern in args.rescore for p in glob.glob(pattern)] if args.rescore else sorted(RESULTS.rglob("*.json"))
+        by_id = {c.id: c for c in load_cases()}
+        for path in paths:
+            rescore(path, by_id)
+        print(f"重新打分了 {len(paths)} 份结果")
+        return
     if args.compare is not None:
         paths = [p for pattern in args.compare for p in glob.glob(pattern)] if args.compare else sorted(RESULTS.glob("*.json"))
         print(group(paths) if args.group else compare(paths))

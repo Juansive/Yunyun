@@ -252,3 +252,25 @@ def test_group_runs_into_mean_and_spread(cases, tmp_path):
     table = runner.group(paths).splitlines()
     assert table[0].startswith("| 系统 | 模型 | 次数 | 分类 |")
     assert table[2].startswith("| oracle | - | 2 | 0.75 ± 0.35 | 1.00 ± 0.00 |")
+
+
+def test_optional_reminders_and_several_actions(cases):
+    m09, m34, m36 = cases["m09"], cases["m34"], cases["m36"]
+    both = [R("add", "南门集合爬山", datetime(2026, 10, 24, 6, 30)), R("add", "回复阿杰", datetime(2026, 10, 20, 12, 0))]
+    assert (lambda s: (s.correct, s.predicted, s.expected))(score_case(m09, Prediction(reminders=both))) == (1, 1, 1)
+    assert score_case(m34, Prediction(reminders=[R("add", "取外卖", datetime(2026, 10, 23, 12, 10))])).predicted == 0
+    assert score_case(m34, Prediction(reminders=[R("add", "取外卖", datetime(2026, 10, 23, 13, 0))])).predicted == 1  # 过了 30 分钟
+    assert score_case(m36, Prediction(action="info")).action_ok and score_case(m36, Prediction(action="promo")).action_ok
+    assert not score_case(m36, Prediction(action="act")).action_ok
+
+
+def test_rescore_keeps_answers_and_regrades(cases, tmp_path):
+    rows = runner.run(fixed(Prediction(action="info", reminders=[R("add", "取外卖", datetime(2026, 10, 23, 12, 10))])),
+                      [cases["m34"]])
+    result = runner.report("oneshot", "deepseek", "deepseek-flash", rows)
+    result["cases"][0]["score"]["predicted"] = 1                       # 假装是按旧答案打的分
+    path = runner.save(result, tmp_path)
+    runner.rescore(path, {c.id: c for c in cases.values()})
+    again = json.loads(path.read_text(encoding="utf-8"))
+    assert again["cases"][0]["score"]["predicted"] == 0 and again["finished"] == result["finished"]
+    assert again["cases"][0]["prediction"]["reminders"][0]["due"] == "2026-10-23T12:10"

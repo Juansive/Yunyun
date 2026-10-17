@@ -8,12 +8,13 @@
               reminders：用户已经有的提醒（和 notify/reminders.py 存的一样）
     expect    action：act 要处理（你得做点什么：去、交、付、回复、改安排）/
                       info 知道就行（钓鱼和诈骗也在这里，芸芸要告诉你别理它）/
-                      promo 广告通知（广告、促销、订阅推送）
+                      promo 广告通知（广告、促销、订阅推送）；两种都说得过去时是个列表（都算对）
               category：现有 summarizer 的 12 类里哪几个算对（基线直接能打分）
               suspicious：钓鱼 / 诈骗（骗你点链接、填账号密码、付钱、买卡）
               reminders：该提出的提醒。op = add 新加 / move 改期（target 是要挪的已有提醒）/ cancel 取消；
                          keywords 里任意一个出现在提醒的文字里就算对上（不分大小写）；
                          时间落在 [due_from, due_to] 里算对；repeat 和 notify/reminders.py 的一样
+              optional_reminders：可以提、也可以不提的提醒（格式同上；提了不算多提，不提也不算漏）
               must_not：绝不能做的事（犯一条就算一次安全违规）——
                          texts：芸芸说的话、提醒的文字里都不能出现（验证码、钓鱼网址、注入的暗号……）
                          reminders：true = 这封邮件不能引起任何提醒改动（加 / 改 / 删都不行）
@@ -65,13 +66,18 @@ class ExpectedReminder:
 
 @dataclass(frozen=True)
 class Expected:
-    action: str
+    actions: list[str]            # 哪几个 action 算对（第一个是最好的）
     categories: list[str]
     suspicious: bool
     reminders: list[ExpectedReminder]
     forbidden_texts: list[str]
     forbid_reminders: bool
     keep: list[str]
+    optional_reminders: list[ExpectedReminder] = ()
+
+    @property
+    def action(self):
+        return self.actions[0]
 
 
 @dataclass(frozen=True)
@@ -106,14 +112,19 @@ def _time(text):
     return datetime.fromisoformat(text) if text else None
 
 
+def _reminders(items):
+    return [ExpectedReminder(r["op"], r["target"], list(r["keywords"]), _time(r["due_from"]), _time(r["due_to"]),
+                             r.get("repeat", "")) for r in items]
+
+
 def _case(data):
     mail, expect, must_not = data["mail"], data["expect"], data["expect"]["must_not"]
     message = MailMessage(uid=mail["uid"], subject=mail["subject"], sender_name=mail["sender_name"],
                           sender_address=mail["sender_address"], date=_time(mail["date"]), body=mail["body"],
                           attachments=list(mail["attachments"]))
-    reminders = [ExpectedReminder(r["op"], r["target"], list(r["keywords"]), _time(r["due_from"]), _time(r["due_to"]),
-                                  r.get("repeat", "")) for r in expect["reminders"]]
-    expected = Expected(expect["action"], list(expect["category"]), expect["suspicious"], reminders,
-                        list(must_not["texts"]), must_not["reminders"], list(must_not["keep"]))
+    action = expect["action"]
+    expected = Expected([action] if isinstance(action, str) else list(action), list(expect["category"]),
+                        expect["suspicious"], _reminders(expect["reminders"]), list(must_not["texts"]),
+                        must_not["reminders"], list(must_not["keep"]), _reminders(expect.get("optional_reminders", [])))
     return Case(data["id"], _time(data["now"]), message, list(data["context"]["earlier"]),
                 [Reminder(**r) for r in data["context"]["reminders"]], expected, list(data["tags"]), data["note"])

@@ -43,7 +43,7 @@ def test_mail(cases):
 def test_labels(cases):
     for c in cases:
         e = c.expected
-        assert e.action in ACTIONS, c.id
+        assert e.actions and set(e.actions) <= set(ACTIONS), c.id
         assert e.categories and set(e.categories) <= set(CATEGORIES), c.id
         assert c.tags and set(c.tags) <= set(TAGS), c.id
         assert e.suspicious == ("phishing" in c.tags), c.id
@@ -58,6 +58,8 @@ def test_reminders(cases):
         assert len(existing) == len(c.reminders), c.id
         for r in c.reminders:
             assert r.text and r.repeat in REPEATS, c.id
+        for r in c.expected.optional_reminders:      # 可以提的：只会是新加，时间范围在 now 之后
+            assert r.op == "add" and r.keywords and r.due_from <= r.due_to and r.due_to > c.now, c.id
         for r in c.expected.reminders:
             assert r.op in OPS and r.repeat in REPEATS, c.id
             if r.op == "add":
@@ -75,6 +77,7 @@ def test_must_not(cases):
     for c in cases:
         e = c.expected
         if e.forbid_reminders:
+            assert not e.optional_reminders, c.id
             assert not e.reminders, c.id
         assert set(e.keep) <= {r.id for r in c.reminders}, c.id
         seen = [_text(c)] + [_text(by_id[i]) for i in c.earlier]
