@@ -230,3 +230,10 @@ zip 里会附上 [docs/使用说明.txt](docs/使用说明.txt)（自动填上�
 
 - 开发用的说明（CLAUDE.md、设计细节、开发计划、交接）只在开发者自己的电脑上，不在这个仓库里。
 - 给画师的形象素材要求见 [assets/pet/README.md](assets/pet/README.md)。
+
+## 许可证
+
+源代码使用 [MIT 许可证](LICENSE)。
+
+- 不包括 [sounds/](sounds/README.md) 里可选的 meme 音效：它们来自公开的 meme 音效合集，不是本项目做的。
+- 发布的压缩包里还带着第三方软件（Python、Qt / PySide6、Claude Code、Playwright、sherpa-onnx 等），它们仍按各自的许可证和条款。
