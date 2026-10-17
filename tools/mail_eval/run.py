@@ -7,6 +7,7 @@
     .\\.venv\\Scripts\\python tools\\mail_eval\\run.py oracle                 # 不调模型，照答案抄：检查打分（应该满分）
     .\\.venv\\Scripts\\python tools\\mail_eval\\run.py summarizer             # 芸芸现在的做法
     .\\.venv\\Scripts\\python tools\\mail_eval\\run.py oneshot --provider zhipu --model glm-4.7-flash
+    .\\.venv\\Scripts\\python tools\\mail_eval\\run.py agent --provider zhipu --model glm-4-flash-250414
     .\\.venv\\Scripts\\python tools\\mail_eval\\run.py oneshot --cases m01,m17   # 只跑几封
     .\\.venv\\Scripts\\python tools\\mail_eval\\run.py --compare               # 把 results 里的结果列成一张表
 """
@@ -26,7 +27,7 @@ from tools.mail_eval import score as scoring           # noqa: E402
 from tools.mail_eval.dataset import load_cases         # noqa: E402
 from tools.mail_eval.systems import SYSTEMS            # noqa: E402
 from yunyun.ai import settings as ai_settings          # noqa: E402
-from yunyun.ai.client import AIError, ask              # noqa: E402
+from yunyun.ai.client import AIError, ask, ask_reply, tool_result   # noqa: E402
 from yunyun.ai.providers import PROVIDERS              # noqa: E402
 from yunyun.ai.summarizer import TEMPERATURE           # noqa: E402
 
@@ -37,17 +38,26 @@ FREE = {("zhipu", "glm-4.7-flash"), ("zhipu", "glm-4-flash-250414"), ("siliconfl
 
 
 class LLM:
-    """一个模型（AISettings）：llm(messages, max_tokens=None) → 回答的文字，用了多少 token 记在 usage。"""
+    """一个模型（AISettings）：llm(messages, max_tokens=None) → 回答的文字；agent 用 reply() / tool_result()。
+    用了多少 token 记在 usage。"""
 
     def __init__(self, settings):
         self.settings, self.usage = settings, {}
 
     def __call__(self, messages, max_tokens=None):
-        kwargs = {"temperature": TEMPERATURE, "usage": self.usage, "timeout": TIMEOUT,
-                  **({"max_tokens": max_tokens} if max_tokens else {})}
+        return self._retry(ask, messages, **({"max_tokens": max_tokens} if max_tokens else {}))
+
+    def reply(self, messages, tools, max_tokens):
+        return self._retry(ask_reply, messages, tools=tools, max_tokens=max_tokens)
+
+    def tool_result(self, call, content):
+        return tool_result(self.settings.info, call, content)
+
+    def _retry(self, send, messages, **kwargs):
+        kwargs = {"temperature": TEMPERATURE, "usage": self.usage, "timeout": TIMEOUT, **kwargs}
         for wait in RETRY_WAITS + (None,):
             try:
-                return ask(self.settings.info, self.settings.api_key, self.settings.model, messages, **kwargs)
+                return send(self.settings.info, self.settings.api_key, self.settings.model, messages, **kwargs)
             except AIError as e:
                 if wait is None or e.kind not in ("rate_limit", "network"):
                     raise
@@ -115,7 +125,7 @@ def print_report(result):
     print(f"分类 {_f(s['action'])}  细类 {_f(s['category'])}  钓鱼 查准 {_f(s['phishing_precision'])} / 查全 {_f(s['phishing_recall'])}"
           f"  提醒 精确 {_f(s['reminder_precision'])} / 召回 {_f(s['reminder_recall'])} / F1 {_f(s['reminder_f1'])}"
           f"  时间错 {s['time_errors']}")
-    print(f"安全违规 {s['violations']} {' '.join(s['violation_cases'])}  失败 {s['errors']}"
+    print(f"安全违规 {s['violations']} {' '.join(s['violation_cases'])}  失败 {s['errors']}  退回一句话 {s['fallbacks']}"
           f"  token 入 {s['input_tokens']} / 出 {s['output_tokens']}  每封 {s['seconds_per_case']} 秒 / {s['calls_per_case']} 次调用"
           f"  花费 {'$0' if s['cost_usd'] == 0 else '没算'}")
     print("按标签：")
@@ -132,6 +142,8 @@ def print_report(result):
 def _problems(row):
     s, p = row["score"], row["prediction"]
     found = [f"失败 {s['error']}"] if s["error"] else []
+    if s.get("fallback"):
+        found.append(f"退回一句话（{s['fallback']}）")
     if not s["action_ok"] and not s["error"]:
         found.append(f"分类给了 {p['action']}")
     if s["suspicious"] in ("fp", "fn"):
@@ -145,7 +157,8 @@ def _problems(row):
 
 COLUMNS = [("系统", "system"), ("模型", "model"), ("分类", "action"), ("细类", "category"), ("钓鱼查全", "phishing_recall"),
            ("提醒精确", "reminder_precision"), ("提醒召回", "reminder_recall"), ("时间错", "time_errors"),
-           ("安全违规", "violations"), ("失败", "errors"), ("token/封", "tokens"), ("秒/封", "seconds_per_case"),
+           ("安全违规", "violations"), ("失败", "errors"), ("退回", "fallbacks"), ("token/封", "tokens"),
+           ("秒/封", "seconds_per_case"),
            ("调用/封", "calls_per_case")]
 
 
@@ -158,7 +171,7 @@ def compare(paths):
         s = result["summary"]
         values = {**s, "system": result["system"], "model": result["model"] or "-",
                   "tokens": round((s["input_tokens"] + s["output_tokens"]) / (s["cases"] or 1))}
-        lines.append("| " + " | ".join(_f(values[key]) for _, key in COLUMNS) + " |")
+        lines.append("| " + " | ".join(_f(values.get(key)) for _, key in COLUMNS) + " |")   # 旧结果没有的项是"—"
     return "\n".join(lines)
 
 

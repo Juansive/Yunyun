@@ -157,4 +157,15 @@ def test_report_save_and_compare(cases, tmp_path, capsys):
 
 
 def test_every_system_is_listed():
-    assert set(SYSTEMS) == {"oracle", "summarizer", "oneshot"}
+    assert set(SYSTEMS) == {"oracle", "summarizer", "oneshot", "oneshot_calendar", "agent", "agent_raw"}
+
+
+def test_oneshot_calendar_adds_the_calendar(cases):
+    seen = {}
+
+    def llm(messages, max_tokens=None):
+        seen["system"] = messages[0]["content"]
+        return '{"action": "act", "bubble": "好"}'
+
+    SYSTEMS["oneshot_calendar"](cases["m10"], [], llm)
+    assert "下周：10-26周一" in seen["system"] and "这个月底：10-31周六" in seen["system"]

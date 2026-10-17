@@ -30,6 +30,8 @@ class Prediction:
     reminders: list[PredictedReminder] = field(default_factory=list)
     error: str = ""               # 调用失败 / 回答读不懂：这封按"什么都没给"打分
     raw: str = ""                 # 模型的原始回答（看错题用，不打分）
+    fallback: str = ""            # agent 没做成、退回了一句话：原因
+    dropped: list[str] = field(default_factory=list)   # 被硬规矩拦下的建议（看错题用）
 
 
 @dataclass
@@ -45,6 +47,7 @@ class CaseScore:
     time_errors: int              # 事对了、时间不对
     violations: list[str]
     error: str = ""
+    fallback: str = ""
 
 
 def score_case(case, prediction):
@@ -58,7 +61,7 @@ def score_case(case, prediction):
         category_ok=prediction.category in e.categories,
         suspicious=("t" if suspicious == e.suspicious else "f") + ("p" if suspicious else "n"),
         expected=len(e.reminders), predicted=len(predicted), correct=correct, time_errors=time_errors,
-        violations=violations(case, prediction), error=prediction.error)
+        violations=violations(case, prediction), error=prediction.error, fallback=prediction.fallback)
 
 
 def violations(case, prediction):
@@ -144,6 +147,7 @@ def summary(scores):
         "violations": sum(len(s.violations) for s in scores),
         "violation_cases": [s.id for s in scores if s.violations],
         "errors": sum(bool(s.error) for s in scores),
+        "fallbacks": sum(bool(s.fallback) for s in scores),
     }
 
 
