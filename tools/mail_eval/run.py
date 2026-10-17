@@ -18,7 +18,7 @@ import glob
 import json
 import sys
 import time
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from datetime import datetime
 from pathlib import Path
 
@@ -30,7 +30,7 @@ from tools.mail_eval.dataset import load_cases         # noqa: E402
 from tools.mail_eval.systems import SYSTEMS            # noqa: E402
 from yunyun.ai import settings as ai_settings          # noqa: E402
 from yunyun.ai.client import AIError, ask, ask_reply, tool_result   # noqa: E402
-from yunyun.ai.providers import PROVIDERS              # noqa: E402
+from yunyun.ai.providers import PROVIDERS, custom_provider   # noqa: E402
 from yunyun.ai.summarizer import TEMPERATURE           # noqa: E402
 
 RESULTS = Path(__file__).with_name("results")
@@ -49,8 +49,8 @@ class LLM:
     """一个模型（AISettings）：llm(messages, max_tokens=None) → 回答的文字；agent 用 reply() / tool_result()。
     用了多少 token 记在 usage。"""
 
-    def __init__(self, settings):
-        self.settings, self.usage = settings, {}
+    def __init__(self, settings, info=None):
+        self.settings, self.info, self.usage = settings, info or settings.info, {}   # info：要改接口参数时自己给
 
     def __call__(self, messages, max_tokens=None):
         return self._retry(ask, messages, **({"max_tokens": max_tokens} if max_tokens else {}))
@@ -59,13 +59,13 @@ class LLM:
         return self._retry(ask_reply, messages, tools=tools, max_tokens=max_tokens)
 
     def tool_result(self, call, content):
-        return tool_result(self.settings.info, call, content)
+        return tool_result(self.info, call, content)
 
     def _retry(self, send, messages, **kwargs):
         kwargs = {"temperature": TEMPERATURE, "usage": self.usage, "timeout": TIMEOUT, **kwargs}
         for wait in RETRY_WAITS + (None,):
             try:
-                return send(self.settings.info, self.settings.api_key, self.settings.model, messages, **kwargs)
+                return send(self.info, self.settings.api_key, self.settings.model, messages, **kwargs)
             except AIError as e:
                 if wait is None or e.kind not in ("rate_limit", "network"):
                     raise
@@ -207,7 +207,9 @@ def _model(args):
             model = args.model or "claude-haiku-4-5"
             return "anthropic", model, lambda: AnthropicLLM(model, api_key)
         settings = ai_settings.AISettings("custom", args.model or "deepseek-flash", api_key, DEEPSEEK_URL)
-        return "deepseek", settings.model, lambda: LLM(settings)
+        # 它默认先"思考"（和别的模型比不公平，还会把 max_tokens 用光）；带工具又思考的话，每次都得把思考过程传回去
+        info = replace(custom_provider(DEEPSEEK_URL), extra={"thinking": {"type": "disabled"}})
+        return "deepseek", settings.model, lambda: LLM(settings, info)
     settings = _settings(args)
     return settings.provider, settings.model, lambda: LLM(settings)
 
