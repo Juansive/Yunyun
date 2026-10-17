@@ -236,4 +236,4 @@ zip 里会附上 [docs/使用说明.txt](docs/使用说明.txt)（自动填上�
 源代码使用 [MIT 许可证](LICENSE)。
 
 - 不包括 [sounds/](sounds/README.md) 里可选的 meme 音效：它们来自公开的 meme 音效合集，不是本项目做的。
-- 发布的压缩包里还带着第三方软件（Python、Qt / PySide6、Claude Code、Playwright、sherpa-onnx 等），它们仍按各自的许可证和条款。
+- 发布的压缩包里还带着第三方软件（Python、Qt / PySide6、Claude Code、Playwright、sherpa-onnx 等），它们仍按各自的许可证和条款；完整的清单和许可证全文在压缩包里的 `THIRD_PARTY_NOTICES.txt`。

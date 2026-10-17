@@ -236,4 +236,4 @@ Before sharing, bump the version in `yunyun/__init__.py`, then upload both zips 
 The source code is released under the [MIT License](LICENSE).
 
 - Not covered: the optional meme sound clips in [sounds/](sounds/README.md), which come from a public meme-sound compilation and were not made by this project.
-- The release zips also bundle third-party software (Python, Qt / PySide6, Claude Code, Playwright, sherpa-onnx and others), which stays under its own license and terms.
+- The release zips also bundle third-party software (Python, Qt / PySide6, Claude Code, Playwright, sherpa-onnx and others), which stays under its own license and terms; the full list and license texts are in `THIRD_PARTY_NOTICES.txt` inside the zip.

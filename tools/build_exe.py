@@ -15,6 +15,8 @@
                                         桌面快捷方式和开机启动指向它，所以完整版一直在这里
     dist\\芸芸\\使用说明.txt             给拿到 zip 的人看的说明（来自 docs\\使用说明.txt，版本号会自动填上）
     dist\\芸芸\\更新日志.txt             每一版更新了什么（来自 docs\\更新日志.txt）
+    dist\\芸芸\\LICENSE.txt              芸芸的 MIT 许可证（来自根目录的 LICENSE）
+    dist\\芸芸\\THIRD_PARTY_NOTICES.txt  这一种带的第三方组件和它们的许可证（tools/third_party.py 照打包清单现生成）
     dist\\lite\\芸芸\\                    节能版（内容同上，少了助手组件）
     ..\\Yunyun\\Yunyun-<版本>-windows.zip       完整版的压缩包，发给别人用这个（F:\\cwx\\yunyun\\Yunyun，用户定的地方）；
     ..\\Yunyun\\Yunyun-<版本>-windows-lite.zip  节能版的压缩包（文件名只用英文：GitHub 会把附件名里的中文换掉）；
@@ -22,7 +24,7 @@
     releases\\Yunyun-<旧版本>-windows(-lite).zip 以前各版本的压缩包（打新版时自动挪过来，不删）
 
 步骤：生成图标和版本信息 → 每种各自：PyInstaller 打包 → 在"没装 Python"的环境里运行 exe 的自检（完整版再试一下助手子进程）→
-放进使用说明 → 检查没有不该发出去的文件 → 压缩成 zip。
+放进使用说明和许可证 → 检查没有不该发出去的文件、许可证都在 → 压缩成 zip。
 
 为什么用 onedir（一个文件夹）而不是 onefile（单个 exe）：onefile 每次启动都要先把几十 MB 的文件
 解压到临时文件夹，启动慢，也更容易被杀毒软件误报。
@@ -41,6 +43,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))   # 直接运行这个脚本时，让下面能 import yunyun
 
+from tools import third_party  # noqa: E402
 from yunyun import __version__  # noqa: E402
 
 APP_NAME = "芸芸"
@@ -134,8 +137,26 @@ def zip_suffix(edition):
     return "" if edition == "full" else f"-{edition}"
 
 
+def work_dir(edition):
+    """PyInstaller 这一种的中间文件夹（里面的 芸芸\\ 下有打包清单 PYZ-00.toc、COLLECT-00.toc，third_party 照它列组件）。"""
+    return BUILD / "pyinstaller" / edition
+
+
+def check_before_zip(app_dir):
+    """压缩前查一遍：没有不该发出去的文件、许可证文件都在。返回发现的问题（空 = 可以压缩）。"""
+    problems = []
+    leaked = [str(f.relative_to(app_dir.parent)) for f in app_dir.rglob("*")
+              if f.name in NOT_FOR_SHARING or f.suffix.lower() in NOT_FOR_SHARING_SUFFIXES]
+    if leaked:
+        problems.append(f"程序文件夹里有不该发出去的文件：{leaked}")
+    missing = [name for name in third_party.FILES if not (app_dir / name).is_file() or not (app_dir / name).stat().st_size]
+    if missing:
+        problems.append(f"缺许可证文件：{missing}")
+    return problems
+
+
 def build(edition, icon, version_file):
-    """打一种：PyInstaller → 自检 → 放进说明 → 查有没有不该发出去的文件 → 压缩。返回 (edition, 程序文件夹, 压缩包)。"""
+    """打一种：PyInstaller → 自检 → 放进说明和许可证 → 压缩前的检查 → 压缩。返回 (edition, 程序文件夹, 压缩包)。"""
     name, dist = EDITIONS[edition], dist_dir(edition)
     print(f"== {name} 1/3 PyInstaller 打包（要一两分钟）")
     run_pyinstaller(edition, icon, version_file)
@@ -148,13 +169,13 @@ def build(edition, icon, version_file):
     if edition == "full":
         check_worker(exe)
 
-    print(f"== {name} 3/3 放进使用说明和更新日志，压缩成 zip")
+    print(f"== {name} 3/3 放进使用说明、更新日志和许可证，压缩成 zip")
     for doc in (GUIDE, CHANGELOG):
         write_doc(doc, app_dir / doc.name)
-    leaked = [str(f.relative_to(dist)) for f in app_dir.rglob("*")
-              if f.name in NOT_FOR_SHARING or f.suffix.lower() in NOT_FOR_SHARING_SUFFIXES]
-    if leaked:
-        sys.exit(f"程序文件夹里有不该发出去的文件，先不压缩：{leaked}")
+    third_party.write(app_dir, work_dir(edition) / APP_NAME, edition, __version__)
+    problems = check_before_zip(app_dir)
+    if problems:
+        sys.exit("先不压缩：" + "；".join(problems))
     SHARE.mkdir(exist_ok=True)
     # 这一种上一版的压缩包挪到 releases\ 保存：发给别人的地方只留最新的，免得发错（dist\ 是以前放压缩包的地方）
     old_name = f"Yunyun-*-windows{zip_suffix(edition)}.zip"   # 完整版的 "*-windows.zip" 不会匹配到节能版的 "*-windows-lite.zip"
@@ -261,7 +282,7 @@ def run_pyinstaller(edition, icon, version_file):
         "--add-data", f"{ASSETS / '*.png'}{os.pathsep}assets/pet",   # 芸芸的图片 → exe 里的 assets/pet
         "--add-data", f"{ROOT / 'assets' / 'ui' / '*.svg'}{os.pathsep}assets/ui",   # 设置窗口的小图标（theme.py）
         "--add-data", f"{ROOT / 'assets' / 'sounds' / '*.wav'}{os.pathsep}assets/sounds",   # 双击的"啵"（pet/sound.py）
-        "--distpath", str(dist_dir(edition)), "--workpath", str(BUILD / "pyinstaller" / edition),
+        "--distpath", str(dist_dir(edition)), "--workpath", str(work_dir(edition)),
         "--specpath", str(BUILD / edition),
     ]
     if edition == "full":

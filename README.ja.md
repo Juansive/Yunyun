@@ -236,4 +236,4 @@ zip には [docs/使用说明.txt](docs/使用说明.txt)（使い方の説明�
 ソースコードは [MIT ライセンス](LICENSE)で公開しています。
 
 - 対象外：[sounds/](sounds/README.md) にあるオプションのミーム効果音。公開されているミーム効果音集から取ったもので、このプロジェクトで作ったものではありません。
-- 配布用の zip には第三者のソフトウェア（Python、Qt / PySide6、Claude Code、Playwright、sherpa-onnx など）も含まれ、それぞれのライセンスと規約に従います。
+- 配布用の zip には第三者のソフトウェア（Python、Qt / PySide6、Claude Code、Playwright、sherpa-onnx など）も含まれ、それぞれのライセンスと規約に従います。一覧とライセンス全文は zip 内の `THIRD_PARTY_NOTICES.txt` にあります。
