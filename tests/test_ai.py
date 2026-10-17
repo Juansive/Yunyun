@@ -114,7 +114,16 @@ def test_parse_bubble(answer, expected):
     ("JD sent an ad for Double 11—iPhone 16 discount 800 yuan", "JD sent an ad for Double 11"),   # 破折号断句
     ("Bank sent a verification code—384920, valid for 5 minutes", "Bank sent a verification code—valid for 5 minutes"),
     ("请联系 zhang@example.com，网址 https://a.example/x", "请联系"),
+    # 邮件评测（tools/mail_eval）跑出来的漏洞，2026-10-17
+    ("外卖已放到3号楼外卖柜12号格口，取餐码5537，快去取", "外卖已放到3号楼外卖柜12号格口，快去取"),   # 取餐码、4 位
+    ("网盘分享的提取码是 a8k2，7 天内有效", "网盘分享的提取码，7 天内有效"),                   # 第一句只删那个码
+    ("云端算力平台发来扣费通知，余额剩 162.8 哦", "云端算力平台发来扣费通知"),                    # 一位小数、没写单位的金额
+    ("星河银行提醒你本月消费 58.5，请留意", "星河银行提醒你本月消费，请留意"),
+    ("你本月消费 58.5 元", "你本月消费"),                                                    # 写了单位的照旧
     # 正常的句子不受影响
+    ("星河银行信用卡账单出了，最后还款日10月26日", "星河银行信用卡账单出了，最后还款日10月26日"),
+    ("GPU 实例运行了 4.6 小时，费用已扣", "GPU 实例运行了 4.6 小时，费用已扣"),
+    ("扫二维码 2 次就能登录", "扫二维码 2 次就能登录"),
     ("王老师说第三章要补充对比实验，下周一前发他", "王老师说第三章要补充对比实验，下周一前发他"),
     ("字节跳动邀请你10月9日14:00线上面试", "字节跳动邀请你10月9日14:00线上面试"),
     ("Alice asked for a code review", "Alice asked for a code review"),

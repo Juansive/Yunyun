@@ -192,7 +192,7 @@ a small bar pops up above the taskbar — click it to switch to Claude Code. Yun
   With "Local model (Ollama)" this only goes to Ollama on your PC, never onto the internet; with "Custom" it goes to the address you entered (a local or LAN address also stays off the internet).
 - **Emails you don't want the AI to see**: in the "Privacy" box at the bottom of Settings → AI, tick whole mailboxes or add sender addresses / `@domains` (e.g. `@icbc.com.cn` covers everything from that domain). Those emails only show the sender and subject (with 🔒) and nothing is sent to any AI — local models included.
 - **New-version check**: at most once a day Yunyun asks GitHub (`api.github.com`) for the latest version number; the request only contains the app name and version, none of your information. Turn it off in Settings → General.
-- **No sensitive info in reminders**: verification codes, pickup codes, amounts, card numbers, order numbers and links are removed automatically even if the AI writes them (reminders appear on your desktop and are saved in history).
+- **No sensitive info in reminders**: verification codes, pickup codes (parcels, food lockers, file shares…), amounts, card numbers, order numbers and links are removed automatically even if the AI writes them (reminders appear on your desktop and are saved in history).
 - **Assistant mode**: your questions and the conversation go to the provider you chose (Claude / DeepSeek), and so do the web pages she searches and reads; if you chose a working folder,
   so do the files she reads, command output and the project's `CLAUDE.md`; at the start of each chat, the Notebook's index (one line per note) is sent too;
   when she looks at your screen, the screenshot is sent (Yunyun's own windows are never captured).

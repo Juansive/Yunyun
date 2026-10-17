@@ -151,9 +151,14 @@ def parse_bubble(answer, limit=BUBBLE_LIMIT):
 
 # ---------- 敏感信息兜底：不管模型听不听话，提醒里都不能出现这些 ----------
 
-# 验证码、取件码这类"码"后面跟着的值（至少 3 位、带数字，免得把 "code review" 当成验证码）
-_CODE_VALUE = re.compile(r"(验证码|校验码|动态码|动态密码|取件码|提货码|取货码|密码|口令|\bcode\b|\bPIN\b)"
+# 验证码、取件码、取餐码、提取码……各种"××码"和密码、口令后面跟着的值（至少 3 位、带数字，免得把 "code review" 当成验证码）。
+# 4 位的码（取餐码 5537）靠前面的"码"字认出来：单看 4 位数分不清是码还是年份、时间
+_CODE_VALUE = re.compile(r"([一-鿿]{0,4}码|口令|\bcode\b|\bPIN\b)"
                          r"\s*(?:是|为|:|：)?\s*(?=[A-Za-z0-9-]{3,})[A-Za-z0-9-]*\d[A-Za-z0-9-]*", re.IGNORECASE)
+# 余额、消费这类词后面没写单位的金额（"余额剩 162.8"）：和码一样删掉数、留着词。写了单位的（元、块……）归下面管
+_AMOUNT_VALUE = re.compile(r"(余额|金额|费用|扣费|扣款|扣除|消费|应还|实付|退款|到账|价格|售价|总价|合计)"
+                           r"\s*(?:为|是|剩|剩余|共|:|：)?\s*\d[\d,]*(?:\.\d+)?(?![\d.,])"
+                           r"(?!\s*(?:月|日|号|点|时|小时|分|天|周|次|个|张|位|年|%|元|块|美|[A-Za-z]))")
 _MARK = "\x00"   # 删掉"码"的值以后留个记号：这半句话也要整个删掉
 _SENSITIVE = re.compile(
     _MARK +                                                        # 上面删掉了值的"码"
@@ -178,7 +183,8 @@ def scrub_sensitive(text, drop_clauses=True):
       第一句话要留着（它通常说的是"谁、什么事"），只删掉里面的数："某银行发来登录验证码384920" → "某银行发来登录验证码"。
     - drop_clauses=False（用于标题）：只删掉那些数。
     """
-    text = _CODE_VALUE.sub(lambda m: m.group(1) + _MARK, text)
+    for value in (_CODE_VALUE, _AMOUNT_VALUE):
+        text = value.sub(lambda m: m.group(1) + _MARK, text)
     if not drop_clauses:
         return _tidy(_SENSITIVE.sub("", text))
     clauses = _CLAUSE.findall(text) or [text]
