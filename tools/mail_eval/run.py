@@ -31,7 +31,8 @@ from yunyun.ai.providers import PROVIDERS              # noqa: E402
 from yunyun.ai.summarizer import TEMPERATURE           # noqa: E402
 
 RESULTS = Path(__file__).with_name("results")
-RETRY_WAITS = (5, 15)   # 限流 / 网络不稳时等几秒再试（免费模型常见）
+RETRY_WAITS = (10, 30, 60)   # 限流 / 网络不稳时等一会儿再试（免费模型常见：glm-4.7-flash 两个请求同时发就限流）
+TIMEOUT = 120                # 免费模型要排队：一个字的回答实测也要 14 秒
 FREE = {("zhipu", "glm-4.7-flash"), ("siliconflow", "Qwen/Qwen3-8B")}   # 免费的在线模型；本地模型也不花钱
 
 
@@ -42,7 +43,8 @@ class LLM:
         self.settings, self.usage = settings, {}
 
     def __call__(self, messages, max_tokens=None):
-        kwargs = {"temperature": TEMPERATURE, "usage": self.usage, **({"max_tokens": max_tokens} if max_tokens else {})}
+        kwargs = {"temperature": TEMPERATURE, "usage": self.usage, "timeout": TIMEOUT,
+                  **({"max_tokens": max_tokens} if max_tokens else {})}
         for wait in RETRY_WAITS + (None,):
             try:
                 return ask(self.settings.info, self.settings.api_key, self.settings.model, messages, **kwargs)
