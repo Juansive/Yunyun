@@ -169,3 +169,62 @@ def test_oneshot_calendar_adds_the_calendar(cases):
 
     SYSTEMS["oneshot_calendar"](cases["m10"], [], llm)
     assert "下周：10-26周一" in seen["system"] and "这个月底：10-31周六" in seen["system"]
+
+
+# ---------- E5：花费、上限、Claude 的格式转换（不调真的接口） ----------
+
+def test_cost_and_budget_stop(cases):
+    rows = [{"usage": {"input": 1_000_000, "output": 100_000}}]
+    assert runner.cost("anthropic", "claude-haiku-4-5", rows) == 1.5
+    assert runner.cost("zhipu", "glm-4-flash-250414", rows) == 0 and runner.cost("ollama", "qwen3:4b", rows) == 0
+    assert runner.cost("deepseek", "没听过的模型", rows) is None
+    ran = runner.run(oracle, [cases["m01"], cases["m02"], cases["m03"]], stop=lambda rows: len(rows) >= 2)
+    assert [row["id"] for row in ran] == ["m01", "m02"]
+
+
+def test_openai_style_conversation_becomes_messages_api():
+    from tools.mail_eval.anthropic_llm import to_anthropic, to_anthropic_tools
+    from yunyun.ai.mail_agent import TOOLS
+    call = {"id": "toolu_1", "type": "function", "function": {"name": "read_earlier_mails", "arguments": "{}"}}
+    move = {"id": "toolu_2", "type": "function", "function": {"name": "suggest_move", "arguments": '{"id": "t1"}'}}
+    system, messages = to_anthropic([
+        {"role": "system", "content": "规矩"}, {"role": "user", "content": "新邮件"},
+        {"role": "assistant", "content": "先看看", "tool_calls": [call, move]},
+        {"role": "tool", "tool_call_id": "toolu_1", "content": "<mail>旧邮件</mail>"},
+        {"role": "tool", "tool_call_id": "toolu_2", "content": "已记下这条建议。"},
+        {"role": "assistant", "content": "不是 JSON"}, {"role": "user", "content": "请只输出最后的 JSON。"}])
+    assert system == "规矩" and [m["role"] for m in messages] == ["user", "assistant", "user", "assistant", "user"]
+    assert messages[1]["content"] == [{"type": "text", "text": "先看看"},
+                                      {"type": "tool_use", "id": "toolu_1", "name": "read_earlier_mails", "input": {}},
+                                      {"type": "tool_use", "id": "toolu_2", "name": "suggest_move", "input": {"id": "t1"}}]
+    assert [b["tool_use_id"] for b in messages[2]["content"]] == ["toolu_1", "toolu_2"]   # 两个结果在同一条消息里
+    tools = to_anthropic_tools(TOOLS)
+    assert tools[0] == {"name": "read_earlier_mails", "description": TOOLS[0]["function"]["description"],
+                        "input_schema": TOOLS[0]["function"]["parameters"]}
+
+
+def test_anthropic_llm_request_and_reply():
+    from types import SimpleNamespace as NS
+    from tools.mail_eval.anthropic_llm import AnthropicLLM
+    from yunyun.ai.mail_agent import TOOLS
+    sent = {}
+
+    def create(**request):
+        sent.clear()
+        sent.update(request)
+        return NS(usage=NS(input_tokens=1200, output_tokens=40), stop_reason="tool_use", content=[
+            NS(type="text", text="我先看看原来的邮件"),
+            NS(type="tool_use", id="toolu_9", name="read_earlier_mails", input={})])
+
+    llm = AnthropicLLM("claude-haiku-4-5", "sk-test")
+    llm.client = NS(messages=NS(create=create))
+    reply = llm.reply([{"role": "system", "content": "规矩"}, {"role": "user", "content": "新邮件"}], TOOLS, 600)
+    assert (sent["model"], sent["max_tokens"], sent["system"], sent["temperature"]) == ("claude-haiku-4-5", 600, "规矩", 0.3)
+    assert [t["name"] for t in sent["tools"]] == [t["function"]["name"] for t in TOOLS]
+    assert reply.text == "我先看看原来的邮件" and [(c.id, c.name, c.arguments) for c in reply.tool_calls] == [
+        ("toolu_9", "read_earlier_mails", {})]
+    assert reply.message["tool_calls"][0]["function"] == {"name": "read_earlier_mails", "arguments": "{}"}
+    assert llm.tool_result(reply.tool_calls[0], "旧邮件") == {"role": "tool", "tool_call_id": "toolu_9", "content": "旧邮件"}
+    assert llm.usage == {"input": 1200, "output": 40, "calls": 1} and not reply.truncated
+    llm([{"role": "user", "content": "hi"}])               # summarizer 那样只要文字：max_tokens 和芸芸里一样
+    assert sent["max_tokens"] == 200 and "tools" not in sent and "system" not in sent

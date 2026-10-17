@@ -8,6 +8,8 @@
     .\\.venv\\Scripts\\python tools\\mail_eval\\run.py summarizer             # 芸芸现在的做法
     .\\.venv\\Scripts\\python tools\\mail_eval\\run.py oneshot --provider zhipu --model glm-4.7-flash
     .\\.venv\\Scripts\\python tools\\mail_eval\\run.py agent --provider zhipu --model glm-4-flash-250414
+    .\\.venv\\Scripts\\python tools\\mail_eval\\run.py agent --provider anthropic                # claude-haiku-4-5，要花钱
+    .\\.venv\\Scripts\\python tools\\mail_eval\\run.py agent --provider deepseek --max-usd 0.2   # deepseek-flash，花到上限就停
     .\\.venv\\Scripts\\python tools\\mail_eval\\run.py oneshot --cases m01,m17   # 只跑几封
     .\\.venv\\Scripts\\python tools\\mail_eval\\run.py --compare               # 把 results 里的结果列成一张表
 """
@@ -35,6 +37,12 @@ RESULTS = Path(__file__).with_name("results")
 RETRY_WAITS = (10, 30, 60)   # 限流 / 网络不稳时等一会儿再试（免费模型常见：glm-4.7-flash 两个请求同时发就限流）
 TIMEOUT = 120                # 免费模型要排队：一个字的回答实测也要 14 秒
 FREE = {("zhipu", "glm-4.7-flash"), ("zhipu", "glm-4-flash-250414"), ("siliconflow", "Qwen/Qwen3-8B")}   # 免费的在线模型；本地模型也不花钱
+# 花钱的：每百万 token 多少美元（输入, 输出），2026-10-17 按官方价格页核对。DeepSeek 写的是高峰价（周末和夜里半价），
+# 它还会自动缓存重复的开头（便宜得多），所以算出来偏高
+PRICES = {("anthropic", "claude-haiku-4-5"): (1.0, 5.0),
+          ("deepseek", "deepseek-flash"): (0.30, 1.20), ("deepseek", "deepseek-v4-pro"): (1.32, 3.96)}
+DEEPSEEK_URL = "https://api.deepseek.com"   # OpenAI 兼容接口（助手模式用的是它的 Anthropic 兼容接口 /anthropic）
+DEFAULT_MAX_USD = 1.0                       # 一次跑到这么多钱就停下（剩下的不跑），--max-usd 可改
 
 
 class LLM:
@@ -64,11 +72,13 @@ class LLM:
                 time.sleep(wait)
 
 
-def run(system, cases, make_llm=lambda: None, all_cases=None, on_case=None):
-    """把每封交给 system、打分。返回每封一行（预测、分数、token、用时）。"""
+def run(system, cases, make_llm=lambda: None, all_cases=None, on_case=None, stop=None):
+    """把每封交给 system、打分。返回每封一行（预测、分数、token、用时）。stop(rows) 为真就不再往下跑（比如钱花到上限了）。"""
     by_id = {c.id: c for c in all_cases or cases}
     rows = []
     for case in cases:
+        if stop and stop(rows):
+            break
         llm = make_llm()
         start = time.perf_counter()
         try:
@@ -91,17 +101,27 @@ def report(system, provider, model, rows):
     scores = [scoring.CaseScore(**row["score"]) for row in rows]
     n = len(rows) or 1
     tokens = {k: sum(row["usage"].get(k, 0) for row in rows) for k in ("input", "output", "calls")}
-    free = system == "oracle" or (provider, model) in FREE or (provider in PROVIDERS and PROVIDERS[provider].local)
     return {
         "system": system, "provider": provider, "model": model, "finished": datetime.now().isoformat(timespec="seconds"),
         "summary": {**scoring.summary(scores),
                     "input_tokens": tokens["input"], "output_tokens": tokens["output"],
                     "calls_per_case": round(tokens["calls"] / n, 2),
                     "seconds_per_case": round(sum(row["seconds"] for row in rows) / n, 2),
-                    "cost_usd": 0 if free else None},   # 花钱的模型到 E5 再按价格表算
+                    "cost_usd": 0 if system == "oracle" else cost(provider, model, rows)},
         "by_tag": scoring.by_tag(scores),
         "cases": rows,
     }
+
+
+def cost(provider, model, rows):
+    """这些邮件一共花了多少美元：免费的 / 本地的是 0，价格表里没有的是 None。"""
+    if (provider, model) in FREE or (provider in PROVIDERS and PROVIDERS[provider].local):
+        return 0
+    if (provider, model) not in PRICES:
+        return None
+    price_in, price_out = PRICES[provider, model]
+    return round(sum(row["usage"].get("input", 0) * price_in + row["usage"].get("output", 0) * price_out
+                     for row in rows) / 1e6, 4)
 
 
 def save(result, folder=RESULTS):
@@ -127,7 +147,7 @@ def print_report(result):
           f"  时间错 {s['time_errors']}")
     print(f"安全违规 {s['violations']} {' '.join(s['violation_cases'])}  失败 {s['errors']}  退回一句话 {s['fallbacks']}"
           f"  token 入 {s['input_tokens']} / 出 {s['output_tokens']}  每封 {s['seconds_per_case']} 秒 / {s['calls_per_case']} 次调用"
-          f"  花费 {'$0' if s['cost_usd'] == 0 else '没算'}")
+          f"  花费 {'没算' if s['cost_usd'] is None else '$' + format(s['cost_usd'], 'g')}")
     print("按标签：")
     for tag, t in result["by_tag"].items():
         print(f"  {tag:<14}{t['cases']:>3} 封  分类 {_f(t['action'])}  提醒召回 {_f(t['reminder_recall'])}"
@@ -158,8 +178,7 @@ def _problems(row):
 COLUMNS = [("系统", "system"), ("模型", "model"), ("分类", "action"), ("细类", "category"), ("钓鱼查全", "phishing_recall"),
            ("提醒精确", "reminder_precision"), ("提醒召回", "reminder_recall"), ("时间错", "time_errors"),
            ("安全违规", "violations"), ("失败", "errors"), ("退回", "fallbacks"), ("token/封", "tokens"),
-           ("秒/封", "seconds_per_case"),
-           ("调用/封", "calls_per_case")]
+           ("秒/封", "seconds_per_case"), ("调用/封", "calls_per_case"), ("花费 $", "cost_usd")]
 
 
 def compare(paths):
@@ -170,9 +189,27 @@ def compare(paths):
             result = json.load(f)
         s = result["summary"]
         values = {**s, "system": result["system"], "model": result["model"] or "-",
-                  "tokens": round((s["input_tokens"] + s["output_tokens"]) / (s["cases"] or 1))}
+                  "tokens": round((s["input_tokens"] + s["output_tokens"]) / (s["cases"] or 1)),
+                  "cost_usd": None if s.get("cost_usd") is None else f"{s['cost_usd']:.3f}"}
         lines.append("| " + " | ".join(_f(values.get(key)) for _, key in COLUMNS) + " |")   # 旧结果没有的项是"—"
     return "\n".join(lines)
+
+
+def _model(args):
+    """(服务商, 模型名, 每封新建一个 llm 的函数)。anthropic / deepseek 用助手模式存的 Key（凭据管理器 yunyun-assistant）。"""
+    if args.provider in ("anthropic", "deepseek"):
+        from yunyun.assistant.settings import get_api_key
+        api_key = get_api_key(args.provider)
+        if not api_key:
+            sys.exit(f"助手模式里没存 {args.provider} 的 API Key：先在 设置 → 助手 里填好。")
+        if args.provider == "anthropic":
+            from tools.mail_eval.anthropic_llm import AnthropicLLM   # 要用 Claude 时才 import 官方 SDK
+            model = args.model or "claude-haiku-4-5"
+            return "anthropic", model, lambda: AnthropicLLM(model, api_key)
+        settings = ai_settings.AISettings("custom", args.model or "deepseek-flash", api_key, DEEPSEEK_URL)
+        return "deepseek", settings.model, lambda: LLM(settings)
+    settings = _settings(args)
+    return settings.provider, settings.model, lambda: LLM(settings)
 
 
 def _settings(args):
@@ -184,7 +221,8 @@ def _settings(args):
                                                                       settings.base_url)
     info = PROVIDERS.get(args.provider)
     if info is None or info.custom:
-        sys.exit(f"--provider 只能是：{', '.join(p for p in PROVIDERS if not PROVIDERS[p].custom)}（自定义的用芸芸里存的设置）")
+        sys.exit(f"--provider 只能是：{', '.join(p for p in PROVIDERS if not PROVIDERS[p].custom)}、anthropic、deepseek"
+                 "（自定义的用芸芸里存的设置）")
     api_key = ai_settings.get_api_key(args.provider) if info.needs_key else ""
     if info.needs_key and not api_key:
         sys.exit(f"芸芸里没存 {args.provider} 的 API Key：先在 设置 → AI 里填好。")
@@ -197,6 +235,7 @@ def main():
     parser.add_argument("--provider", help="服务商（默认用芸芸里设置的）")
     parser.add_argument("--model", help="模型名")
     parser.add_argument("--cases", help="只跑这几封，比如 m01,m17")
+    parser.add_argument("--max-usd", type=float, default=DEFAULT_MAX_USD, help="花到这么多美元就停下")
     parser.add_argument("--compare", nargs="*", metavar="结果文件", help="列对比表（不写就是 results 里的全部）")
     args = parser.parse_args()
 
@@ -210,10 +249,16 @@ def main():
     all_cases = load_cases()
     wanted = set(args.cases.split(",")) if args.cases else None
     cases = [c for c in all_cases if wanted is None or c.id in wanted]
-    settings = None if args.system == "oracle" else _settings(args)
-    provider, model = (settings.provider, settings.model) if settings else ("", "")
+    provider, model, make_llm = ("", "", lambda: None) if args.system == "oracle" else _model(args)
     print(f"开始：{args.system} · {provider or '-'} / {model or '-'} · {len(cases)} 封")
-    rows = run(SYSTEMS[args.system], cases, (lambda: LLM(settings)) if settings else (lambda: None), all_cases,
+
+    def over_budget(rows):
+        spent = cost(provider, model, rows) or 0
+        if spent >= args.max_usd:
+            print(f"  已经花了 ${spent:.3f}，到了上限 ${args.max_usd}：剩下的不跑了")
+        return spent >= args.max_usd
+
+    rows = run(SYSTEMS[args.system], cases, make_llm, all_cases, stop=over_budget,
                on_case=lambda row: print(f"  {row['id']} {row['seconds']} 秒" + ("  失败" if row["score"]["error"] else "")))
     result = report(args.system, provider, model, rows)
     print_report(result)
