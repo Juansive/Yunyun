@@ -18,10 +18,10 @@ def test_sprites_are_shrunk_when_loaded(qapp):
     from yunyun.pet.window import PetWindow
     full = load_sprites()
     small = load_sprites(max_size=100)
-    assert full.idle[0].width() == 512 and small.idle[0].width() == 100       # 缩小了
+    assert full.idle[0].width() == 1024 and small.idle[0].width() == 100       # 缩小了
     assert all(p.width() <= 100 and p.height() <= 100
                for p in small.idle + small.working_down + small.excited + small.lifted + [small.tray])
-    assert load_sprites(max_size=4096).idle[0].width() == 512                  # 不会放大
+    assert load_sprites(max_size=4096).idle[0].width() == 1024                 # 不会放大
     assert PetWindow.sprite_pixels() >= 2 * PetWindow.SIZE                     # 至少够 200% 缩放的屏幕用
 
 

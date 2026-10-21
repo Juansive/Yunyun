@@ -100,7 +100,7 @@ def test_unknown_activity_counts_as_nothing(qapp):
 
 def test_new_state_sprites_exist(qapp):
     sprites = load_sprites()
-    assert len(sprites.busy) == 3 and len(sprites.waiting) == 2   # 占位图（tools/make_placeholders.py）
+    assert sprites.busy and sprites.waiting and sprites.busy != sprites.thinking
 
 
 def test_missing_new_sprites_fall_back_to_thinking(qapp, tmp_path):
