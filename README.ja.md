@@ -2,6 +2,8 @@
 
 <p align="center">Windows のデスクトップに住む、小さな AI アシスタント</p>
 
+<p align="center"><img src="assets/pet/talking_1.png" width="220" alt="Yunyun"></p>
+
 <p align="center">
   <a href="https://github.com/Juansive/Yunyun/releases/latest"><b>ダウンロード</b></a> ·
   <a href="#できること"><b>機能</b></a> ·
@@ -15,7 +17,24 @@
 芸芸は、あなたがタイピングしているあいだそばにいて、新着メールを見張り、「どんなメールが来たか」をひとことで教えてくれます。
 アシスタントモードをオンにすると、おしゃべり、調べもの、コードの修正、画面の確認、アプリの起動と操作、ブラウザでの Web 閲覧まで手伝ってくれます。
 
-> キャラクターの絵はまだ仮のものです。正式なイラストを準備中です。
+## 芸芸に会おう
+
+社員証をぶら下げた、ちょっと眠たげで、ちょっとツンとした茶白の子猫。していることに合わせて表情が変わります：
+
+<table align="center">
+  <tr>
+    <td align="center"><img src="assets/pet/idle_1.png" width="160"><br><sub>段ボールでまったり</sub></td>
+    <td align="center"><img src="assets/pet/working_down_1.png" width="160"><br><sub>いっしょにタイピング</sub></td>
+    <td align="center"><img src="assets/pet/excited_1.png" width="160"><br><sub>新着メールだ！</sub></td>
+    <td align="center"><img src="assets/pet/thinking_3.png" width="160"><br><sub>うーん、考え中</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="assets/pet/talking_1.png" width="160"><br><sub>お知らせするね</sub></td>
+    <td align="center"><img src="assets/pet/listening_1.png" width="160"><br><sub>ちゃんと聞いてるよ</sub></td>
+    <td align="center"><img src="assets/pet/sleeping_1.png" width="160"><br><sub>おやすみ時間はぐっすり</sub></td>
+    <td align="center"><img src="assets/pet/lifted_1.png" width="160"><br><sub>つままれちゃった</sub></td>
+  </tr>
+</table>
 
 ## できること
 
@@ -217,7 +236,6 @@ python -m venv .venv
 .\.venv\Scripts\python -m pip install -r requirements-dev.txt
 .\.venv\Scripts\python -m pytest            # テストを実行
 .\.venv\Scripts\python -m yunyun.mail       # デバッグ：コマンドラインで未読メールを読む
-.\.venv\Scripts\python tools\make_placeholders.py   # 仮の絵を作り直す
 .\.venv\Scripts\python tools\build_exe.py   # exe にパッケージ（tools\build_exe.bat をダブルクリックでも可）
 ```
 

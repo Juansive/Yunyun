@@ -2,6 +2,8 @@
 
 <p align="center">A little AI companion that lives on your Windows desktop</p>
 
+<p align="center"><img src="assets/pet/talking_1.png" width="220" alt="Yunyun"></p>
+
 <p align="center">
   <a href="https://github.com/Juansive/Yunyun/releases/latest"><b>Download</b></a> ·
   <a href="#features"><b>Features</b></a> ·
@@ -15,7 +17,24 @@
 Yunyun keeps you company while you type, watches your inbox, and tells you in one sentence what each new email is about.
 Turn on Assistant mode and she can also chat, look things up, edit code, look at your screen, open and operate apps, and browse the web for you.
 
-> The character art is still a placeholder — the real artwork is on its way.
+## Meet Yunyun
+
+A little orange-and-white cat with a work badge and a slightly sleepy, slightly smug look. Her expression changes with what she's doing:
+
+<table align="center">
+  <tr>
+    <td align="center"><img src="assets/pet/idle_1.png" width="160"><br><sub>Lazing in her box</sub></td>
+    <td align="center"><img src="assets/pet/working_down_1.png" width="160"><br><sub>Typing along with you</sub></td>
+    <td align="center"><img src="assets/pet/excited_1.png" width="160"><br><sub>New mail!</sub></td>
+    <td align="center"><img src="assets/pet/thinking_3.png" width="160"><br><sub>Hmm, let me think</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="assets/pet/talking_1.png" width="160"><br><sub>Here's what came in</sub></td>
+    <td align="center"><img src="assets/pet/listening_1.png" width="160"><br><sub>All ears</sub></td>
+    <td align="center"><img src="assets/pet/sleeping_1.png" width="160"><br><sub>Asleep in quiet hours</sub></td>
+    <td align="center"><img src="assets/pet/lifted_1.png" width="160"><br><sub>Picked up by the scruff</sub></td>
+  </tr>
+</table>
 
 ## Features
 
@@ -217,7 +236,6 @@ a small bar pops up above the taskbar — click it to switch to Claude Code. Yun
 .\.venv\Scripts\python -m pip install -r requirements-dev.txt
 .\.venv\Scripts\python -m pytest            # run the tests
 .\.venv\Scripts\python -m yunyun.mail       # debug: read unread mail from the command line
-.\.venv\Scripts\python tools\make_placeholders.py   # regenerate the placeholder art
 .\.venv\Scripts\python tools\build_exe.py   # build the exe (or double-click tools\build_exe.bat)
 ```
 

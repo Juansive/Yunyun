@@ -2,6 +2,8 @@
 
 <p align="center">一只住在你 Windows 桌面上的 AI 小助手</p>
 
+<p align="center"><img src="assets/pet/talking_1.png" width="220" alt="Yunyun"></p>
+
 <p align="center">
   <a href="https://github.com/Juansive/Yunyun/releases/latest"><b>下载</b></a> ·
   <a href="#它能做什么"><b>功能</b></a> ·
@@ -15,7 +17,24 @@
 一只住在你桌面上的 AI 小助手。它会陪你打字，帮你留意新邮件，用一句话告诉你"来了什么邮件"；
 打开助手模式，还能陪你聊天、查资料、改代码、看屏幕、打开和操作软件、用浏览器帮你看网页。
 
-> 形象还是占位图，正式画作在路上。
+## 认识芸芸
+
+一只挂着工牌的橘白小猫，眼神有点困、有点傲娇。她做什么事，就换什么样子：
+
+<table align="center">
+  <tr>
+    <td align="center"><img src="assets/pet/idle_1.png" width="160"><br><sub>窝在纸箱里发呆</sub></td>
+    <td align="center"><img src="assets/pet/working_down_1.png" width="160"><br><sub>陪你一起敲键盘</sub></td>
+    <td align="center"><img src="assets/pet/excited_1.png" width="160"><br><sub>来新邮件啦！</sub></td>
+    <td align="center"><img src="assets/pet/thinking_3.png" width="160"><br><sub>托腮想一想</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="assets/pet/talking_1.png" width="160"><br><sub>告诉你来了什么</sub></td>
+    <td align="center"><img src="assets/pet/listening_1.png" width="160"><br><sub>竖起耳朵听你说</sub></td>
+    <td align="center"><img src="assets/pet/sleeping_1.png" width="160"><br><sub>免打扰时段睡大觉</sub></td>
+    <td align="center"><img src="assets/pet/lifted_1.png" width="160"><br><sub>被你拎起来了</sub></td>
+  </tr>
+</table>
 
 ## 它能做什么
 
@@ -217,7 +236,6 @@ python -m venv .venv
 .\.venv\Scripts\python -m pip install -r requirements-dev.txt
 .\.venv\Scripts\python -m pytest            # 运行测试
 .\.venv\Scripts\python -m yunyun.mail       # 调试：在命令行读取未读邮件
-.\.venv\Scripts\python tools\make_placeholders.py   # 重新生成占位图
 .\.venv\Scripts\python tools\build_exe.py   # 打包成 exe（也可以双击 tools\build_exe.bat）
 ```
 
