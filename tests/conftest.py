@@ -71,7 +71,7 @@ def no_real_assistant(monkeypatch, tmp_path):
 
     要测子进程的收发，用 tests/fake_assistant_worker.py、tests/fake_assistant_check.py（传 command=...）。
     """
-    import keyring
+    from yunyun import vault
     from yunyun.assistant import ledger, memory, process, rapport, recollections, settings as assistant_settings
     from yunyun.pet import assistant_history
 
@@ -102,8 +102,8 @@ def no_real_assistant(monkeypatch, tmp_path):
     # 旁观模式（阶段 8）：绝不读、不改你真的 ~/.claude/settings.json
     from yunyun.watch import hooks as watch_hooks
     monkeypatch.setattr(watch_hooks, "settings_path", lambda: tmp_path / "claude_settings.json")
-    real_get = keyring.get_password
-    monkeypatch.setattr(keyring, "get_password", lambda service, user: None
+    real_get = vault.get_password
+    monkeypatch.setattr(vault, "get_password", lambda service, user: None
                         if service == assistant_settings.KEYRING_SERVICE else real_get(service, user))
     # 打开软件（阶段 6）：不读你真的开始菜单（换成 FAKE_APPS），绝不真的打开软件（打开的都记在 apps.opened 里）
     from yunyun.assistant import apps

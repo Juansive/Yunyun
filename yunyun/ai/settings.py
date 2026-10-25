@@ -6,10 +6,8 @@
 """
 from dataclasses import dataclass
 
-import keyring
-from keyring.errors import PasswordDeleteError
 
-from yunyun import config as cfg
+from yunyun import config as cfg, vault
 from yunyun.ai.providers import CUSTOM, DEFAULT_PROVIDER, PROVIDERS, custom_provider
 
 KEYRING_SERVICE = "yunyun-ai"  # 凭据管理器里显示的名字；每个服务商存一个 Key
@@ -72,7 +70,7 @@ def saved_choice():
 def save_settings(settings):
     info = settings.info
     if info.needs_key or (info.custom and settings.api_key):
-        keyring.set_password(KEYRING_SERVICE, settings.provider, settings.api_key)
+        vault.set_password(KEYRING_SERVICE, settings.provider, settings.api_key)
     elif info.custom:
         delete_api_key(settings.provider)   # 这次没填 Key：删掉以前存的，免得发给新地址
     config = cfg.load_config_or_empty()
@@ -100,11 +98,11 @@ def set_suggestions_enabled(on):
 
 
 def get_api_key(provider):
-    return keyring.get_password(KEYRING_SERVICE, provider)
+    return vault.get_password(KEYRING_SERVICE, provider)
 
 
 def delete_api_key(provider):
     try:
-        keyring.delete_password(KEYRING_SERVICE, provider)
-    except PasswordDeleteError:
+        vault.delete_password(KEYRING_SERVICE, provider)
+    except vault.PasswordDeleteError:
         pass

@@ -16,16 +16,16 @@ from yunyun.assistant.settings import AssistantSettings, load_settings, save_set
 def fake_keyring(monkeypatch):
     """用一个字典代替 Windows 凭据管理器：(服务名, 用户名) → Key。"""
     keys = {}
-    keyring = assistant_settings.keyring
-    monkeypatch.setattr(keyring, "get_password", lambda service, user: keys.get((service, user)))
-    monkeypatch.setattr(keyring, "set_password", lambda service, user, pw: keys.__setitem__((service, user), pw))
+    vault = assistant_settings.vault
+    monkeypatch.setattr(vault, "get_password", lambda service, user: keys.get((service, user)))
+    monkeypatch.setattr(vault, "set_password", lambda service, user, pw: keys.__setitem__((service, user), pw))
 
     def delete(service, user):
         if (service, user) not in keys:
-            raise assistant_settings.PasswordDeleteError("没有")
+            raise assistant_settings.vault.PasswordDeleteError("没有")
         del keys[(service, user)]
 
-    monkeypatch.setattr(keyring, "delete_password", delete)
+    monkeypatch.setattr(vault, "delete_password", delete)
     return keys
 
 

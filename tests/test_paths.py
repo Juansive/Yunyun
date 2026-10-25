@@ -22,7 +22,7 @@ def test_sprites_are_shrunk_when_loaded(qapp):
     assert all(p.width() <= 100 and p.height() <= 100
                for p in small.idle + small.working_down + small.excited + small.lifted + [small.tray])
     assert load_sprites(max_size=4096).idle[0].width() == 1024                 # 不会放大
-    assert PetWindow.sprite_pixels() >= 2 * PetWindow.SIZE                     # 至少够 200% 缩放的屏幕用
+    assert PetWindow.sprite_pixels() >= PetWindow.SIZE                         # 按屏幕的缩放比例算，至少 100%
 
 
 def test_data_dir_is_under_appdata(monkeypatch, tmp_path):

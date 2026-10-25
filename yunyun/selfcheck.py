@@ -1,7 +1,7 @@
 """打包后的自检：构建脚本运行「芸芸.exe --self-check 报告文件」，确认关键的依赖在 exe 里都能用。
 
 为什么需要：PyInstaller 靠"分析 import 语句"决定打包哪些东西。有些库是运行时才决定加载哪个模块的
-（pynput 按操作系统选后端，keyring 靠包的"入口点"找后端），漏打包了构建时不会报错，
+（pynput 按操作系统选后端，keyring 靠包的"入口点"找后端——2026-10-25 起不用 keyring 了），漏打包了构建时不会报错，
 要到用户电脑上才出问题。所以构建完马上在 exe 里真的跑一遍。
 
 自检不显示窗口、不联网、不读写用户的任何数据（不碰邮箱、配置和凭据管理器里的内容）。
@@ -41,12 +41,11 @@ def _keyboard():
     return keyboard.Listener.__module__   # 应该是 pynput.keyboard._win32
 
 
-def _keyring():
-    import keyring
-    backend = keyring.get_keyring()       # 只看用的是哪个后端，不读写任何密码
-    if type(backend).__name__ != "WinVaultKeyring":
-        raise RuntimeError(f"没找到 Windows 凭据管理器，当前后端是 {backend!r}")
-    return type(backend).__name__
+def _vault():
+    from yunyun import vault
+    if vault._read("yunyun-selfcheck-not-a-real-entry") is not None:   # 查一个不存在的名字：能调通、不读写任何密码
+        raise RuntimeError("凭据管理器查到了不该有的东西")
+    return "CredReadW"
 
 
 def _ssl():
@@ -215,7 +214,7 @@ def _no_assistant():
 CHECKS = [
     ("模块", _modules),
     ("键盘监听", _keyboard),
-    ("凭据管理器", _keyring),
+    ("凭据管理器", _vault),
     ("SSL", _ssl),
     ("SQLite", _sqlite),
     ("图片和界面", _sprites),

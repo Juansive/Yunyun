@@ -68,6 +68,18 @@ def test_sprites_are_reloaded_at_the_new_size(qapp, pet, state):
     assert pet._current in frames and pet._loop_frames is frames         # 正在播的那一组换成新图接着播（每种状态都是）
 
 
+
+def test_sprites_are_reloaded_when_screens_change(qapp, pet, monkeypatch):
+    """插上缩放比例更高的屏幕 / 改了缩放：按新的比例重新载入；比例没变就不重新载入。"""
+    before = pet._sprites
+    pet._on_screens_changed(96.0)                     # 信号带着参数（新的 DPI）：不当成别的用
+    assert not pet._reload_timer.isActive()           # 比例没变
+    monkeypatch.setattr(PetWindow, "sprite_pixels", classmethod(lambda cls, scale=1.0: round(240 * scale)))
+    pet._on_screens_changed(144.0)
+    assert pet._reload_timer.interval() == PetWindow.SPRITE_RELOAD_MS
+    wait(qapp, 0.4)
+    assert pet._sprites is not before and pet._sprites.idle[0].width() == 240
+
 def test_slider_in_general_page(qapp, pet):
     page = GeneralPage(pet)
     assert page._size.value() == 100 and page._size_label.text() == "100%"

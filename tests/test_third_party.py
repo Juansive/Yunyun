@@ -26,7 +26,7 @@ def fake_build(tmp_path, sources, internal_files):
     return app, work
 
 
-LITE_SOURCES = [source("yaml", "__init__.py"), source("keyring", "core.py"), source("PySide6", "__init__.py"),
+LITE_SOURCES = [source("yaml", "__init__.py"), source("pynput", "__init__.py"), source("PySide6", "__init__.py"),
                 str(Path(importlib.util.find_spec("json").origin))]   # 最后一个是 Python 自己的：不算第三方的包
 LITE_FILES = ["python312.dll", "zlib.dll", "VCRUNTIME140.dll"]
 
@@ -38,7 +38,7 @@ def names(components):
 def test_lists_only_what_is_bundled(tmp_path):
     app, work = fake_build(tmp_path, LITE_SOURCES, LITE_FILES)
     found = names(third_party.collect(app, work))
-    assert {"PyYAML", "keyring", "PySide6 / Qt 6 (Qt for Python)", "Python", "zlib",
+    assert {"PyYAML", "pynput", "PySide6 / Qt 6 (Qt for Python)", "Python", "zlib",
             "Microsoft Visual C++ Runtime / Universal CRT", "pyinstaller"} <= found
     assert not found & {"anthropic", "claude-agent-sdk", "Claude Code (claude.exe)", "edge-tts", "OpenSSL", "PySide6"}
 

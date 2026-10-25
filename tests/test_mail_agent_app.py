@@ -20,8 +20,8 @@ SETTINGS = AISettings("zhipu", "glm-4-flash-250414", "test-key")
 @pytest.fixture
 def keys(monkeypatch):
     store = {}
-    monkeypatch.setattr(ai_settings.keyring, "get_password", lambda service, user: store.get((service, user)))
-    monkeypatch.setattr(ai_settings.keyring, "set_password", lambda service, user, pw: store.__setitem__((service, user), pw))
+    monkeypatch.setattr(ai_settings.vault, "get_password", lambda service, user: store.get((service, user)))
+    monkeypatch.setattr(ai_settings.vault, "set_password", lambda service, user, pw: store.__setitem__((service, user), pw))
     return store
 
 

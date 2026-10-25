@@ -11,10 +11,8 @@
 import os
 from dataclasses import dataclass
 
-import keyring
-from keyring.errors import PasswordDeleteError
 
-from yunyun import config as cfg
+from yunyun import config as cfg, vault
 from yunyun.assistant.providers import (
     DEFAULT_BUDGET_USD, DEFAULT_CONVERSATION_BUDGET_USD, DEFAULT_PROVIDER, PROVIDERS,
 )
@@ -189,17 +187,17 @@ def _clamp(value, default, low, high):
 
 def get_api_key(provider):
     """这家服务商的 Key；没存过就返回 None。"""
-    return keyring.get_password(KEYRING_SERVICE, provider)
+    return vault.get_password(KEYRING_SERVICE, provider)
 
 
 def set_api_key(provider, key):
-    keyring.set_password(KEYRING_SERVICE, provider, key)
+    vault.set_password(KEYRING_SERVICE, provider, key)
 
 
 def delete_api_key(provider):
     try:
-        keyring.delete_password(KEYRING_SERVICE, provider)
-    except PasswordDeleteError:
+        vault.delete_password(KEYRING_SERVICE, provider)
+    except vault.PasswordDeleteError:
         pass   # 本来就没有，不用管
 
 

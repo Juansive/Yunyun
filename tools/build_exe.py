@@ -68,10 +68,7 @@ NOT_FOR_SHARING_SUFFIXES = {".log", ".db"}
 HIDDEN_IMPORTS = [
     "pynput.keyboard._win32",     # pynput 按操作系统选后端（import pynput 时键盘、鼠标两个都会加载）
     "pynput.mouse._win32",
-    "keyring.backends.Windows",   # keyring 靠"入口点"找后端……
-    "keyring.backends.null",      # 试助手子进程时用它（什么 Key 都读不到），见 check_worker
 ]
-COPY_METADATA = ["keyring"]       # ……入口点写在包的元数据（dist-info）里，所以元数据也要带上
 # 只有完整版要的：操作桌面软件（11.6b）用的 UI 自动化，comtypes 照 Windows 的类型库现生成的模块。打包前先生成好带上，
 # 打包版就不用在用户电脑上现生成（generate_comtypes_modules）
 FULL_HIDDEN_IMPORTS = ["comtypes.gen.UIAutomationClient", "comtypes.gen._944DE083_8FB8_45CF_BCB7_C477ACB2F897_0_1_0",
@@ -298,8 +295,6 @@ def run_pyinstaller(edition, icon, version_file):
         args += ["--add-data", f"{ASSETS / 'assistant' / '*.png'}{os.pathsep}assets/pet/assistant"]
     for name in HIDDEN_IMPORTS:
         args += ["--hidden-import", name]
-    for name in COPY_METADATA:
-        args += ["--copy-metadata", name]
     subprocess.run(args, check=True, cwd=ROOT)
 
 
@@ -341,11 +336,11 @@ def self_check(exe, edition):
 def check_worker(exe):
     """以"助手子进程"的身份运行 exe，看它能不能用标准输入 / 输出和芸芸说话（没有控制台的 exe 这里最容易出问题）。
 
-    不碰你的数据：数据文件夹换成临时的（APPDATA），凭据管理器换成"什么都读不到"的（null），
+    不碰你的数据：数据文件夹换成临时的（APPDATA），凭据管理器换成"什么都读不到"的（YUNYUN_VAULT=null，见 yunyun/vault.py），
     所以它读不到 Key，会照规矩回一句 Error("no_key") 然后自己退出——收到这句就说明这条路是通的。
     """
     with tempfile.TemporaryDirectory() as appdata:
-        env = dict(os.environ, APPDATA=appdata, PYTHON_KEYRING_BACKEND="keyring.backends.null.Keyring")
+        env = dict(os.environ, APPDATA=appdata, YUNYUN_VAULT="null")
         result = subprocess.run([str(exe), "--assistant-worker", "--language", "zh"], env=env, input=b"",
                                 capture_output=True, timeout=60)
     lines = [json.loads(line) for line in result.stdout.splitlines() if line.strip()]

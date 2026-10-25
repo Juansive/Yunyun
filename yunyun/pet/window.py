@@ -127,6 +127,7 @@ class PetWindow(QWidget):
         self._scale = self.saved_scale()
         self.resize(self.pet_size, self.pet_size)
         self._reload_timer = QTimer(self, singleShot=True, interval=self.SPRITE_RELOAD_MS, timeout=self._reload_sprites)
+        self._watch_screens()
 
         # 记住位置：拖动停下半秒后才保存（不用每移动一个像素就写一次）
         self._save_pos_timer = QTimer(self, singleShot=True, interval=self.SAVE_POS_DELAY_MS, timeout=self.save_position)
@@ -225,10 +226,28 @@ class PetWindow(QWidget):
     def sprite_pixels(cls, scale=1.0):
         """图片加载时缩小到多大（物理像素），给 load_sprites(max_size=...) 用。scale：芸芸的大小比例。
 
-        要够"缩放比例最高的那块屏幕"用，并且至少按 200% 算——这样以后插上 4K 屏，芸芸也是清晰的。
+        够"缩放比例最高的那块屏幕"用（拖到哪块屏幕都清晰，不用重新载入）。以前至少按 200% 算，
+        100% 的屏幕上图片多占约 6 MB；2026-10-25 改成按实际的算，插上新屏幕 / 改缩放时重新载入（_watch_screens）。
         """
-        ratio = max([2.0] + [screen.devicePixelRatio() for screen in QGuiApplication.screens()])
+        ratio = max([1.0] + [screen.devicePixelRatio() for screen in QGuiApplication.screens()])
         return math.ceil(cls.SIZE * scale * ratio)
+
+    def _watch_screens(self):
+        """插拔屏幕、改屏幕的缩放比例时，按新的最高比例重新载入图片（等 _reload_timer 一下：一次改动常连着发好几个信号）。"""
+        # 都连到自己的方法（不用 lambda）：芸芸的窗口没了，Qt 会自动断开
+        app = QGuiApplication.instance()
+        for screen in app.screens():
+            screen.logicalDotsPerInchChanged.connect(self._on_screens_changed)
+        app.screenAdded.connect(self._on_screen_added)
+        app.screenRemoved.connect(self._on_screens_changed)
+
+    def _on_screen_added(self, screen):
+        screen.logicalDotsPerInchChanged.connect(self._on_screens_changed)
+        self._on_screens_changed()
+
+    def _on_screens_changed(self, *_):
+        if self._sprites.idle and self._sprites.idle[0].width() != self.sprite_pixels(self._scale):
+            self._reload_timer.start()
 
     @staticmethod
     def saved_scale():

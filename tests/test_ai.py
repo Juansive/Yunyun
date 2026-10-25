@@ -389,9 +389,9 @@ def test_card_deck_note_explains_why_ai_was_not_used():
 @pytest.fixture
 def fake_keyring(monkeypatch, fake_store):
     keys = {}
-    monkeypatch.setattr(ai_settings.keyring, "get_password", lambda service, user: keys.get((service, user)))
-    monkeypatch.setattr(ai_settings.keyring, "set_password", lambda service, user, pw: keys.__setitem__((service, user), pw))
-    monkeypatch.setattr(ai_settings.keyring, "delete_password", lambda service, user: keys.pop((service, user), None))
+    monkeypatch.setattr(ai_settings.vault, "get_password", lambda service, user: keys.get((service, user)))
+    monkeypatch.setattr(ai_settings.vault, "set_password", lambda service, user, pw: keys.__setitem__((service, user), pw))
+    monkeypatch.setattr(ai_settings.vault, "delete_password", lambda service, user: keys.pop((service, user), None))
     return keys
 
 
