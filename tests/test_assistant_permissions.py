@@ -221,6 +221,11 @@ def test_dangerous_commands_always_ask_with_a_warning(ws, command):
     "echo 'unclosed",
     "cd src",                           # 只有 cd：没有能记住的开头
     "",
+    "echo x | ForEach-Object { Remove-Item $_ }",   # 脚本块：里面写什么都看不清（2026-10-25 安全检查）
+    "Get-ChildItem | Where-Object { $_.Length -gt 0 }",
+    "& { Get-ChildItem }",
+    "Get-ChildItem *.tmp | % Delete",   # 不带大括号也能对每一个调方法
+    "Get-ChildItem | ForEach-Object -MemberName Delete",
 ])
 def test_unclear_commands_ask_without_allow_all(ws, command):
     decision = decide("Bash", {"command": command}, ws / "proj", {("command", "pytest"), ("command", "echo")})

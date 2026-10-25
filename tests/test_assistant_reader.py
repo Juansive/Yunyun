@@ -212,3 +212,19 @@ def test_actions_are_collapsed_until_clicked(qapp, reader):
     assert reader.height() > collapsed                             # 展开后变高
     reader._actions_toggle.click()
     assert not reader._actions.isVisibleTo(reader)
+
+
+def test_answer_links_open_only_web_pages(qapp, reader, monkeypatch):
+    """回答里的链接只开 http / https：file:///、\\电脑\共享 和别的协议点了会直接运行程序（2026-10-25 安全检查）。"""
+    from PySide6.QtCore import QUrl
+    from yunyun.pet import side_panel
+    opened_urls = []
+    monkeypatch.setattr(side_panel.QDesktopServices, "openUrl", lambda url: opened_urls.append(url.toString()) or True)
+    assert not reader._body.openLinks() and not reader._body.openExternalLinks()
+    for bad in ("file:///C:/Users/x/Downloads/a.exe", "file://server/share/a.exe", "ms-settings:privacy",
+                "javascript:alert(1)", "https://", "a.exe"):
+        reader._body.anchorClicked.emit(QUrl(bad))
+    assert opened_urls == []
+    reader._body.anchorClicked.emit(QUrl("https://example.com/a"))
+    reader._body.anchorClicked.emit(QUrl("HTTP://example.com/"))
+    assert opened_urls == ["https://example.com/a", "http://example.com/"]

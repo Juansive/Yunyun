@@ -115,8 +115,7 @@ class AssistantHistoryPanel(SidePanel):
         self._empty = note(color="#9AA3B2")
         layout.addWidget(self._empty)
 
-        self._detail = text_view(TEXT_STYLE)
-        self._detail.setOpenExternalLinks(True)
+        self._detail = text_view(TEXT_STYLE, web_links=True)
         self._detail.viewport().setAutoFillBackground(False)
         layout.addWidget(self._detail, 1)
         bottom = QHBoxLayout()

@@ -170,3 +170,10 @@ def test_settings_toggle_and_check_button(qapp, pet, monkeypatch):
     assert wait_until(qapp, lambda: "9.9.9" in about._update_status.text())
     assert 'href="https://example.test/v9"' in about._update_status.text()
     p.settings_window.close()
+
+
+def test_download_page_only_github():
+    """下载页只认 https://github.com/ 的：右键菜单点了直接用浏览器打开（2026-10-25 安全检查）。"""
+    assert update.download_page("https://github.com/Juansive/Yunyun/releases/tag/v0.7.0").endswith("v0.7.0")
+    for bad in ("file:///C:/x.exe", "http://github.com/x", "https://github.com.evil.example/x", "", None):
+        assert update.download_page(bad) == update.RELEASES_PAGE

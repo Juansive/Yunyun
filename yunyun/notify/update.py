@@ -57,7 +57,13 @@ def fetch_latest(timeout=15):
     version = str(data.get("tag_name") or "").lstrip("vV")
     if parse_version(version) is None:
         raise UpdateError(f"看不懂的版本号：{data.get('tag_name')!r}")
-    return version, str(data.get("html_url") or RELEASES_PAGE)
+    return version, download_page(data.get("html_url"))
+
+
+def download_page(url):
+    """下载页：只认 https://github.com/ 的（右键菜单点了直接用浏览器打开，2026-10-25 安全检查），别的换成发布页。"""
+    url = str(url or "")
+    return url if url.startswith("https://github.com/") else RELEASES_PAGE
 
 
 class UpdateChecker(QObject):
@@ -79,7 +85,7 @@ class UpdateChecker(QObject):
         saved = str(QSettings().value(_KEY_LATEST, "") or "")
         version, _, url = saved.partition("|")
         if is_newer(version):         # 更新过了的话，记着的那个就不算新了
-            self.latest = (version, url or RELEASES_PAGE)
+            self.latest = (version, download_page(url))
             QTimer.singleShot(0, lambda: self.found.emit(*self.latest))   # 等界面都连好了再发
         QTimer.singleShot(FIRST_CHECK_MS, self._maybe_check)
         self._tick.start()

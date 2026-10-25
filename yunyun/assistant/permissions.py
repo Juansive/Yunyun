@@ -9,7 +9,7 @@
 - 改 / 写工作文件夹里的文件：每次问，可以选"这次对话都允许"；
   .git、.claude 里面的文件（改了可能让程序以后自动运行别的东西）、工作文件夹以外的文件：每次问，不提供"都允许"；
 - 执行命令：每次问，可以选"这次对话里这类命令都允许"（按命令开头记，比如 pytest、git status）；
-  删文件、装包、联网下载这类**危险命令**，和看不清在干什么的命令（$(...)、写文件的重定向、bash -c ……）永远每次问；
+  删文件、装包、联网下载这类**危险命令**，和看不清在干什么的命令（$(...)、脚本块 { }、写文件的重定向、bash -c ……）永远每次问；
 - 芸芸的记事本（记一条、查、删一条，阶段 10）：不用问——只动芸芸自己的记事本，你在设置 → 记事本里随时能看、改、删；
   翻回忆（阶段 11.4）：不用问——只读芸芸自己存的对话摘要和这台电脑上的对话记录；
   提醒（阶段 11.5，2026-10-14 用户定）：设、看、取消都不用问——只动芸芸自己的提醒，设置 → 提醒里能看能删；
@@ -485,6 +485,8 @@ FIND_DANGEROUS = {"-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-
 TWO_WORD_COMMANDS = PACKAGE_MANAGERS | {"git", "docker", "kubectl", "make", "mvn", "gradle", "dotnet", "terraform"}
 INTERPRETERS = {"python", "python3", "py", "pythonw", "node", "deno", "ruby", "perl", "php", "java"}
 CD_COMMANDS = {"cd", "pushd", "popd", "chdir", "set-location", "sl"}
+# 对每一项做点什么：脚本块已经因为 { 不给"都允许"，这几个不带大括号也能调方法（% Delete），也不给
+FOREACH_COMMANDS = {"foreach-object", "%", "foreach"}
 
 # 不会写文件的重定向：2>&1、>&2、> /dev/null、2>$null……（先去掉，再看还有没有写文件的 >）
 _HARMLESS_REDIRECT = re.compile(r"\d*>&\d+|&>\s*/dev/null|\d*>>?\s*(?:/dev/null|nul|\$null)(?=\s|$|[;|&)])", re.I)
@@ -548,6 +550,8 @@ def _analyze_part(part):
     args = [t.lower() for t in tokens[1:]]
     if name in CD_COMMANDS:
         return None, True, False
+    if name in FOREACH_COMMANDS:
+        return first, False, False
 
     if name in INTERPRETERS and len(args) >= 2 and args[0] == "-m":   # python -m pip install → 当成 pip install 看
         name, first, args = args[1], f"{first} -m {args[1]}", args[2:]
@@ -584,7 +588,7 @@ def analyze_command(command):
     """一条命令（可能是 a && b | c 这样几段）→ CommandInfo。"""
     cleaned = _HARMLESS_REDIRECT.sub(" ", command)
     grantable = bool(cleaned.strip())
-    if re.search(r"\$\(|`|<\(|>\(|\$\{", cleaned):   # 命令里套命令：看不清
+    if re.search(r"\$\(|`|<\(|>\(|\$\{|\{", cleaned):   # 命令里套命令、PowerShell 的脚本块 { }：看不清
         grantable = False
     if ">" in cleaned.replace("->", ""):             # 往文件里写（PowerShell 的 -> 不是重定向，但也很少见）
         grantable = False

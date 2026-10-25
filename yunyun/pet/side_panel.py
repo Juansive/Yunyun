@@ -9,11 +9,15 @@
 
 子类在 _make_content() 的布局里放内容，大小用 _set_size()（之后调 _place / _apply_open），出现时调 _show_animated()。
 """
+import logging
+
 from PySide6.QtCore import QEasingCurve, QEvent, QPoint, QRect, QRectF, Qt, QTimer, QVariantAnimation, Signal
-from PySide6.QtGui import QColor, QFont, QGuiApplication, QPainter, QPainterPath
+from PySide6.QtGui import QColor, QDesktopServices, QFont, QGuiApplication, QPainter, QPainterPath
 from PySide6.QtWidgets import QApplication, QFrame, QPushButton, QTextBrowser, QVBoxLayout, QWidget
 
 from yunyun.pet.bubble import animate, place_block
+
+log = logging.getLogger(__name__)
 
 SCROLLBAR_STYLE = """
 QScrollBar:vertical { width: 6px; background: transparent; margin: 2px; }
@@ -43,15 +47,28 @@ def make_button(style, slot, text="", parent=None):
     return button
 
 
-def text_view(style, margin=None):
-    """只读的富文本框：没有边框、没有横向滚动条（太宽的自动换行）。"""
+def text_view(style, margin=None, web_links=False):
+    """只读的富文本框：没有边框、没有横向滚动条（太宽的自动换行）。
+    web_links：里面的链接点了用浏览器打开——只开网页（open_web_link），给显示 AI 回答的框用。"""
     view = QTextBrowser()
     view.setFrameShape(QFrame.Shape.NoFrame)
     view.setStyleSheet(style)
     view.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
     if margin is not None:
         view.document().setDocumentMargin(margin)
+    if web_links:
+        view.setOpenLinks(False)   # 不在框里跳转，也不交给 Qt 直接打开
+        view.anchorClicked.connect(open_web_link)
     return view
+
+
+def open_web_link(url):
+    """AI 回答里的链接：只用浏览器打开 http / https。file:///、\\\\电脑\\共享、别的协议点了会直接运行程序
+    （回答可能被看过的网页带偏，2026-10-25 安全检查），一律不开。返回开没开。"""
+    if url.scheme().lower() not in ("http", "https") or not url.host():
+        log.info("没打开回答里的链接：协议是 %s", url.scheme() or "（空）")
+        return False
+    return QDesktopServices.openUrl(url)
 
 
 def draw_card(p, rect, radius, border):

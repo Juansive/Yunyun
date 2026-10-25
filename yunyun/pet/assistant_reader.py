@@ -189,9 +189,8 @@ class AssistantReader(SidePanel):
         layout.addWidget(self._actions)
         self._actions_open = False   # 展开着：换卡片也保持展开
         layout.addWidget(divider())
-        self._body = text_view(TEXT_STYLE, margin=2)
+        self._body = text_view(TEXT_STYLE, margin=2, web_links=True)
         self._body.setMinimumHeight(40)   # 放不下时回答在框里滚动，不和上面的挤在一起
-        self._body.setOpenExternalLinks(True)
         self._body.viewport().setAutoFillBackground(False)
         self._body.verticalScrollBar().valueChanged.connect(self._place_copy_buttons)
         layout.addWidget(self._body, 1)
