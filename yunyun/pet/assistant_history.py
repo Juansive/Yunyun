@@ -9,13 +9,13 @@ Claude Code 自己的对话记录、撤销用的备份在 assistant\\claude\\ �
 历史对话面板用 conversations()：把这里存的卡片和 Claude Code 自己的对话记录（assistant/transcripts.py，
 芸芸开始存卡片之前的对话只有那里有）按会话编号合成一段段对话，最新的在前。
 """
-import json
 import logging
 import os
 import shutil
 from dataclasses import dataclass, field, fields
 from datetime import datetime, timedelta
 
+from yunyun import jsonfile
 from yunyun.assistant import recollections, transcripts
 from yunyun.assistant.providers import recorded_cost
 from yunyun.assistant.session import Action
@@ -90,15 +90,8 @@ def prune(cards, now=None):
 def load(now=None):
     """读出历史卡片（从旧到新，已经去掉过期的）；没有 / 读不了就是空的。"""
     path = history_path()
-    if not path.exists():
-        return []
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as e:
-        log.warning("读不了助手的历史对话（%s），当作没有", type(e).__name__)
-        return []
     cards = []
-    for item in data.get("cards", []) if isinstance(data, dict) else []:
+    for item in (jsonfile.read(path, "助手的历史对话") or {}).get("cards", []):
         try:
             cards.append(_decode(item))
         except (KeyError, TypeError, ValueError) as e:
@@ -116,12 +109,8 @@ def save(cards, now=None, drop=()):
     for card_id in drop:
         merged.pop(card_id, None)
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix(".tmp")
         ordered = sorted(merged.values(), key=lambda card: card.time)
-        content = {"version": VERSION, "cards": [_encode(card) for card in prune(ordered, now)]}
-        tmp.write_text(json.dumps(content, ensure_ascii=False), encoding="utf-8")
-        os.replace(tmp, path)
+        jsonfile.write(path, {"version": VERSION, "cards": [_encode(card) for card in prune(ordered, now)]}, indent=None)
     except OSError as e:
         log.warning("存不了助手的历史对话（%s）", type(e).__name__)
 

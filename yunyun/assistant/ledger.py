@@ -10,10 +10,10 @@ Anthropic 没有能查账户余额的接口（普通 Key 查不到；用量接�
 """
 import json
 import logging
-import os
 from dataclasses import dataclass
 from datetime import date
 
+from yunyun import jsonfile
 from yunyun.paths import data_dir
 
 log = logging.getLogger(__name__)
@@ -47,10 +47,7 @@ def record(cost_usd, day=None):
     key = (day or date.today()).isoformat()
     days[key] = round(days.get(key, 0.0) + float(cost_usd), 6)
     try:
-        LEDGER_PATH.parent.mkdir(parents=True, exist_ok=True)
-        temp = LEDGER_PATH.with_suffix(".tmp")
-        temp.write_text(json.dumps({"days": days}, ensure_ascii=False, indent=1), encoding="utf-8")
-        os.replace(temp, LEDGER_PATH)   # 先写临时文件再换过去：写到一半断电也不会把记账本写坏
+        jsonfile.write(LEDGER_PATH, {"days": days})
     except OSError as e:
         log.warning("记账本写不进去：%s", e)
 

@@ -9,15 +9,11 @@
 芸芸进程（设置 → 记事本）和助手子进程（回想、人设）都用：不 import Qt，也不 import SDK。
 两边都可能写：每次改动都"读出来 → 改 → 整个写回去（先写临时文件再换过去）"，和记事本一样。
 """
-import json
-import logging
-import os
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta
 
+from yunyun import jsonfile
 from yunyun.paths import data_dir
-
-log = logging.getLogger(__name__)
 
 SEEN_TO_ACTIVATE = 2   # 在几段不同的对话里出现过才生效（2026-10-14 用户定）
 MAX_ACTIVE = 12        # 生效的最多几条（每一问都带着）
@@ -72,15 +68,7 @@ def _clean(text):
 def load(path=None):
     """读相处笔记；没有文件、读不了、格式不对都当没有（读不了的记日志）。"""
     path = path or rapport_path()
-    try:
-        with open(path, encoding="utf-8") as f:
-            data = json.load(f)
-    except FileNotFoundError:
-        return Rapport()
-    except (OSError, ValueError) as e:
-        log.warning("读不了相处笔记（%s），当作空的", type(e).__name__)
-        return Rapport()
-    data = data if isinstance(data, dict) else {}
+    data = jsonfile.read(path, "相处笔记") or {}
     notes = []
     for item in data.get("notes") if isinstance(data.get("notes"), list) else []:
         if not isinstance(item, dict) or not item.get("id") or not _clean(item.get("text")):
@@ -96,12 +84,7 @@ def load(path=None):
 
 def save(rapport, path=None):
     path = path or rapport_path()
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    temp = f"{path}.tmp"
-    with open(temp, "w", encoding="utf-8") as f:
-        json.dump({"version": VERSION, "notes": [asdict(n) for n in rapport.notes], "reflected": rapport.reflected},
-                  f, ensure_ascii=False, indent=1)
-    os.replace(temp, path)   # 写到一半断电也不会写坏
+    jsonfile.write(path, {"version": VERSION, "notes": [asdict(n) for n in rapport.notes], "reflected": rapport.reflected})
 
 
 # ---------- 给人设、设置页看的 ----------

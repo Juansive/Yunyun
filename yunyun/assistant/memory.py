@@ -9,15 +9,12 @@
 芸芸进程（设置 → 记事本）和助手子进程（工具）都用：不 import Qt，也不 import SDK。
 两边都可能写：每次改动都"读出来 → 改 → 整个写回去（先写临时文件再换过去）"，一次只改一条。
 """
-import json
-import logging
 import os
 from dataclasses import asdict, dataclass, fields
 from datetime import datetime
 
+from yunyun import jsonfile
 from yunyun.paths import data_dir
-
-log = logging.getLogger(__name__)
 
 USER, PROJECT = "user", "project"
 SCOPES = (USER, PROJECT)
@@ -62,15 +59,8 @@ def same_folder(a, b):
 def load(path=None):
     """所有记忆（旧的在前）；没有文件、读不了、格式不对都当没有（读不了的记日志）。"""
     path = path or memory_path()
-    try:
-        with open(path, encoding="utf-8") as f:
-            data = json.load(f)
-    except FileNotFoundError:
-        return []
-    except (OSError, ValueError) as e:
-        log.warning("读不了记事本（%s），当作空的", type(e).__name__)
-        return []
-    items = data.get("memories") if isinstance(data, dict) else None
+    data = jsonfile.read(path, "记事本") or {}
+    items = data.get("memories")
     result = []
     for item in items if isinstance(items, list) else []:
         if not isinstance(item, dict):
@@ -86,11 +76,7 @@ def load(path=None):
 
 def save(memories, path=None):
     path = path or memory_path()
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    temp = f"{path}.tmp"
-    with open(temp, "w", encoding="utf-8") as f:
-        json.dump({"version": VERSION, "memories": [asdict(m) for m in memories]}, f, ensure_ascii=False, indent=1)
-    os.replace(temp, path)   # 写到一半断电也不会把记事本写坏
+    jsonfile.write(path, {"version": VERSION, "memories": [asdict(m) for m in memories]})
 
 
 def _now():

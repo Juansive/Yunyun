@@ -7,16 +7,12 @@
 
 芸芸进程（设置 → 记事本、清空历史对话）和助手子进程（回想、人设、工具）都用：不 import Qt，也不 import SDK。
 """
-import json
-import logging
-import os
 import re
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta
 
+from yunyun import jsonfile
 from yunyun.paths import data_dir
-
-log = logging.getLogger(__name__)
 
 RECALL_CHATS_TOOL = "mcp__yunyun__recall_chats"   # "翻回忆"工具在 Claude Code 里的名字：权限规则、界面也要认它
 RECENT = 5           # 每段对话带上最近几段的摘要
@@ -50,15 +46,7 @@ def _clean(text, limit):
 def load(path=None):
     """所有回忆（旧的在前）；没有文件、读不了、格式不对都当没有（读不了的记日志）。"""
     path = path or recollections_path()
-    try:
-        with open(path, encoding="utf-8") as f:
-            data = json.load(f)
-    except FileNotFoundError:
-        return []
-    except (OSError, ValueError) as e:
-        log.warning("读不了回忆（%s），当作空的", type(e).__name__)
-        return []
-    items = data.get("items") if isinstance(data, dict) else None
+    items = (jsonfile.read(path, "回忆") or {}).get("items")
     result = []
     for item in items if isinstance(items, list) else []:
         if not isinstance(item, dict) or not item.get("session") or not _clean(item.get("summary"), MAX_SUMMARY):
@@ -74,11 +62,7 @@ def load(path=None):
 
 def save(items, path=None):
     path = path or recollections_path()
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    temp = f"{path}.tmp"
-    with open(temp, "w", encoding="utf-8") as f:
-        json.dump({"version": VERSION, "items": [asdict(r) for r in items]}, f, ensure_ascii=False, indent=1)
-    os.replace(temp, path)   # 写到一半断电也不会写坏
+    jsonfile.write(path, {"version": VERSION, "items": [asdict(r) for r in items]})
 
 
 def remember(session, date, summary, keywords=(), workspace="", path=None, now=None):

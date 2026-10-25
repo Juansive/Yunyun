@@ -7,15 +7,11 @@
 
 芸芸进程和助手子进程都用：不 import Qt，也不 import SDK。两边都可能写：每次改动都"读出来 → 改 → 整个写回去"。
 """
-import json
-import logging
-import os
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 
+from yunyun import jsonfile
 from yunyun.paths import data_dir
-
-log = logging.getLogger(__name__)
 
 REPEATS = ("", "daily", "weekdays", "weekly")   # 不重复 / 每天 / 工作日（周一到周五）/ 每周
 MAX_REMINDERS = 50
@@ -62,15 +58,7 @@ def due_time(reminder):
 def load(path=None):
     """所有提醒（先响的在前）；没有文件、读不了、格式不对都当没有（读不了的记日志）。"""
     path = path or reminders_path()
-    try:
-        with open(path, encoding="utf-8") as f:
-            data = json.load(f)
-    except FileNotFoundError:
-        return []
-    except (OSError, ValueError) as e:
-        log.warning("读不了提醒（%s），当作没有", type(e).__name__)
-        return []
-    items = data.get("reminders") if isinstance(data, dict) else None
+    items = (jsonfile.read(path, "提醒") or {}).get("reminders")
     result = []
     for item in items if isinstance(items, list) else []:
         if not isinstance(item, dict) or not item.get("id") or not _clean(item.get("text")):
@@ -84,11 +72,7 @@ def load(path=None):
 
 def save(items, path=None):
     path = path or reminders_path()
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    temp = f"{path}.tmp"
-    with open(temp, "w", encoding="utf-8") as f:
-        json.dump({"version": VERSION, "reminders": [asdict(r) for r in items]}, f, ensure_ascii=False, indent=1)
-    os.replace(temp, path)
+    jsonfile.write(path, {"version": VERSION, "reminders": [asdict(r) for r in items]})
 
 
 # ---------- 时间 ----------

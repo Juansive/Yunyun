@@ -74,7 +74,6 @@ if IS_WINDOWS:
         (user32.RegisterHotKey, BOOL, [HWND, INT, wintypes.UINT, wintypes.UINT]),   # 按住说话的快捷键（阶段 7）
         (user32.UnregisterHotKey, BOOL, [HWND, INT]),
         (user32.GetWindowTextW, INT, [HWND, wintypes.LPWSTR, INT]),   # 窗口工具（11.5）：标题、哪个程序
-        (user32.IsWindow, BOOL, [HWND]),
         (kernel32.OpenProcess, wintypes.HANDLE, [wintypes.DWORD, BOOL, wintypes.DWORD]),
         (kernel32.QueryFullProcessImageNameW, BOOL, [wintypes.HANDLE, wintypes.DWORD, wintypes.LPWSTR,
                                                      ctypes.POINTER(wintypes.DWORD)]),
@@ -143,10 +142,6 @@ def is_normal_window(hwnd):
 
 def is_minimized(hwnd):
     return bool(IS_WINDOWS and user32.IsIconic(hwnd))
-
-
-def is_window(hwnd):
-    return bool(IS_WINDOWS and hwnd and user32.IsWindow(hwnd))
 
 
 def process_name(pid):
