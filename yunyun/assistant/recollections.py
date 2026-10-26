@@ -116,7 +116,7 @@ def recent_lines(items, count=RECENT):
     return [f"{r.date[:10]} {r.summary}" for r in recent(items, count)]
 
 
-def _terms(text):
+def search_terms(text):
     """要找的词：英文、数字按整个词；中日文连着的一段按两个字一组（"答辩准备" → 答辩、辩准、准备），不用分词也找得到。"""
     terms = []
     for run in re.findall(r"[぀-ヿ㐀-鿿豈-﫿]+|[a-z0-9_]+", str(text or "").lower()):
@@ -129,7 +129,7 @@ def _terms(text):
 
 def search(items, query, limit=SEARCH_LIMIT):
     """按词找（摘要和关键词里都找）：对上的词越多越靠前，一样多的新的在前；没给词就是最近的。"""
-    terms = _terms(query)
+    terms = search_terms(query)
     if not terms:
         return recent(items, limit)
     scored = []

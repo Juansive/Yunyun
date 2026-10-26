@@ -72,7 +72,7 @@ def no_real_assistant(monkeypatch, tmp_path):
     要测子进程的收发，用 tests/fake_assistant_worker.py、tests/fake_assistant_check.py（传 command=...）。
     """
     from yunyun import vault
-    from yunyun.assistant import ledger, memory, process, rapport, recollections, settings as assistant_settings
+    from yunyun.assistant import archive, ledger, memory, process, rapport, recollections, settings as assistant_settings
     from yunyun.pet import assistant_history
 
     def refuse(role, *args, package="assistant"):
@@ -86,6 +86,7 @@ def no_real_assistant(monkeypatch, tmp_path):
     monkeypatch.setattr(memory, "memory_path", lambda: tmp_path / "assistant_memory.json")   # 记事本也一样
     monkeypatch.setattr(rapport, "rapport_path", lambda: tmp_path / "assistant_rapport.json")   # 相处笔记（11.3）
     monkeypatch.setattr(recollections, "recollections_path", lambda: tmp_path / "assistant_recollections.json")   # 回忆
+    monkeypatch.setattr(archive, "archive_path", lambda: tmp_path / "assistant_archive.sqlite")   # 原文存档（12.1）
     from yunyun.notify import reminders
     monkeypatch.setattr(reminders, "reminders_path", lambda: tmp_path / "reminders.json")   # 提醒（11.5）
     # 剪贴板（11.5）：换成内存里的假剪贴板，绝不碰你真的剪贴板

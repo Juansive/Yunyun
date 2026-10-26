@@ -25,13 +25,14 @@
 """
 import itertools
 import logging
+import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime
 
 from PySide6.QtCore import QCoreApplication, QObject, Signal
 
 from yunyun import i18n
-from yunyun.assistant import ledger, memory, protocol, recollections, transcripts
+from yunyun.assistant import archive, ledger, memory, protocol, recollections, transcripts
 
 log = logging.getLogger(__name__)
 
@@ -88,6 +89,14 @@ class Action:
     decision: str = "auto"        # protocol.DECISIONS 里的一个
     ok: bool | None = None        # 用完了没有出错；None = 还没用完 / 没用（被拒绝）
     tool_id: str = ""
+
+
+def _archive(action, *args):
+    """写原文存档；写不了（硬盘满、被锁住太久）只记日志，不耽误对话。"""
+    try:
+        action(*args)
+    except (sqlite3.Error, OSError) as e:
+        log.warning("原文存档没写成（%s）", type(e).__name__)
 
 
 @dataclass(eq=False)
@@ -307,6 +316,8 @@ class AssistantSession(QObject):
         if self._pending is not None:
             self.stop()
             return False
+        if self.session_id:
+            _archive(archive.withdraw, self.session_id, question)
         self.new_conversation(self.session_id, transcripts.question_digest(question) if self.session_id else "")
         return True
 
@@ -455,6 +466,7 @@ class AssistantSession(QObject):
             turn.remembered = event.remembered
             self.session_id = event.session_id or self.session_id
             ledger.record(event.cost_usd)   # 记账：设置页显示今天 / 本月 / 一共花了多少
+            _archive(archive.record, self.session_id, turn.question, turn.answer, turn.images)   # 原文存档（12.1）
             self._end_turn(stopped=event.stopped)
         elif isinstance(event, protocol.PermissionRequest):
             if not self.pending_permissions:

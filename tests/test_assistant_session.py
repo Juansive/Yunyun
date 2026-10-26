@@ -11,7 +11,7 @@ from shiboken6 import isValid
 from fake_assistant_process import FakeProcess
 from yunyun import i18n
 from yunyun.assistant import process as process_module
-from yunyun.assistant import protocol, transcripts
+from yunyun.assistant import archive, protocol, transcripts
 from yunyun.assistant.session import AssistantSession, error_text
 from helpers import wait_until
 
@@ -63,6 +63,19 @@ def test_withdraw_drops_the_last_question(session, monkeypatch):
     monkeypatch.setattr(process_module, "subprocess_command", lambda role, *args, package="assistant": (role, args, None))
     _, args, _ = process_module.worker_command("zh", "s1", "abc")
     assert args[-4:] == ("--resume", "s1", "--withdraw", "abc")
+
+
+def test_session_archives_each_answer_and_withdraw(session):
+    """答完一问写一条（问、答、对话编号、几张图片）；"这句不是跟你说的"撤回时删掉。"""
+    session.ask("今天好累", images=[{"data": "", "mime": "image/png"}])
+    session.processes[0].say(protocol.Ready("anthropic", "m"), protocol.TextDelta("辛苦啦"), protocol.TurnFinished(session_id="s1"))
+    [entry] = archive.between()
+    assert (entry.session, entry.question, entry.answer, entry.images) == ("s1", "今天好累", "辛苦啦", 1)
+    session.ask("不是跟你说的")
+    session.processes[0].say(protocol.TextDelta("哦"), protocol.TurnFinished(session_id="s1"))
+    assert archive.count() == 2
+    session.withdraw("不是跟你说的")
+    assert [e.question for e in archive.between()] == ["今天好累"]
 
 
 def test_question_waits_until_the_brain_is_ready(session):
