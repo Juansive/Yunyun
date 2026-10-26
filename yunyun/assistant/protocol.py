@@ -395,7 +395,7 @@ class Compacted:
 
 @_message
 class Reflected:
-    """回想完一段以前的对话（阶段 11.3，assistant/reflect.py）：cost_usd 花了多少（记账）；added 新加了几条相处笔记；
+    """回顾完一天（阶段 12.2，assistant/reflect.py；11.3 时是一段对话）：cost_usd 花了多少（记账）；added 新加了几条相处笔记；
     activated 几条开始生效（有的话芸芸冒个气泡）。"""
     TYPE: ClassVar[str] = "reflected"
     cost_usd: float = 0.0

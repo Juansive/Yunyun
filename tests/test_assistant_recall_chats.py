@@ -3,7 +3,7 @@ import asyncio
 import json
 from datetime import datetime
 
-from yunyun.assistant import claude_brain, recollections
+from yunyun.assistant import archive, claude_brain, recollections
 from yunyun.assistant.persona import persona
 from yunyun.assistant.settings import AssistantSettings
 from yunyun.assistant.tools.recall_chats import recall_chats_tools
@@ -45,6 +45,9 @@ def test_search_then_read_the_chat(tmp_path):
     assert call(projects, {"chat_id": "nope"}) == ("There is no chat nope.", True)
     assert call(projects, {"chat_id": "../../secret"})[1]                                  # 编号不像样：不拼路径
     assert "No earlier chat" in call(projects, {"query": "毫不相干的事"})[0]
+    archive.record("old-2", "pytest 又报错了", "fixture 名字拼错了", at="2026-09-01T10:00:00")   # 原文存档里有（12.2）
+    text, error = call(projects, {"chat_id": "old-2"})
+    assert not error and "fixture 名字拼错了" in text and "修好 pytest" in text
 
 
 def test_persona_carries_recent_summaries_with_how_to_use_them():

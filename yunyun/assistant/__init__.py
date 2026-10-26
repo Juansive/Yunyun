@@ -10,7 +10,7 @@
       process.py（QProcess）◀── 标准输入 / 输出，JSON 一行一条 ──▶ claude_brain.py ──▶ claude.exe
       两边共用：protocol.py（命令和事件的格式）、settings.py、providers.py、permissions.py（权限规则，纯函数）、
                memory.py（记事本）、rapport.py（相处笔记，阶段 11.3）
-      只在子进程：reflect.py（新对话开始时回想以前的对话，直接调 anthropic SDK）
+      只在子进程：reflect.py（每日回顾：日记、摘要、相处笔记、我是谁，直接调 anthropic SDK）
 
 为什么分两个进程：import claude_agent_sdk 就要多占约 46 MB，而且 import 过的模块还不回来；
 放在子进程里，关掉助手模式就结束子进程，芸芸的内存原样还回来。

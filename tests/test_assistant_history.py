@@ -90,7 +90,7 @@ def test_clear_deletes_cards_and_claude_code_records():
     from yunyun.assistant import rapport, recollections
     recollections.remember("s1", datetime.now().isoformat(timespec="seconds"), "聊答辩准备")
     data = rapport.Rapport()
-    rapport.apply(data, {"add": [{"text": "喜欢被叫主人", "explicit": True}]}, "s1", "2026-10-14T19:00:00")
+    rapport.apply(data, {"add": [{"text": "喜欢被叫主人", "explicit": True}]}, "2026-10-14")
     rapport.save(data)
     assistant_history.clear()
     assert not assistant_history.history_path().exists()

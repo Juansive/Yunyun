@@ -725,7 +725,7 @@ def test_build_options_brings_active_rapport_notes_only_when_enabled(monkeypatch
     from yunyun.assistant import rapport
     monkeypatch.setattr(claude_brain, "system_proxy_env", lambda: {})
     r = rapport.Rapport()
-    rapport.apply(r, {"add": [{"text": "喜欢被叫主人", "explicit": True}, {"text": "还在观察"}]}, "s1", "2026-10-14T19:00:00")
+    rapport.apply(r, {"add": [{"text": "喜欢被叫主人", "explicit": True}, {"text": "还在观察"}]}, "2026-10-14")
     rapport.save(r)
     append = claude_brain.build_options(AssistantSettings(), "k", "zh").system_prompt["append"]
     assert "喜欢被叫主人" in append and "还在观察" not in append                    # 观察中的不带

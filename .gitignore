@@ -26,6 +26,9 @@ cards.json
 memory.json
 rapport.json
 recollections.json
+archive.sqlite
+diary.json
+whoami.json
 reminders.json
 assistant_spending.json
 # Archify 画的图（开发用，不进公开仓库）

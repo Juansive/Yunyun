@@ -1,12 +1,12 @@
 """芸芸的相处笔记（阶段 11.3）：从和你的相处里学到"怎么跟你相处"，接在预设人设后面。设计见 docs/助手模式计划.md 11.3。
 
-- 每段新对话开始时，芸芸回想上一两段对话（assistant/reflect.py，子进程里调便宜的模型），提出：哪几条又出现了、加几条、改几条、删几条；
-- **定量**：芸芸自己观察到的，要在两段不同的对话里出现（按对话编号去重）才生效；只出现一次的放"观察中"，
+- 每天第一次开助手时，芸芸回顾前几天（assistant/reflect.py，阶段 12.2，子进程里调便宜的模型），提出：哪几条又出现了、加几条、改几条、删几条；
+- **定量**：芸芸自己观察到的，要在两个不同的日子里出现（11.3 时是"两段不同的对话"，12.2 起按日子）才生效；只出现一次的放"观察中"，
   CANDIDATE_DAYS 天没再出现就扔掉。你明确说过的（explicit）马上生效；
 - 生效的最多 MAX_ACTIVE 条（每一问都带着），观察中最多 MAX_CANDIDATES 条；只记"怎么相处"，事实和项目归记事本（memory.py）；
 - 存在 %APPDATA%\\Yunyun\\Yunyun\\assistant\\rapport.json，只在本机；日志不写内容。
 
-芸芸进程（设置 → 记事本）和助手子进程（回想、人设）都用：不 import Qt，也不 import SDK。
+芸芸进程（设置 → 记事本）和助手子进程（每日回顾、人设）都用：不 import Qt，也不 import SDK。
 两边都可能写：每次改动都"读出来 → 改 → 整个写回去（先写临时文件再换过去）"，和记事本一样。
 """
 from dataclasses import asdict, dataclass, field
@@ -15,13 +15,12 @@ from datetime import datetime, timedelta
 from yunyun import jsonfile
 from yunyun.paths import data_dir
 
-SEEN_TO_ACTIVATE = 2   # 在几段不同的对话里出现过才生效（2026-10-14 用户定）
+SEEN_TO_ACTIVATE = 2   # 在几个不同的日子里出现过才生效（2026-10-14 用户定"两次"；12.2 起按日子算）
 MAX_ACTIVE = 12        # 生效的最多几条（每一问都带着）
 MAX_CANDIDATES = 30    # 观察中最多几条
 CANDIDATE_DAYS = 30    # 观察中的多少天没再出现就扔掉
 MAX_TEXT = 80          # 一条最多多少字
-MAX_ADDS = 3           # 回想一段对话最多新加几条
-KEEP_REFLECTED_DAYS = 60   # "回想过哪些对话"记多久（对话记录本来就只留 30 天）
+MAX_ADDS = 3           # 回顾一天最多新加几条
 VERSION = 1
 
 
@@ -29,7 +28,7 @@ VERSION = 1
 class Note:
     id: str                    # "r3"
     text: str
-    sessions: list = field(default_factory=list)   # 在哪几段对话里出现过（Claude Code 的对话编号）
+    sessions: list = field(default_factory=list)   # 在哪几天出现过（"YYYY-MM-DD"；12.2 以前记的是对话编号）
     explicit: bool = False     # 你明确说过的：马上生效
     created: str = ""          # ISO 时间（本地，到秒）
     updated: str = ""          # 最近一次出现 / 改过
@@ -42,7 +41,6 @@ class Note:
 @dataclass
 class Rapport:
     notes: list = field(default_factory=list)       # Note（旧的在前）
-    reflected: dict = field(default_factory=dict)   # 回想过的对话：编号 → 回想时那段对话最后更新的时间（ISO）
 
 
 @dataclass
@@ -77,14 +75,12 @@ def load(path=None):
         notes.append(Note(str(item["id"]), _clean(item["text"]),
                           [str(s) for s in sessions] if isinstance(sessions, list) else [],
                           item.get("explicit") is True, str(item.get("created") or ""), str(item.get("updated") or "")))
-    reflected = data.get("reflected")
-    reflected = {str(k): str(v) for k, v in reflected.items()} if isinstance(reflected, dict) else {}
-    return Rapport(notes, reflected)
+    return Rapport(notes)
 
 
 def save(rapport, path=None):
     path = path or rapport_path()
-    jsonfile.write(path, {"version": VERSION, "notes": [asdict(n) for n in rapport.notes], "reflected": rapport.reflected})
+    jsonfile.write(path, {"version": VERSION, "notes": [asdict(n) for n in rapport.notes]})
 
 
 # ---------- 给人设、设置页看的 ----------
@@ -108,19 +104,13 @@ def active_lines(rapport):
     return [n.text for n in active_notes(rapport)]
 
 
-# ---------- 回想以后 ----------
+# ---------- 回顾以后 ----------
 
-def needs_reflection(rapport, session_id, updated):
-    """这段对话（最后更新于 updated，ISO）还没回想过，或者回想以后又接着聊过。"""
-    done = rapport.reflected.get(session_id)
-    return done is None or done < updated
-
-
-def apply(rapport, changes, session_id, updated, now=None):
-    """把回想的结果（模型给的 JSON，见 reflect.py）用到 rapport 上 → Outcome。看不懂的部分跳过。
+def apply(rapport, changes, day, now=None):
+    """把一天回顾的结果（模型给的 JSON，见 reflect.py）用到 rapport 上 → Outcome。看不懂的部分跳过。
 
     changes：{"seen": [编号], "revise": [{"id", "text"}], "drop": [编号], "add": [{"text", "explicit"}]}；
-    session_id / updated：回想的是哪段对话、它最后更新的时间（记下来，下次就不再回想它）。"""
+    day：回顾的是哪天（"YYYY-MM-DD"，同一天出现几次只算一次）。"""
     now = now or _now()
     changes = changes if isinstance(changes, dict) else {}
     by_id = {n.id: n for n in rapport.notes}
@@ -128,8 +118,8 @@ def apply(rapport, changes, session_id, updated, now=None):
     outcome = Outcome()
 
     def seen(note):
-        if session_id not in note.sessions:
-            note.sessions.append(session_id)
+        if day not in note.sessions:
+            note.sessions.append(day)
         note.updated = now
 
     for note_id in _list(changes.get("seen")):
@@ -147,13 +137,11 @@ def apply(rapport, changes, session_id, updated, now=None):
         text = _clean(item.get("text")) if isinstance(item, dict) else ""
         if not text or text.casefold() in known:
             continue
-        rapport.notes.append(Note(_next_id(rapport.notes), text, [session_id], item.get("explicit") is True, now, now))
+        rapport.notes.append(Note(_next_id(rapport.notes), text, [day], item.get("explicit") is True, now, now))
         known.add(text.casefold())
         outcome.added += 1
     _trim(rapport, now)
     outcome.activated = len([n for n in rapport.notes if n.active and n.id not in was_active])
-    rapport.reflected[session_id] = updated
-    _forget_old_reflections(rapport, now)
     return outcome
 
 
@@ -183,11 +171,6 @@ def _trim(rapport, now):
         rapport.notes = [n for n in rapport.notes if n.active or n in waiting[:MAX_CANDIDATES]]
 
 
-def _forget_old_reflections(rapport, now):
-    cutoff = _days_ago(now, KEEP_REFLECTED_DAYS)
-    rapport.reflected = {k: v for k, v in rapport.reflected.items() if v >= cutoff}
-
-
 # ---------- 设置页 ----------
 
 def edit(note_id, text, path=None):
@@ -212,7 +195,5 @@ def delete(note_id, path=None):
 
 
 def clear(path=None):
-    """笔记全部删掉（回想过哪些对话还记着：清空以后不会把旧对话再回想一遍）。"""
-    rapport = load(path)
-    rapport.notes = []
-    save(rapport, path)
+    """笔记全部删掉（回顾到哪天记在日记里：清空以后不会把旧的日子再回顾一遍）。"""
+    save(Rapport(), path)

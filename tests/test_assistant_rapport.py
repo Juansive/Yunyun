@@ -1,30 +1,30 @@
-"""相处笔记（assistant/rapport.py，阶段 11.3）：两段对话出现才生效、明确说过的马上生效、上限、过期、看不懂的跳过。"""
+"""相处笔记（assistant/rapport.py，阶段 11.3；12.2 起按日子算）：两天出现才生效、明确说过的马上生效、上限、过期、看不懂的跳过。"""
 from yunyun.assistant import rapport
 from yunyun.assistant.rapport import Rapport
 
 NOW = "2026-10-14T20:00:00"
 
 
-def apply(r, changes, session="s1", updated="2026-10-14T19:00:00", now=NOW):
-    return rapport.apply(r, changes, session, updated, now)
+def apply(r, changes, session="2026-10-13", now=NOW):
+    return rapport.apply(r, changes, session, now)
 
 
-def test_a_note_needs_two_different_conversations_unless_the_user_said_it():
+def test_a_note_needs_two_different_days_unless_the_user_said_it():
     r = Rapport()
     out = apply(r, {"add": [{"text": "累的时候先安慰，不要调侃"}, {"text": "喜欢被叫主人", "explicit": True}]})
     assert (out.added, out.activated) == (2, 1)                                     # 明确说过的马上生效
     assert rapport.active_lines(r) == ["喜欢被叫主人"]
     assert [n.text for n in rapport.candidates(r)] == ["累的时候先安慰，不要调侃"]
-    assert apply(r, {"seen": ["r1"]}, session="s1").activated == 0                  # 同一段对话再说一次：不算
-    out = apply(r, {"seen": ["r1"]}, session="s2")
+    assert apply(r, {"seen": ["r1"]}).activated == 0                                # 同一天再说一次：不算
+    out = apply(r, {"seen": ["r1"]}, session="2026-10-14")
     assert out.activated == 1 and len(rapport.active_lines(r)) == 2
-    assert r.notes[0].sessions == ["s1", "s2"]
+    assert r.notes[0].sessions == ["2026-10-13", "2026-10-14"]
 
 
 def test_revise_counts_as_seen_and_drop_removes():
     r = Rapport()
     apply(r, {"add": [{"text": "回答短一点"}, {"text": "不喜欢冷笑话"}]})
-    out = apply(r, {"revise": [{"id": "r1", "text": "回答尽量短，先给结论"}], "drop": ["r2"]}, session="s2")
+    out = apply(r, {"revise": [{"id": "r1", "text": "回答尽量短，先给结论"}], "drop": ["r2"]}, session="2026-10-14")
     assert out.activated == 1 and rapport.active_lines(r) == ["回答尽量短，先给结论"]
     assert [n.id for n in r.notes] == ["r1"]
 
@@ -51,16 +51,6 @@ def test_old_candidates_expire_and_limits_hold():
     assert len(rapport.candidates(r)) == rapport.MAX_CANDIDATES
 
 
-def test_reflected_conversations_are_remembered_until_they_continue():
-    r = Rapport()
-    assert rapport.needs_reflection(r, "s1", "2026-10-14T19:00:00")
-    apply(r, {}, session="s1", updated="2026-10-14T19:00:00")
-    assert not rapport.needs_reflection(r, "s1", "2026-10-14T19:00:00")
-    assert rapport.needs_reflection(r, "s1", "2026-10-14T21:00:00")               # 接着聊过：再回想一次
-    apply(r, {}, session="s2", updated="2026-10-14T19:00:00", now="2026-12-30T10:00:00")
-    assert "s1" not in r.reflected                                                 # 太久以前的不用再记
-
-
 def test_saved_to_disk_and_edited_in_settings():
     r = Rapport()
     apply(r, {"add": [{"text": "喜欢被叫主人", "explicit": True}, {"text": "观察中"}]})
@@ -71,7 +61,7 @@ def test_saved_to_disk_and_edited_in_settings():
     assert not rapport.edit("r9", "x") and not rapport.edit("r1", "  ")
     assert rapport.delete("r2") and not rapport.delete("r2")
     rapport.clear()
-    assert rapport.load().notes == [] and "s1" in rapport.load().reflected       # 清空笔记：旧对话不再回想一遍
+    assert rapport.load().notes == []
 
 
 def test_broken_file_is_treated_as_empty(tmp_path):
@@ -81,4 +71,4 @@ def test_broken_file_is_treated_as_empty(tmp_path):
     path.write_text('{"notes": [{"id": "r1"}, "x", {"id": "r2", "text": "ok", "sessions": "s"}], "reflected": []}',
                     encoding="utf-8")
     loaded = rapport.load(path)
-    assert [(n.id, n.sessions) for n in loaded.notes] == [("r2", [])] and loaded.reflected == {}
+    assert [(n.id, n.sessions) for n in loaded.notes] == [("r2", [])]

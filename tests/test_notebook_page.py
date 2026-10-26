@@ -95,8 +95,7 @@ def test_rapport_notes_are_listed_last_and_can_be_edited_deleted_and_cleared(pag
     """相处笔记（11.3）：放最后一组，在用的在前、观察中的灰色写"观察中"；改、删、全部清空都管它。"""
     from yunyun.assistant import rapport
     r = rapport.Rapport()
-    rapport.apply(r, {"add": [{"text": "喜欢被叫主人", "explicit": True}, {"text": "偶尔开实验室的玩笑"}]}, "s1",
-                  "2026-10-14T19:00:00")
+    rapport.apply(r, {"add": [{"text": "喜欢被叫主人", "explicit": True}, {"text": "偶尔开实验室的玩笑"}]}, "2026-10-14")
     rapport.save(r)
     page.refresh()
     group = page._tree.topLevelItem(2)

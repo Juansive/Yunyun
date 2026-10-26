@@ -62,6 +62,7 @@ def _entries(rows):
 
 
 _COLUMNS = "session, at, question, answer, images"
+_ORDER = "ORDER BY at, id"   # 按时间（搬进来的旧记录 id 比新的大）
 
 
 def record(session, question, answer, images=0, at=None, path=None):
@@ -86,8 +87,14 @@ def withdraw(session, question, path=None):
 def between(start="", end="", path=None):
     """[start, end) 之间答完的（ISO 时间，空 = 不限），旧的在前。每日回顾、人设里的"近期原文"用。"""
     with closing(_connect(path)) as db:
-        return _entries(db.execute(f"SELECT {_COLUMNS} FROM turns WHERE at >= ? AND (? = '' OR at < ?) ORDER BY id",
+        return _entries(db.execute(f"SELECT {_COLUMNS} FROM turns WHERE at >= ? AND (? = '' OR at < ?) {_ORDER}",
                                    (start, end, end)))
+
+
+def of_session(session, path=None):
+    """一段对话的全部问答（旧的在前）。"""
+    with closing(_connect(path)) as db:
+        return _entries(db.execute(f"SELECT {_COLUMNS} FROM turns WHERE session = ? {_ORDER}", (session,)))
 
 
 def search(query, limit=SEARCH_LIMIT, path=None):
@@ -114,6 +121,12 @@ def purge(keep_years, now=None, path=None):
         cutoff = now.replace(year=now.year - keep_years, day=28)
     with closing(_connect(path)) as db, db:
         return db.execute("DELETE FROM turns WHERE at < ?", (cutoff.isoformat(timespec="seconds"),)).rowcount
+
+
+def first_at(path=None):
+    """最早的一条是什么时候（ISO）；空的就是 ""。"""
+    with closing(_connect(path)) as db:
+        return db.execute("SELECT MIN(at) FROM turns").fetchone()[0] or ""
 
 
 def count(path=None):
