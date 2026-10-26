@@ -4,7 +4,7 @@
 - **定量**：芸芸自己观察到的，要在两个不同的日子里出现（11.3 时是"两段不同的对话"，12.2 起按日子）才生效；只出现一次的放"观察中"，
   CANDIDATE_DAYS 天没再出现就扔掉。你明确说过的（explicit）马上生效；
 - 生效的最多 MAX_ACTIVE 条（每一问都带着），观察中最多 MAX_CANDIDATES 条；只记"怎么相处"，事实和项目归记事本（memory.py）；
-- 存在 %APPDATA%\\Yunyun\\Yunyun\\assistant\\rapport.json，只在本机；日志不写内容。
+- 存在记忆文件夹（memory_folder.py，默认是数据目录下的 assistant）的 rapport.json，只在本机；日志不写内容。
 
 芸芸进程（设置 → 记事本）和助手子进程（每日回顾、人设）都用：不 import Qt，也不 import SDK。
 两边都可能写：每次改动都"读出来 → 改 → 整个写回去（先写临时文件再换过去）"，和记事本一样。
@@ -13,7 +13,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta
 
 from yunyun import jsonfile
-from yunyun.paths import data_dir
+from yunyun.assistant import memory_folder
 
 SEEN_TO_ACTIVATE = 2   # 在几个不同的日子里出现过才生效（2026-10-14 用户定"两次"；12.2 起按日子算）
 MAX_ACTIVE = 12        # 生效的最多几条（每一问都带着）
@@ -50,7 +50,7 @@ class Outcome:
 
 
 def rapport_path():
-    return data_dir() / "assistant" / "rapport.json"
+    return memory_folder.folder() / "rapport.json"
 
 
 def _now():

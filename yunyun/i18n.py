@@ -250,36 +250,89 @@ TEXTS = {
               "作業フォルダーでだけ使われます。メモ帳はパソコンだけに保存され、会話の始めに目次が選んだプロバイダーに送られます。"
               "変更は次の会話から有効です。",
     },
-    "rapport_enabled": {"zh": "让芸芸回想以前的对话（相处笔记 + 回忆；每段新对话开始时回想一下上一段，一般不到 1 美分）",
-                        "en": "Let Yunyun look back at earlier chats (rapport notes + recollections; she looks back at "
-                              "the last chat when a new one starts, usually under 1¢)",
-                        "ja": "芸芸に前の会話を振り返らせる（付き合いメモ＋思い出。新しい会話のたびに前の会話を振り返る。ふつう 1 セント未満）"},
+    "rapport_enabled": {"zh": "让芸芸回想以前的对话（每天第一次打开助手时回顾前几天，写日记、相处笔记、回忆、我是谁；一天约 0.3 美分）",
+                        "en": "Let Yunyun look back at earlier chats (the first time you open the assistant each day "
+                              "she looks back at the past days: diary, rapport notes, recollections, who she is; "
+                              "about 0.3¢ a day)",
+                        "ja": "芸芸に前の会話を振り返らせる（その日はじめてアシスタントを開いたときに前の日を振り返り、"
+                              "日記・付き合いメモ・思い出・自分について を書く。1 日 0.3 セントほど）"},
     "rapport_hint": {
-        "zh": "相处笔记：芸芸只记\"怎么跟你相处\"（称呼、语气、玩笑尺度、你累的时候希望她怎么做），接在她的性格后面。"
-              "她自己观察到的要在两段对话里都出现才会用上，只出现一次的是\"观察中\"（30 天没再出现就扔掉）；你明确说过的马上用上。"
-              "回忆：每段对话记一句话的摘要（留一年），最近 5 段每段对话都带着，她能接上话；更早的她会自己翻。"
-              "回想时你和她的问答会发给你选的服务商（用最便宜的模型），笔记和回忆只存在你的电脑上。",
-        "en": "Rapport notes: Yunyun only notes how to get along with you (how to address you, tone, humor, what helps "
-              "when you're tired), added after her personality. What she notices herself is used only after it shows "
-              "up in two chats; seen once, it stays \"observing\" (dropped after 30 days). Things you ask for directly "
-              "apply right away. Recollections: a one-line summary of each chat (kept for a year); the latest 5 come "
-              "with every chat so she can pick up where you left off, and she looks up older ones herself. When she "
-              "looks back, your questions and her answers are sent to your provider (its cheapest model); notes and "
-              "recollections stay on this PC.",
-        "ja": "付き合いメモ：芸芸は「あなたとの付き合い方」（呼び方・口調・冗談の加減・疲れたときにどうしてほしいか）だけを記録し、"
-              "性格のあとに付け加えます。自分で気づいたことは 2 つの会話で出てきてから使い、1 回だけのものは「観察中」"
-              "（30 日出てこなければ消します）。あなたがはっきり頼んだことはすぐ使います。"
-              "思い出：会話ごとに一行の要約を残します（1 年間）。最新の 5 件は毎回の会話に付けるので話をつなげられ、"
-              "それより前は芸芸が自分で調べます。振り返るときは、あなたの質問と芸芸の回答を選んだプロバイダー（いちばん安いモデル）に"
-              "送ります。メモと思い出はこの PC にだけ保存されます。",
+        "zh": "我是谁：芸芸从经历里慢慢形成的自我认识，像人一样改得很慢——要在三个不同的日子都有依据才会改，一天最多改两处；"
+              "你可以直接改，也能退回旧版。日记：她每天写一篇，新对话里记得最近一篇和还没写进日记的原话。"
+              "相处笔记：她只记\"怎么跟你相处\"（称呼、语气、玩笑尺度、你累的时候希望她怎么做），要在两天里都出现才用上，"
+              "你明确说过的马上用上。回忆：每段对话一句话的摘要。回顾时你和她的问答会发给你选的服务商（用最便宜的模型），"
+              "这些都只存在你的电脑上。",
+        "en": "Who she is: Yunyun's sense of herself, grown slowly from experience like a person's — a change needs "
+              "evidence on three different days, at most two changes a day; you can edit it or go back to an older "
+              "version. Diary: she writes one entry a day, and new chats remember the latest entry and what was said "
+              "since. Rapport notes: only how to get along with you (how to address you, tone, humor, what helps when "
+              "you're tired), used after showing up on two days; things you ask for directly apply right away. "
+              "Recollections: a one-line summary of each chat. When she looks back, your questions and her answers "
+              "are sent to your provider (its cheapest model); all of this stays on this PC.",
+        "ja": "自分について：芸芸が経験から少しずつ作る自己認識で、人のようにゆっくり変わります（3 つの別の日に根拠があって初めて変わり、"
+              "1 日に 2 か所まで）。直接直すことも、古い版に戻すこともできます。日記：1 日 1 編書き、新しい会話では最新の日記と"
+              "まだ日記にしていないやり取りを覚えています。付き合いメモ：「あなたとの付き合い方」だけを記録し、2 日出てきてから使います"
+              "（はっきり頼んだことはすぐ）。思い出：会話ごとに一行の要約。振り返るときは、あなたの質問と芸芸の回答を選んだ"
+              "プロバイダー（いちばん安いモデル）に送ります。どれもこの PC にだけ保存されます。",
     },
+    "whoami_group": {"zh": "我是谁（{} 句 · 观察中 {}）", "en": "Who I am ({} lines · {} observing)",
+                     "ja": "自分について（{} 文・観察中 {}）"},
+    "whoami_remove": {"zh": "（删掉：{}）", "en": "(remove: {})", "ja": "（削除：{}）"},
+    "whoami_days": {"zh": "{}/{} 天", "en": "{}/{} days", "ja": "{}/{} 日"},
+    "whoami_pending_tip": {"zh": "观察中：三个不同的日子都有依据才会改进去", "en": "Observing: it changes only after "
+                           "evidence on three different days", "ja": "観察中：3 つの別の日に根拠があれば反映されます"},
+    "whoami_edit_title": {"zh": "改「我是谁」", "en": "Edit \"Who I am\"", "ja": "「自分について」を編集"},
+    "whoami_edit_hint": {"zh": "一句一行；你改的马上生效（以后她还会慢慢改）。",
+                         "en": "One sentence per line. Your edits apply right away (she'll keep changing slowly).",
+                         "ja": "1 行に 1 文。直した内容はすぐ反映されます（その後も少しずつ変わります）。"},
+    "whoami_versions": {"zh": "旧版本", "en": "Older versions", "ja": "古い版"},
+    "whoami_version_item": {"zh": "{} · {} 句", "en": "{} · {} lines", "ja": "{}・{} 文"},
+    "whoami_use_version": {"zh": "用这一版", "en": "Use this one", "ja": "この版にする"},
+    "diary_group": {"zh": "日记（{} 篇）", "en": "Diary ({})", "ja": "日記（{} 編）"},
+    "diary_title": {"zh": "{} 的日记", "en": "Diary — {}", "ja": "{} の日記"},
+    "memory_storage": {"zh": "存放和清空", "en": "Storage and clearing", "ja": "保存と消去"},
+    "archive_years_label": {"zh": "原话存多久", "en": "Keep what was said", "ja": "やり取りの保存期間"},
+    "archive_years_0": {"zh": "一直留", "en": "Forever", "ja": "ずっと"},
+    "archive_years_1": {"zh": "1 年", "en": "1 year", "ja": "1 年"},
+    "archive_years_3": {"zh": "3 年", "en": "3 years", "ja": "3 年"},
+    "memory_folder_label": {"zh": "记忆文件夹", "en": "Memory folder", "ja": "記憶フォルダー"},
+    "memory_folder_change": {"zh": "更改…", "en": "Change…", "ja": "変更…"},
+    "memory_folder_exists": {
+        "zh": "那个文件夹里已经有芸芸的记忆了。用那里的吗？（现在这里的留着不动）",
+        "en": "That folder already has Yunyun's memories. Use those? (The ones here stay where they are.)",
+        "ja": "そのフォルダーにはすでに芸芸の記憶があります。そちらを使いますか？（今の場所のものはそのまま残ります）",
+    },
+    "memory_folder_moved": {"zh": "记忆搬好了。助手开着的话，关掉再打开一次。",
+                            "en": "Memories moved. If the assistant is open, close and reopen it.",
+                            "ja": "記憶を移しました。アシスタントを開いている場合は、一度閉じて開き直してください。"},
+    "memory_folder_failed": {"zh": "没搬成（{}），还用原来的文件夹。", "en": "Couldn't move them ({}); still using the "
+                             "old folder.", "ja": "移せませんでした（{}）。元のフォルダーのままです。"},
+    "memory_clear_persona": {"zh": "清空人设记忆", "en": "Clear her memories", "ja": "記憶を消去"},
+    "memory_clear_persona_confirm": {
+        "zh": "要清空芸芸记得的关于你的一切吗？\n记事本（{} 条）、我是谁、日记、相处笔记、回忆都会删掉，聊天原话不动。删掉就找不回来了。",
+        "en": "Clear everything Yunyun remembers about you?\nThe notebook ({} entries), who she is, her diary, rapport "
+              "notes and recollections will be deleted; what was said in chats stays. This can't be undone.",
+        "ja": "芸芸があなたについて覚えていることをすべて消しますか？\nメモ帳（{} 件）・自分について・日記・付き合いメモ・思い出が"
+              "削除されます（会話のやり取りは残ります）。元に戻せません。",
+    },
+    "memory_clear_all": {"zh": "全部清空", "en": "Clear everything", "ja": "すべて消去"},
+    "memory_clear_all_confirm": {
+        "zh": "要清空芸芸的全部记忆吗？\n聊天原话、历史对话、记事本、我是谁、日记、相处笔记、回忆都会删掉，"
+              "她会像第一次见你一样。删掉就找不回来了。",
+        "en": "Clear all of Yunyun's memories?\nWhat was said, chat history, the notebook, who she is, her diary, "
+              "rapport notes and recollections will all be deleted — she'll be meeting you for the first time. "
+              "This can't be undone.",
+        "ja": "芸芸の記憶をすべて消しますか？\nやり取り・履歴・メモ帳・自分について・日記・付き合いメモ・思い出がすべて削除され、"
+              "はじめて会ったときのようになります。元に戻せません。",
+    },
+    "memory_cleared": {"zh": "清空了。", "en": "Cleared.", "ja": "消去しました。"},
     "recollections_group": {"zh": "回忆（{} 段）", "en": "Recollections ({})", "ja": "思い出（{} 件）"},
     "recollections_edit_title": {"zh": "编辑回忆", "en": "Edit recollection", "ja": "思い出を編集"},
     "rapport_group": {"zh": "相处笔记（{} 条在用，{} 条观察中）", "en": "Rapport notes ({} in use, {} observing)",
                       "ja": "付き合いメモ（使用中 {} 件、観察中 {} 件）"},
     "rapport_waiting": {"zh": "观察中", "en": "observing", "ja": "観察中"},
     "rapport_explicit": {"zh": "你明确说过的", "en": "You asked for this", "ja": "あなたがはっきり頼んだこと"},
-    "rapport_seen": {"zh": "在 {} 段对话里出现过", "en": "Seen in {} chat(s)", "ja": "{} つの会話で出てきた"},
+    "rapport_seen": {"zh": "在 {} 天里出现过", "en": "Seen on {} day(s)", "ja": "{} 日出てきた"},
     "rapport_edit_title": {"zh": "编辑相处笔记", "en": "Edit rapport note", "ja": "付き合いメモを編集"},
     "notebook_about_you": {"zh": "关于你（{}）", "en": "About you ({})", "ja": "あなたについて（{}）"},
     "notebook_project": {"zh": "项目：{}（{}）", "en": "Project: {} ({})", "ja": "プロジェクト：{}（{}）"},
@@ -288,12 +341,8 @@ TEXTS = {
         "en": "The notebook is empty. Say \"remember …\" to Yunyun, or let her take notes while she works.",
         "ja": "メモ帳はまだ空です。芸芸に「覚えておいて」と言うか、作業中に記録してもらいましょう。",
     },
-    "notebook_edit": {"zh": "编辑…", "en": "Edit…", "ja": "編集…"},
+    "notebook_edit": {"zh": "看 / 改…", "en": "View / edit…", "ja": "表示・編集…"},
     "notebook_delete": {"zh": "删除", "en": "Delete", "ja": "削除"},
-    "notebook_clear": {"zh": "全部清空", "en": "Clear all", "ja": "すべて消去"},
-    "notebook_clear_confirm": {"zh": "确定要删掉记事本里的全部 {} 条吗？删掉就找不回来了。",
-                               "en": "Delete all {} entries in the notebook? This can't be undone.",
-                               "ja": "メモ帳の {} 件をすべて削除しますか？元に戻せません。"},
     "notebook_edit_title": {"zh": "编辑记事本", "en": "Edit notebook entry", "ja": "メモ帳を編集"},
     "notebook_title_label": {"zh": "标题（一句话）", "en": "Title (one line)", "ja": "タイトル（一文）"},
     "notebook_content_label": {"zh": "细节（可以不填）", "en": "Details (optional)", "ja": "詳細（省略可）"},
@@ -1306,19 +1355,21 @@ TEXTS = {
     "assistant_card_undone": {"zh": "已撤销", "en": "Undone", "ja": "取り消し済み"},
     # 历史对话（设置 → 助手）
     "assistant_history_note": {
-        "zh": "问答卡片保留 {} 天，只存在这台电脑上（里面有完整的对话内容）。",
-        "en": "Chat cards are kept for {} days, only on this PC (they contain the full conversations).",
-        "ja": "やり取りのカードは {} 日間、この PC にだけ保存されます（会話の全文を含みます）。",
+        "zh": "问答卡片保留 {} 天，只存在这台电脑上（里面有完整的对话内容）。清空历史对话在 设置 → 记事本 → 存放和清空。",
+        "en": "Chat cards are kept for {} days, only on this PC (they contain the full conversations). To clear chat "
+              "history, go to Settings → Notebook → Storage and clearing.",
+        "ja": "やり取りのカードは {} 日間、この PC にだけ保存されます（会話の全文を含みます）。履歴の消去は 設定 → メモ帳 → "
+              "保存と消去 から。",
     },
     "assistant_history_clear": {"zh": "清空历史对话", "en": "Clear chat history", "ja": "履歴を消去"},
     "assistant_history_confirm": {
-        "zh": "要清空助手的历史对话吗？\n问答卡片、Claude Code 的对话记录、撤销用的文件备份、芸芸的回忆（每段对话的摘要）"
-              "都会删掉，清空后就不能撤销以前的改动了。",
-        "en": "Clear the assistant's chat history?\nChat cards, Claude Code's conversation records, the file backups "
-              "used for undo and Yunyun's recollections (chat summaries) will be deleted; earlier changes can no longer "
-              "be undone.",
-        "ja": "アシスタントの履歴を消去しますか？\nやり取りのカード、Claude Code の会話記録、取り消し用のファイルのバックアップ、"
-              "芸芸の思い出（会話の要約）が削除され、以前の変更は取り消せなくなります。",
+        "zh": "要清空助手的历史对话吗？\n问答卡片、聊天原话、Claude Code 的对话记录、撤销用的文件备份都会删掉，"
+              "清空后就不能撤销以前的改动了。芸芸记得的（记事本、日记、回忆这些）不动。",
+        "en": "Clear the assistant's chat history?\nChat cards, what was said, Claude Code's conversation records and "
+              "the file backups used for undo will be deleted; earlier changes can no longer be undone. What Yunyun "
+              "remembers (notebook, diary, recollections…) stays.",
+        "ja": "アシスタントの履歴を消去しますか？\nやり取りのカード・会話の全文・Claude Code の会話記録・取り消し用のファイルの"
+              "バックアップが削除され、以前の変更は取り消せなくなります。芸芸が覚えていること（メモ帳・日記・思い出など）は残ります。",
     },
     "assistant_history_cleared": {"zh": "历史对话已清空。", "en": "Chat history cleared.", "ja": "履歴を消去しました。"},
     # 历史对话面板

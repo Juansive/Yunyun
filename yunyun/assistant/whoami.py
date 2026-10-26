@@ -5,7 +5,7 @@
   一天最多改 MAX_PER_DAY 处；OBSERVE_DAYS 天没再出现的提议扔掉；
 - 每次改之前存一份旧版（最多 MAX_VERSIONS 份，设置里能退回）；你在设置里手动改的马上生效（12.5）；
 - 底线规则（persona._RULES）不在这里，改不到；
-- 存在 %APPDATA%\\Yunyun\\Yunyun\\assistant\\whoami.json，只在本机；日志不写内容。
+- 存在记忆文件夹（memory_folder.py，默认是数据目录下的 assistant）的 whoami.json，只在本机；日志不写内容。
 
 芸芸进程（设置页）和助手子进程（回顾、人设）都用：不 import Qt，也不 import SDK。
 """
@@ -13,7 +13,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, timedelta
 
 from yunyun import jsonfile
-from yunyun.paths import data_dir
+from yunyun.assistant import memory_folder
 
 DAYS_TO_APPLY = 3      # 在几个不同的日子里出现过才真的改（2026-10-26 定）
 MAX_PER_DAY = 2        # 一次回顾最多改几处
@@ -49,7 +49,7 @@ class WhoAmI:
 
 
 def whoami_path():
-    return data_dir() / "assistant" / "whoami.json"
+    return memory_folder.folder() / "whoami.json"
 
 
 def _now():
@@ -200,6 +200,17 @@ def restore(index, path=None):
     if not 0 <= index < len(who.versions):
         return False
     set_text(who.versions[index]["text"], path)
+    return True
+
+
+def drop_change(change_id, path=None):
+    """扔掉一条观察中的提议（设置页）；没有这一条返回 False。"""
+    who = load(path)
+    kept = [c for c in who.observing if c.id != change_id]
+    if len(kept) == len(who.observing):
+        return False
+    who.observing = kept
+    save(who, path)
     return True
 
 

@@ -2,8 +2,8 @@
 
 - 芸芸进程每答完一问写一条（session.py 收到 TurnFinished 时）；不靠 Claude Code 的对话记录——它只留 30 天，而且启动时就清理；
 - 只存问和答的文字（不存工具输出、截图，图片只记几张）；撤回的那一问（7.9 ⑤）删掉；
-- 存多久用户选（KEEP_CHOICES，默认一直留）；"清空历史对话"一起清掉；
-- 存在 %APPDATA%\\Yunyun\\Yunyun\\assistant\\archive.sqlite，只在本机；日志不写内容。
+- 存多久用户选（memory_folder.YEAR_CHOICES，默认一直留）；"清空历史对话"一起清掉；
+- 存在记忆文件夹（memory_folder.py，默认是数据目录下的 assistant）的 archive.sqlite，只在本机；日志不写内容。
 
 芸芸进程（写、清空）和助手子进程（每日回顾、人设、"翻回忆"）都用：不 import Qt，也不 import SDK。
 两边都可能同时打开：每次操作开一个短连接，用完就关（SQLite 自己管文件锁）。
@@ -14,12 +14,11 @@ from contextlib import closing
 from dataclasses import dataclass
 from datetime import datetime
 
+from yunyun.assistant import memory_folder
 from yunyun.assistant.recollections import search_terms
-from yunyun.paths import data_dir
 
 log = logging.getLogger(__name__)
 
-KEEP_CHOICES = (0, 1, 3)   # 存几年；0 = 一直留（默认，2026-10-26 定）
 SEARCH_LIMIT = 8           # 搜一次最多给几条
 TIMEOUT_S = 5              # 另一个进程正在写时最多等几秒
 RECENT_CHARS = 6_000       # 人设里的"近期原文"最多多少字（约 6000 token，2026-10-26 定）
@@ -37,7 +36,7 @@ class Entry:
 
 
 def archive_path():
-    return data_dir() / "assistant" / "archive.sqlite"
+    return memory_folder.folder() / "archive.sqlite"
 
 
 def _now():

@@ -3,7 +3,7 @@
 - 摘要由回想（reflect.py）顺便写：和相处笔记是同一次调用，几乎不多花钱；一段对话一条，接着聊过再回想就更新；
 - 每段新对话带上最近 RECENT 段的摘要（人设里，芸芸能主动接上话），更早的用"翻回忆"工具按关键词查（tools/recall_chats.py）；
 - 留 KEEP_DAYS 天、最多 MAX_ITEMS 段（2026-10-14 用户定）；
-- 存在 %APPDATA%\\Yunyun\\Yunyun\\assistant\\recollections.json，只在本机；日志不写内容。
+- 存在记忆文件夹（memory_folder.py，默认是数据目录下的 assistant）的 recollections.json，只在本机；日志不写内容。
 
 芸芸进程（设置 → 记事本、清空历史对话）和助手子进程（回想、人设、工具）都用：不 import Qt，也不 import SDK。
 """
@@ -12,7 +12,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta
 
 from yunyun import jsonfile
-from yunyun.paths import data_dir
+from yunyun.assistant import memory_folder
 
 RECALL_CHATS_TOOL = "mcp__yunyun__recall_chats"   # "翻回忆"工具在 Claude Code 里的名字：权限规则、界面也要认它
 RECENT = 5           # 每段对话带上最近几段的摘要
@@ -34,7 +34,7 @@ class Recollection:
 
 
 def recollections_path():
-    return data_dir() / "assistant" / "recollections.json"
+    return memory_folder.folder() / "recollections.json"
 
 
 def _clean(text, limit):

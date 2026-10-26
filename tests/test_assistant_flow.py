@@ -1142,9 +1142,9 @@ def test_clearing_history_in_settings_empties_the_deck(qapp, world, monkeypatch)
     processes[0].say(protocol.Ready("anthropic", "m"))
     finish_turn(pet, processes[0], "问题")
     assert assistant_history.history_path().exists()
-    pet.open_settings("assistant")
+    pet.open_settings("notebook")   # 12.5 起清空在 设置 → 记事本
     monkeypatch.setattr(QMessageBox, "question", staticmethod(lambda *a: QMessageBox.StandardButton.Yes))
-    pet.settings_window.assistant_page._clear_history.click()
+    pet.settings_window.notebook_page._clear_history_button.click()
     assert not assistant_history.history_path().exists()
     assert pet.assistant.cards == []
     assert wait_until(qapp, lambda: not pet.assistant.deck.isVisible())

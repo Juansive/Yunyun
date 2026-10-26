@@ -13,8 +13,7 @@ import logging
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import (
-    QComboBox, QDoubleSpinBox, QFormLayout, QHBoxLayout, QLineEdit, QMessageBox, QPlainTextEdit, QPushButton,
-    QVBoxLayout, QWidget,
+    QComboBox, QDoubleSpinBox, QFormLayout, QLineEdit, QPlainTextEdit, QPushButton, QVBoxLayout, QWidget,
 )
 
 from yunyun import i18n
@@ -27,7 +26,6 @@ from yunyun.assistant.settings import (
     MAX_PERSONALITY_CHARS, MAX_USER_NAME_CHARS, MIN_BUDGET_USD, MIN_CONVERSATION_BUDGET_USD, PERSONALITIES,
     AssistantSettings,
 )
-from yunyun.pet import assistant_history
 from yunyun.pet.assistant_deck import token_amount
 from yunyun.pet.theme import Toggle, primary
 from yunyun.pet.widgets import StatusLabel, button_row, note
@@ -47,7 +45,6 @@ def balance_text(balance):
 
 class AssistantSettingsPage(QWidget):
     settings_saved = Signal()
-    history_cleared = Signal()   # 清空了历史对话（文件已经删了）：芸芸把内存里的卡片也清掉
 
     def __init__(self, parent=None, make_check=KeyCheck):
         """make_check(服务商, 模型, Key, what="check" / "balance") → 有 done、balance 信号和 start() 的对象；测试时换成假的。"""
@@ -104,13 +101,8 @@ class AssistantSettingsPage(QWidget):
         self._spent.setTextFormat(Qt.TextFormat.RichText)
         self._spent.setOpenExternalLinks(True)
         layout.addWidget(self._spent)
-        history_row = QHBoxLayout()   # 历史对话：保留多久 + 清空
-        self._history_note = note(tr("assistant_history_note", HISTORY_KEEP_DAYS))
-        self._clear_history = QPushButton(tr("assistant_history_clear"))
-        self._clear_history.clicked.connect(self._on_clear_history)
-        history_row.addWidget(self._history_note, 1)
-        history_row.addWidget(self._clear_history)
-        layout.addLayout(history_row)
+        # 历史对话保留多久；清空在 设置 → 记事本（12.5，三个清空按钮放一处）
+        layout.addWidget(note(tr("assistant_history_note", HISTORY_KEEP_DAYS)))
 
         self._hint = note()
         self._hint.setOpenExternalLinks(True)   # 点链接直接用浏览器打开
@@ -258,15 +250,6 @@ class AssistantSettingsPage(QWidget):
         if len(text) > MAX_PERSONALITY_CHARS:
             self._personality_text.setPlainText(text[:MAX_PERSONALITY_CHARS])
             self._personality_text.moveCursor(QTextCursor.MoveOperation.End)
-
-    def _on_clear_history(self):
-        """清空历史对话：卡片、Claude Code 自己的对话记录、撤销用的备份都删掉（先问一句）。"""
-        answer = QMessageBox.question(self, self.window().windowTitle(), i18n.tr("assistant_history_confirm"))
-        if answer != QMessageBox.StandardButton.Yes:
-            return
-        assistant_history.clear()
-        self.history_cleared.emit()
-        self._status.setText(i18n.tr("assistant_history_cleared"))
 
     def _test_and_save(self):
         if not self._save_button.isEnabled():

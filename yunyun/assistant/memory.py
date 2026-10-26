@@ -6,7 +6,7 @@
 - 怎么写：模型自己判断（你的偏好、项目的规矩、踩过的坑）+ 你说"记住"时一定记，用"记一条"工具；
 - **淡出、不删**（阶段 12.4）：每条记着被用到几次、最后一次什么时候（查到、改过都算）；目录按"常用 + 最近"排（strength），
   排不进前 MAX_INDEX 的不主动出现，但"查记忆"照样找得到——像人一样，常想起的记得牢，很久没想起的要提醒一下才想得起来；
-- 存在 %APPDATA%\\Yunyun\\Yunyun\\assistant\\memory.json，只在本机；日志不写内容（只写编号、条数）。
+- 存在记忆文件夹（memory_folder.py，默认是数据目录下的 assistant）的 memory.json，只在本机；日志不写内容（只写编号、条数）。
 
 芸芸进程（设置 → 记事本）和助手子进程（工具）都用：不 import Qt，也不 import SDK。
 两边都可能写：每次改动都"读出来 → 改 → 整个写回去（先写临时文件再换过去）"，一次只改一条。
@@ -17,7 +17,7 @@ from dataclasses import asdict, dataclass, fields
 from datetime import datetime
 
 from yunyun import jsonfile
-from yunyun.paths import data_dir
+from yunyun.assistant import memory_folder
 
 USER, PROJECT = "user", "project"
 SCOPES = (USER, PROJECT)
@@ -53,7 +53,7 @@ _FIELDS = {f.name for f in fields(Memory)}
 
 
 def memory_path():
-    return data_dir() / "assistant" / "memory.json"
+    return memory_folder.folder() / "memory.json"
 
 
 def same_folder(a, b):

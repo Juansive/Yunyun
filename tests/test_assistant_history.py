@@ -96,7 +96,7 @@ def test_clear_deletes_cards_and_claude_code_records():
     assert not assistant_history.history_path().exists()
     assert not (claude / "projects").exists() and not (claude / "file-history").exists()
     assert (claude / "backups" / "x.json").exists()    # Claude Code 自己的设置备份不动
-    assert recollections.load() == []                   # 回忆是从对话里写的：一起删（11.4）
+    assert [r.summary for r in recollections.load()] == ["聊答辩准备"]   # 回忆 12.5 起算人设记忆：不删
     assert rapport.active_lines(rapport.load()) == ["喜欢被叫主人"]   # 相处笔记不是对话内容：不动
 
 

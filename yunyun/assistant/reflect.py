@@ -14,9 +14,10 @@ import json
 import logging
 import os
 import re
+import sqlite3
 from datetime import datetime, timedelta
 
-from yunyun.assistant import archive, diary, protocol, rapport, recollections, transcripts, whoami
+from yunyun.assistant import archive, diary, memory_folder, protocol, rapport, recollections, transcripts, whoami
 from yunyun.assistant.environment import system_proxy_env
 from yunyun.assistant.persona import character
 
@@ -188,6 +189,12 @@ def _apply(day, entries, labels, changes):
 async def reflect_recent(settings, api_key, language, emit, current="", projects_dir=None, ask=complete, now=None):
     """回顾前几天（settings.rapport 关着就什么都不做）。current：没用了（每日回顾不看正在聊的这段），留着和 worker 的调用对上。
     ask：调模型的函数；now：现在几点（测试用）。"""
+    try:   # 原话存几年（设置 → 记事本，12.5）：开关关着也照样清
+        removed = archive.purge(memory_folder.archive_years(), now)
+        if removed:
+            log.info("原文存档：删了 %d 条超过年限的", removed)
+    except (sqlite3.Error, OSError) as e:
+        log.warning("原文存档没清成（%s）", type(e).__name__)
     if not settings.rapport:
         return
     if projects_dir is None:

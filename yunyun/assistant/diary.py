@@ -2,7 +2,7 @@
 
 - 一天一篇（她自己的口吻，100～200 字）；那天没聊过就没有；人设里带昨天那篇（12.3），设置 → 记事本能看能删、不能改（12.5）；
 - 也记着"回顾到哪天了"（reviewed）和"以前的对话记录搬进原文存档了没有"（backfilled，只做一次）；
-- 存在 %APPDATA%\\Yunyun\\Yunyun\\assistant\\diary.json，只在本机；日志不写内容。
+- 存在记忆文件夹（memory_folder.py，默认是数据目录下的 assistant）的 diary.json，只在本机；日志不写内容。
 
 芸芸进程（设置页）和助手子进程（回顾、人设）都用：不 import Qt，也不 import SDK。
 """
@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 
 from yunyun import jsonfile
-from yunyun.paths import data_dir
+from yunyun.assistant import memory_folder
 
 MAX_ENTRY = 600   # 一篇最多多少字
 RECENT_DAYS = 2   # 人设里的"近期原文"最多往前几天（还没回顾的日子；回顾在大脑启动后才做，所以常常差一天）
@@ -25,7 +25,7 @@ class Diary:
 
 
 def diary_path():
-    return data_dir() / "assistant" / "diary.json"
+    return memory_folder.folder() / "diary.json"
 
 
 def _clean(text):
