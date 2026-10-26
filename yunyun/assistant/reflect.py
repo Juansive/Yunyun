@@ -59,7 +59,8 @@ contradicts it). "revise": [{{"id": "r1", "text": "better wording"}}]. "drop": i
 written as advice to Yunyun, e.g. "When the user is tired, comfort first; no teasing".
 
 4. "self": your self-description ("who I am") — how you see yourself, beyond the preset personality: what you have come \
-to like or value, habits you picked up, how you see your bond with the user. It changes slowly, like a real person's: \
+to like or value, habits you picked up, how you see your bond with the user. How to talk to this user (answer length, \
+tone, what to call them) belongs in the rapport notes, not here. It changes slowly, like a real person's: \
 a proposal only takes effect after evidence on {days} different days, and at most {per_day} changes a day.
 - "seen": ids of pending proposals that this day gives evidence for again.
 - "propose": at most 3 [{{"text": "one sentence", "replaces": ""}}]. "replaces": "" to add a sentence, or a sentence \
@@ -69,8 +70,9 @@ shows, in small steps — not moods of one day. Most days propose nothing.
 - Never propose anything that makes you rude, dishonest or unsafe, or that drops your basic rules; don't restate the \
 preset personality.
 
-Everywhere: refer to the user as "the user" in English, or naturally in {language} (or the name they asked to be \
-called); never guess their gender. Use only evidence from this day."""
+Everywhere: call the user by the name they asked for (given below, or asked for in a conversation); without one, \
+"the user" in English or the natural word in {language}. Never guess their gender: no he / she — in Chinese never \
+write 他 or 她 for the user, in Japanese no 彼 / 彼女; repeat the name or leave it out. Use only evidence from this day."""
 
 _FENCE = re.compile(r"^\s*```(?:json)?\s*|\s*```\s*$")
 
@@ -213,6 +215,7 @@ async def reflect_recent(settings, api_key, language, emit, current="", projects
             continue
         self_lines, self_pending = whoami.lines_for_review(whoami.load())
         user = (f"# Yunyun's preset personality (fixed)\n{preset}\n"
+                f"# What the user wants to be called\n{settings.user_name or '(not set)'}\n"
                 f"# Who I am (my self-description so far)\n{self_lines}\n"
                 f"# Pending self proposals\n{self_pending}\n"
                 f"# Current rapport notes\n{notes_text(rapport.load())}\n\n"
