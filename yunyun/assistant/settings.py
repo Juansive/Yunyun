@@ -58,6 +58,11 @@ class AssistantSettings:
     def effective_model(self):
         return self.model or self.info.default_model
 
+    @property
+    def images(self):
+        """选的模型能不能看图片（不能就没有截图、按坐标点，也不让粘贴图片）。"""
+        return self.info.sees_images(self.effective_model)
+
 
 def load_settings():
     """读取助手设置；没设置过、或者存的东西不对，就用默认值（不会出错）。"""

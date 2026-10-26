@@ -163,7 +163,7 @@ def build_options(settings, api_key, language, stderr=None, gate=None, resume=""
     browser：assistant.browser.Browser（有它才有浏览器的工具）；
     desktop：assistant.desktop.Desktop（有它和 bridge 才有操作桌面软件的工具，11.6b）。"""
     provider = settings.info
-    screen = bridge is not None and provider.images
+    screen = bridge is not None and settings.images
     env = {
         **launch_env(provider, api_key, settings.effective_model),
         "CLAUDE_CONFIG_DIR": str(CONFIG_DIR),
@@ -663,8 +663,8 @@ class ClaudeBrain:
 
     async def ask(self, text, images=()):
         """问一轮。images：一起发的图片（{"data": base64, "mime": …}，阶段 5 输入框里粘贴的）。"""
-        if images and not self._settings.info.images:   # 界面上本来就不让粘（5.6），这里兜底
-            log.info("这家服务商看不了图片，%d 张图片没发", len(images))
+        if images and not self._settings.images:   # 界面上本来就不让粘（5.6），这里兜底
+            log.info("这个模型看不了图片，%d 张图片没发", len(images))
             images = ()
         self._state.new_turn()
         self.gate.stopped = False

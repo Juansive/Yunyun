@@ -688,7 +688,7 @@ class AssistantMode(QObject):
 
     def _update_images_allowed(self, *_):
         """现在的大脑能不能看图片：不能的话输入框不收图片（5.6）。大脑启动时（换了服务商）重新看一次。"""
-        self.input.images_allowed = assistant_settings.load_settings().info.images
+        self.input.images_allowed = assistant_settings.load_settings().images
 
     def _on_image_refused(self, reason):
         key = "assistant_images_unsupported" if reason == "unsupported" else "assistant_images_too_many"

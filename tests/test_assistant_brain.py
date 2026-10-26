@@ -434,6 +434,19 @@ def test_screenshot_tool_only_when_the_provider_can_read_images(monkeypatch):
     assert "看不了图片" in blind.system_prompt["append"] and "open_app" in blind.system_prompt["append"]
 
 
+def test_deepseek_pro_cannot_see_images(monkeypatch):
+    """DeepSeek 的 flash 能看图、pro 不能：选了 pro 就没有截图 / 按坐标点，人设也说看不了。"""
+    brain = claude_brain.ClaudeBrain(AssistantSettings(), "k", "zh", lambda e: None)
+    calls = []
+    real_server = claude_brain.yunyun_server
+    monkeypatch.setattr(claude_brain, "yunyun_server", lambda *a, **kw: calls.append(kw) or real_server(*a, **kw))
+    assert AssistantSettings("deepseek").images and AssistantSettings("deepseek", "deepseek-flash").images
+    pro = AssistantSettings("deepseek", "deepseek-v4-pro")
+    assert not pro.images
+    options = claude_brain.build_options(pro, "k", "zh", bridge=brain.bridge)
+    assert calls[-1]["screen"] is False and "看不了图片" in options.system_prompt["append"]
+
+
 def test_app_tools_are_on_the_yunyun_server():
     from yunyun.assistant.tools import Bridge, yunyun_server
     assert yunyun_server("", notebook=False, bridge=Bridge(print), screen=False) is not None   # 打开软件的两个工具

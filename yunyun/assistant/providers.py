@@ -58,6 +58,7 @@ class Provider:
     small_model: str = ""                      # 后台小任务用的模型（haiku 别名）；空 = 也用用户选的模型
     web_search: bool = True                    # 能不能用网页搜索（WebSearch 在 Anthropic 的服务器上执行）
     images: bool = True                        # 能不能看图片（阶段 5 截图用）
+    blind_models: tuple = ()                   # 这家能看图片、但这几个模型看不了（用 sees_images 判断）
     # Claude Code 只认 Claude 的价格，不认识的模型一律按 $5 / $25 每百万 token 算（2026-10-08 实测，见 tools/try_provider.py）。
     # True = 它报的花费对这家不准：芸芸自己按 prices 算，每段对话的上限也由芸芸管（不交给 Claude Code 的 max_budget_usd）
     own_pricing: bool = False
@@ -65,6 +66,10 @@ class Provider:
     @property
     def default_model(self):
         return self.models[0] if self.models else ""
+
+    def sees_images(self, model):
+        """这个模型能不能看图片（截图、按坐标点、粘贴图片都要）。"""
+        return self.images and model not in self.blind_models
 
     def rates(self, model):
         """这个模型的价格；不知道就是 None（不估算）。自己算钱的服务商，认不出的模型名按默认模型算
@@ -127,6 +132,7 @@ PROVIDERS = {
             alias_models=True,
             small_model="deepseek-flash",      # 官方推荐：后台小任务用 flash（选了 pro 也不让小任务跟着贵）
             web_search=False,                  # 文档没说能执行 Anthropic 的网页搜索；读网页（WebFetch）在本机做，能用
+            blind_models=("deepseek-v4-pro",),   # 2026-10-26 官方价格页"图像理解"：flash 支持、pro 不支持
             own_pricing=True,                  # 用户 2026-10-08 选的：芸芸自己按 DeepSeek 的价格算美元
         ),
     ]
