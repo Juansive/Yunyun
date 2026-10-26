@@ -97,6 +97,14 @@ _RAPPORT = {
     "ja": "# このユーザーとの付き合い方（以前の会話から学んだこと。これに従うこと。ただし「守ること」と決まりが優先）\n",
 }
 
+# "我是谁"（阶段 12.3，assistant/whoami.py）：芸芸从经历里慢慢形成的自我认识，接在性格后面、相处笔记前面
+_WHOAMI = {
+    "zh": "# 你对自己的认识（经历中慢慢形成的，是你的一部分；和底线、规矩冲突时听底线和规矩的）\n",
+    "en": "# Who you are (grown slowly from your experiences; it's part of you, but your bottom lines and rules "
+          "come first)\n",
+    "ja": "# 自分についての認識（経験の中で少しずつできたもの。あなたの一部です。ただし「守ること」と決まりが優先）\n",
+}
+
 # 不管什么性格都照旧的规矩（后面接着"现在能做什么"）
 _RULES = {
     "zh": (
@@ -411,6 +419,21 @@ _CHATS = {
           "- 今の話に関係があれば、自然に話をつないでかまいません（前に話していたことがどうなったか聞くなど）。ただし毎回は持ち出さないこと。\n"
           "- もっと前のことや、実際に何を話したかは recall_chats で調べてください。要約にない細かいことを覚えているふりはしないこと。\n",
 }
+# 日记和近期原文（阶段 12.3）：昨天（最近一篇）的日记 + 上次每日回顾之后的对话原文，接在回忆后面
+_DIARY = {
+    "zh": "\n\n# 你最近的一篇日记（{day}，你自己写的）\n{text}\n",
+    "en": "\n\n# Your latest diary entry ({day}, written by you)\n{text}\n",
+    "ja": "\n\n# 最近の日記（{day}、あなたが書いたもの）\n{text}\n",
+}
+_RECENT = {
+    "zh": "\n\n# 最近几次对话的原话（还没写进日记的，旧的在前；回答截短了）\n{text}\n"
+          "- 这些你都记得，相关时可以自然接上；不要整段复述，也不要每次都提。\n",
+    "en": "\n\n# What was said in your latest chats (not in a diary yet, oldest first; answers cut short)\n{text}\n"
+          "- You remember these; pick them up naturally when relevant. Don't repeat them back or bring them up "
+          "every time.\n",
+    "ja": "\n\n# 最近の会話の実際のやり取り（まだ日記に書いていないもの。古い順、回答は短く切っています）\n{text}\n"
+          "- これらは覚えていることです。関係があるときは自然につないでください。そのまま繰り返したり、毎回持ち出したりしないこと。\n",
+}
 _NOTEBOOK_HEADINGS = {   # (关于用户, 这个项目, 还没有)
     "zh": ("关于用户：", "这个项目：", "（还没有）"),
     "en": ("About the user:", "This project:", "(nothing yet)"),
@@ -428,14 +451,16 @@ def character(language, personality="default", personality_text=""):
 
 def persona(language, working=False, project_notes="", web_search=True, notebook=None, screen=False, apps=False,
             browser=False, personality="default", personality_text="", user_name="", rapport=(), chats=(),
-            desktop=False):
+            desktop=False, whoami=(), diary=None, recent=""):
     """这种语言的人设（不认识的语言用中文）。working：选了工作文件夹；project_notes：工作文件夹里 CLAUDE.md 的内容；
     web_search：有没有网页搜索工具（DeepSeek 这类没有）；notebook：记事本的目录 (关于用户的几行, 这个项目的几行)，
     None = 不用记事本；screen：有没有截图工具；apps：有没有打开软件的工具；browser：有没有芸芸的浏览器；
     desktop：有没有操作桌面软件的工具（11.6b）；
     personality / personality_text：芸芸的性格（"default" / "custom"）和设置里写的那段话（见 character）；
     user_name：怎么称呼用户（空 = 叫"你"）；rapport：生效的相处笔记（每条一行，rapport.active_lines）；
-    chats：最近几段对话的摘要（每段一行，recollections.recent_lines）。"""
+    chats：最近几段对话的摘要（每段一行，recollections.recent_lines）；
+    whoami："我是谁"（每句一行）；diary：最近一篇日记 (日期, 内容) 或 None；
+    recent：上次每日回顾之后的对话原文（archive.recent_text，阶段 12.3）。"""
     if language not in _CHARACTER:
         language = "zh"
     web = _WEB[language][0 if web_search else 1]
@@ -449,7 +474,8 @@ def persona(language, working=False, project_notes="", web_search=True, notebook
     name = user_name.strip()
     address = _ADDRESS[language][1].format(name=name) if name else _ADDRESS[language][0]
     learned = (_RAPPORT[language] + "".join(f"- {line}\n" for line in rapport)) if rapport else ""
-    text = (character(language, personality, personality_text) + learned + _RULES[language].format(address=address)
+    grown = (_WHOAMI[language] + "".join(f"- {line}\n" for line in whoami)) if whoami else ""
+    text = (character(language, personality, personality_text) + grown + learned + _RULES[language].format(address=address)
             + (_WORKING if working else _CHAT_ONLY)[language].format(web=web, limits=limits))
     if not web_search:
         text += _NO_WEB_SEARCH[language]
@@ -461,6 +487,10 @@ def persona(language, working=False, project_notes="", web_search=True, notebook
             text += "\n" + this_project + "\n" + ("\n".join(project) or empty)
     if chats:
         text += _CHATS[language].format(lines="\n".join(f"- {line}" for line in chats))
+    if diary:
+        text += _DIARY[language].format(day=diary[0], text=diary[1])
+    if recent:
+        text += _RECENT[language].format(text=recent)
     if project_notes.strip():
         text += _PROJECT_NOTES[language] + project_notes.strip()
     return text

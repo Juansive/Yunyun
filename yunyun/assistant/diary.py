@@ -7,11 +7,13 @@
 芸芸进程（设置页）和助手子进程（回顾、人设）都用：不 import Qt，也不 import SDK。
 """
 from dataclasses import dataclass, field
+from datetime import date, timedelta
 
 from yunyun import jsonfile
 from yunyun.paths import data_dir
 
 MAX_ENTRY = 600   # 一篇最多多少字
+RECENT_DAYS = 2   # 人设里的"近期原文"最多往前几天（还没回顾的日子；回顾在大脑启动后才做，所以常常差一天）
 VERSION = 1
 
 
@@ -53,6 +55,13 @@ def latest(diary, before):
     """before（"YYYY-MM-DD"）之前最近的一篇 → (日期, 日记)；没有就是 None。"""
     days = [day for day in diary.entries if day < before]
     return (max(days), diary.entries[max(days)]) if days else None
+
+
+def recent_since(diary, today, days=RECENT_DAYS):
+    """人设里的"近期原文"从哪天开始（12.3）：回顾过的那天的第二天；没回顾过或者落下太多，最多往前 days 天。"""
+    floor = (date.fromisoformat(today) - timedelta(days=days)).isoformat()
+    after = (date.fromisoformat(diary.reviewed) + timedelta(days=1)).isoformat() if diary.reviewed else ""
+    return max(floor, after)
 
 
 def delete(day, path=None):

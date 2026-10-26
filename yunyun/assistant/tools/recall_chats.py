@@ -16,10 +16,10 @@ from yunyun.assistant.tools.bridge import text_result as _text
 log = logging.getLogger(__name__)
 
 DESCRIPTION = (
-    "Look back at earlier conversations with the user. Yunyun keeps a one-line summary of each chat for about a year "
-    "(the most recent few are already in your instructions). Pass words to search the summaries, or a chat id from a "
-    "result to read what was actually said in that chat. Use it when the user "
-    "refers to something you talked about before, or when an earlier chat would clearly help."
+    "Look back at earlier conversations with the user. Yunyun keeps a one-line summary of each chat and the full chats "
+    "(the most recent few summaries are already in your instructions). Pass words to search the summaries and what "
+    "was said, or a chat id from a result to read that whole chat. Use it when the user refers to something you "
+    "talked about before, or when an earlier chat would clearly help."
 )
 SCHEMA = {
     "type": "object",
@@ -30,6 +30,13 @@ SCHEMA = {
 }
 EXCERPT_CHARS = 4_000   # 翻原话时最多交给模型多少字（留后面的部分）
 _CHAT_ID = re.compile(r"^[A-Za-z0-9-]{1,64}$")   # 对话编号只能是这样（不让拼出别的路径）
+ARCHIVE_HITS = 3        # 按词搜时，原话里最多给几处
+HIT_CHARS = 200         # 每处的问、答各最多多少字
+
+
+def _cut(text):
+    text = " ".join(str(text).split())
+    return text if len(text) <= HIT_CHARS else text[:HIT_CHARS] + "…"
 
 
 def find_chat(projects_dir, chat_id):
@@ -65,10 +72,17 @@ def recall_chats_tools(projects_dir, language="zh", path=None):
                 return _text("The full chat is no longer kept. Its summary:\n" + recollections.describe(summary))
             head = recollections.describe(summary) + "\n\n" if summary else ""
             return _text(head + day_text(entries, language, EXCERPT_CHARS)[0])
-        found = recollections.search(items, args.get("query", ""))
-        log.info("翻回忆：找到 %d 段", len(found))
-        if not found:
+        query = args.get("query", "")
+        found = recollections.search(items, query)
+        lines = archive.search(query, ARCHIVE_HITS) if str(query).strip() else []   # 原话里也搜（12.3）
+        log.info("翻回忆：找到 %d 段摘要、%d 处原话", len(found), len(lines))
+        if not found and not lines:
             return _text("No earlier chat matches. Try other words, or say you don't remember.")
-        return _text("\n".join(recollections.describe(r) for r in found))
+        text = "\n".join(recollections.describe(r) for r in found)
+        if lines:
+            text += ("\n\n" if text else "") + "Matching lines from the full chats:\n" + "\n".join(
+                f"[{e.at[:16].replace('T', ' ')}] User: {_cut(e.question)} / Yunyun: {_cut(e.answer)}"
+                f" — chat id {e.session}" for e in lines)
+        return _text(text)
 
     return [recall_chats]

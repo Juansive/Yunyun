@@ -16,6 +16,7 @@ import os
 import time
 from collections import deque
 from dataclasses import dataclass, field
+from datetime import datetime
 
 from claude_agent_sdk import (
     AssistantMessage, ClaudeAgentOptions, ClaudeSDKClient, CLINotFoundError, HookMatcher, PermissionResultAllow,
@@ -23,8 +24,8 @@ from claude_agent_sdk import (
     UserMessage, get_session_messages,
 )
 
-from yunyun.assistant import (apps, memory, permissions, processes, proctree, protocol, rapport, recollections,
-                              transcripts)
+from yunyun.assistant import (apps, archive, diary, memory, permissions, processes, proctree, protocol, rapport,
+                              recollections, transcripts, whoami)
 from yunyun.assistant.browser import Browser
 from yunyun.assistant.desktop import Desktop
 from yunyun.assistant.environment import (   # noqa: F401（clean_environment、hide_child_consoles 也从这里用）
@@ -154,14 +155,38 @@ def read_project_notes(workspace):
     return text
 
 
+@dataclass
+class LivedMemory:
+    """接进人设的"经历"（阶段 12.3，和相处笔记一个开关）："我是谁"、最近一篇日记、上次回顾之后的对话原文。"""
+    whoami: tuple = ()
+    diary: tuple | None = None    # (日期, 内容)
+    recent: str = ""
+
+    @property
+    def tokens(self):
+        """大约多少 token（中文一字一个；英文会算多一些）：整理对话的门槛不算这部分（TurnState.fixed_tokens）。"""
+        return sum(map(len, self.whoami)) + (len(self.diary[1]) if self.diary else 0) + len(self.recent)
+
+
+def lived_memory(settings, language, resume="", today=None):
+    """读"经历"（settings.rapport 关着就是空的）。resume：接着聊的那段（它的原话 Claude Code 自己带着，近期原文里不重复）。"""
+    if not settings.rapport:
+        return LivedMemory()
+    today = today or datetime.now().date().isoformat()
+    book = diary.load()
+    return LivedMemory(tuple(line.text for line in whoami.load().lines), diary.latest(book, today),
+                       archive.recent_text(diary.recent_since(book, today), language, exclude=resume))
+
+
 def build_options(settings, api_key, language, stderr=None, gate=None, resume="", bridge=None, browser=None,
-                  withdraw=None, desktop=None):
+                  withdraw=None, desktop=None, lived=None):
     """启动 Claude Code 的全部选项。gate：PermissionGate（每次用工具前拍板）；测试里可以不传。
     resume：接着哪一段对话聊（Claude Code 的会话编号；空 = 新对话）；
     withdraw：接着聊时扔掉最后一问（withdraw_point 的结果）；
     bridge：tools.Bridge（请芸芸进程截图、打开软件；有它才有这些工具，截图还要服务商能看图片）；
     browser：assistant.browser.Browser（有它才有浏览器的工具）；
-    desktop：assistant.desktop.Desktop（有它和 bridge 才有操作桌面软件的工具，11.6b）。"""
+    desktop：assistant.desktop.Desktop（有它和 bridge 才有操作桌面软件的工具，11.6b）；
+    lived：接进人设的"经历"（LivedMemory，12.3；不给就现读）。"""
     provider = settings.info
     screen = bridge is not None and settings.images
     env = {
@@ -181,6 +206,7 @@ def build_options(settings, api_key, language, stderr=None, gate=None, resume=""
     learned = rapport.active_lines(rapport.load()) if settings.rapport else ()   # 相处笔记（11.3）：生效的接在性格后面
     # 回忆（11.4）：最近几段的摘要接进人设，更早的用"翻回忆"工具查；和相处笔记一个开关（"回想以前的对话"）
     chats = recollections.recent_lines(recollections.load()) if settings.rapport else ()
+    lived = lived or lived_memory(settings, language, resume)
     desktop = desktop if bridge is not None else None
     server = yunyun_server(settings.workspace, notebook=settings.notebook, bridge=bridge, screen=screen,
                            browser=browser, chats=CONFIG_DIR / "projects" if settings.rapport else None,
@@ -208,7 +234,8 @@ def build_options(settings, api_key, language, stderr=None, gate=None, resume=""
                                          desktop=desktop is not None,
                                          personality=settings.personality,
                                          personality_text=settings.personality_text,
-                                         user_name=settings.user_name, rapport=learned, chats=chats)},
+                                         user_name=settings.user_name, rapport=learned, chats=chats,
+                                         whoami=lived.whoami, diary=lived.diary, recent=lived.recent)},
         include_partial_messages=True,    # 逐字显示
         # 每段对话的上限：Claude Code 按整段对话累计算；但它只认 Claude 的价格，自己算钱的服务商由 TurnState 管。
         # 每次回答的上限都由 TurnState 估算
@@ -388,6 +415,7 @@ class TurnState:
     # 对话长度：最近一次模型请求读的前文（输入 + 写缓存 + 读缓存）加上它写的输出 = 下一次请求至少要带着的
     context_tokens: int = 0
     context_limit: int = 0             # 超过多少自动整理（0 = 不整理；AssistantSettings.compact_tokens）
+    fixed_tokens: int = 0              # 人设里"经历"那部分（LivedMemory.tokens，12.3）：对话长度不算它，整理也整理不掉它
     _context_input: int = 0
     compact_meta: dict | None = None   # 整理做完了：Claude Code 报的 compact_metadata（pre_tokens、post_tokens……）
     compact_error: str = ""            # 整理没做成：Claude Code 报的原因
@@ -420,7 +448,7 @@ class TurnState:
             return
         if new_message:
             self._context_input = _input_tokens(usage)
-        self.context_tokens = self._context_input + int(usage.get("output_tokens") or 0)
+        self.context_tokens = max(0, self._context_input + int(usage.get("output_tokens") or 0) - self.fixed_tokens)
 
     @property
     def needs_compact(self):
@@ -643,9 +671,11 @@ class ClaudeBrain:
             self._resume, withdraw = "", None
         elif self._resume and self._withdraw and withdraw is None:
             log.warning("撤回：记录里的最后一问对不上（或者找不到记录），照常接着聊、不扔")
+        lived = lived_memory(self._settings, self._language, self._resume)
+        self._state.fixed_tokens = lived.tokens   # 整理对话的门槛不算"经历"那部分（12.3）
         options = build_options(self._settings, self._api_key, self._language, stderr=self._stderr.append,
                                 gate=self.gate, resume=self._resume, bridge=self.bridge, browser=self.browser,
-                                withdraw=withdraw, desktop=self.desktop)
+                                withdraw=withdraw, desktop=self.desktop, lived=lived)
         if self._resume:
             # 接着聊：Claude Code 报的花费会接着那段对话的累计往上加（try_resume.py 实测），先把以前花的当起点，
             # 不然第一问会把以前的钱再算一遍

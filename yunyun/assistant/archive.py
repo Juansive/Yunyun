@@ -22,6 +22,9 @@ log = logging.getLogger(__name__)
 KEEP_CHOICES = (0, 1, 3)   # 存几年；0 = 一直留（默认，2026-10-26 定）
 SEARCH_LIMIT = 8           # 搜一次最多给几条
 TIMEOUT_S = 5              # 另一个进程正在写时最多等几秒
+RECENT_CHARS = 6_000       # 人设里的"近期原文"最多多少字（约 6000 token，2026-10-26 定）
+RECENT_ANSWER = 300        # 近期原文里每个回答最多多少字
+_SPEAKERS = {"zh": ("你", "我"), "en": ("You", "Me"), "ja": ("あなた", "私")}   # 近期原文从芸芸的角度写
 
 
 @dataclass
@@ -121,6 +124,25 @@ def purge(keep_years, now=None, path=None):
         cutoff = now.replace(year=now.year - keep_years, day=28)
     with closing(_connect(path)) as db, db:
         return db.execute("DELETE FROM turns WHERE at < ?", (cutoff.isoformat(timespec="seconds"),)).rowcount
+
+
+def recent_text(since, language="zh", exclude="", limit=RECENT_CHARS, path=None):
+    """人设里的"近期原文"（12.3）：since（ISO）以后的问答，不含 exclude 那段（接着聊的那段 Claude Code 自己带着）；
+    超过 limit 字从前面扔，回答截到 RECENT_ANSWER 字；从芸芸的角度写（"你" / "我"）。没有就是 ""。"""
+    you, me = _SPEAKERS.get(language, _SPEAKERS["zh"])
+    blocks, size = [], 0
+    for entry in reversed(between(since, path=path)):
+        if entry.session == exclude:
+            continue
+        answer = " ".join(entry.answer.split())
+        if len(answer) > RECENT_ANSWER:
+            answer = answer[:RECENT_ANSWER] + "…"
+        block = f"[{entry.at[5:16].replace('T', ' ')}] {you}: {' '.join(entry.question.split())}\n{me}: {answer}"
+        if size + len(block) > limit:
+            break
+        blocks.append(block)
+        size += len(block) + 1   # 加上换行
+    return "\n".join(reversed(blocks))
 
 
 def first_at(path=None):
