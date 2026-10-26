@@ -81,6 +81,36 @@ def test_search_by_ids_or_words():
     assert "在项目根目录跑" in memory.describe(memories[0])
 
 
+def test_entries_fade_unless_they_are_used():
+    """淡出、不删（12.4）：常查到的、最近改过的排前面；排不进目录的只说有几条，查记忆照样找得到。"""
+    from datetime import datetime
+    now = datetime(2026, 10, 26)
+    old = memory.Memory("m1", USER, "很久没想起的", created="2026-06-01T00:00:00", updated="2026-06-01T00:00:00")
+    used = memory.Memory("m2", USER, "常想起的", created="2026-06-01T00:00:00", updated="2026-06-01T00:00:00",
+                         used="2026-10-25T00:00:00", uses=5)
+    fresh = memory.Memory("m3", USER, "刚记的", created="2026-10-25T00:00:00", updated="2026-10-25T00:00:00")
+    assert memory.strength(used, now) > memory.strength(fresh, now) > memory.strength(old, now)
+    assert memory.strength(old, now) < 0.05                                       # 五个月没用：很淡了
+    user, _ = memory.index_lines([old, used, fresh], now=now)
+    assert user == ["[m2] 常想起的", "[m3] 刚记的", "[m1] 很久没想起的"]
+    many = [memory.Memory(f"m{i}", USER, f"第{i}条", created=f"2026-10-{i % 28 + 1:02d}T00:00:00") for i in range(70)]
+    user, _ = memory.index_lines(many, now=now)
+    assert len(user) == memory.MAX_INDEX + 1 and user[-1].startswith("(+10 older entries")
+
+
+def test_recall_tool_counts_what_it_finds():
+    memory.remember("用户喜欢简短的回复")
+    memory.remember("用户用 Windows")
+    tools = notebook_tools("")
+    call(tools, "recall", {"ids": ["m1"]})
+    call(tools, "recall", {"query": "简短"})
+    call(tools, "recall", {})                                                      # 翻全部：不算"想起来了"
+    loaded = {m.id: m for m in memory.load()}
+    assert (loaded["m1"].uses, loaded["m2"].uses) == (2, 0) and loaded["m1"].used
+    memory.save(memory.load())
+    assert memory.load()[0].uses == 2                                              # 存了再读回来还是数字
+
+
 # ---------- 工具 ----------
 
 def call(tools, name, args):

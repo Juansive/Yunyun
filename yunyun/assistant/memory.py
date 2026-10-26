@@ -4,11 +4,14 @@
 - 怎么读：每段对话开始时把"目录"（一条一行：编号 + 标题）接在人设后面（整段对话不变，命中缓存），
   细节由模型用"查记忆"工具按需读（assistant/tools）；
 - 怎么写：模型自己判断（你的偏好、项目的规矩、踩过的坑）+ 你说"记住"时一定记，用"记一条"工具；
+- **淡出、不删**（阶段 12.4）：每条记着被用到几次、最后一次什么时候（查到、改过都算）；目录按"常用 + 最近"排（strength），
+  排不进前 MAX_INDEX 的不主动出现，但"查记忆"照样找得到——像人一样，常想起的记得牢，很久没想起的要提醒一下才想得起来；
 - 存在 %APPDATA%\\Yunyun\\Yunyun\\assistant\\memory.json，只在本机；日志不写内容（只写编号、条数）。
 
 芸芸进程（设置 → 记事本）和助手子进程（工具）都用：不 import Qt，也不 import SDK。
 两边都可能写：每次改动都"读出来 → 改 → 整个写回去（先写临时文件再换过去）"，一次只改一条。
 """
+import math
 import os
 from dataclasses import asdict, dataclass, fields
 from datetime import datetime
@@ -21,7 +24,8 @@ SCOPES = (USER, PROJECT)
 MAX_TITLE = 80          # 标题：一句话（目录里每段对话都带着它，太长费钱）
 MAX_CONTENT = 1000      # 细节
 MAX_MEMORIES = 300      # 一共最多存几条（再多目录就太长了，要先删掉旧的）
-MAX_INDEX = 60          # 目录里每种范围最多列几条（最近改过的在前）
+MAX_INDEX = 60          # 目录里每种范围最多列几条（strength 高的在前；其余淡出）
+FADE_DAYS = 30          # 多少天没用到，strength 减半（12.4）
 VERSION = 1
 # 记事本的工具（assistant/tools 里做的进程内 MCP，服务器叫 yunyun）在 Claude Code 里的名字：权限规则、界面也要认它们
 REMEMBER_TOOL, RECALL_TOOL, FORGET_TOOL = "mcp__yunyun__remember", "mcp__yunyun__recall", "mcp__yunyun__forget"
@@ -41,6 +45,8 @@ class Memory:
     workspace: str = ""    # 项目的记忆：哪个工作文件夹（normpath 过的）；关于你的是空的
     created: str = ""      # ISO 时间（本地，到秒）
     updated: str = ""
+    used: str = ""         # 最后一次被查到（12.4；ISO）
+    uses: int = 0          # 被查到过几次（12.4）
 
 
 _FIELDS = {f.name for f in fields(Memory)}
@@ -66,9 +72,11 @@ def load(path=None):
         if not isinstance(item, dict):
             continue
         try:
-            memory = Memory(**{k: str(v) for k, v in item.items() if k in _FIELDS})
+            memory = Memory(**{k: str(v) for k, v in item.items() if k in _FIELDS and k != "uses"})
         except TypeError:   # 缺了必须的字段
             continue
+        uses = item.get("uses")
+        memory.uses = uses if isinstance(uses, int) and uses > 0 else 0
         if memory.scope in SCOPES and memory.id and memory.title:
             result.append(memory)
     return result
@@ -131,6 +139,30 @@ def clear(path=None):
     save([], path)
 
 
+def touch(ids, path=None):
+    """这几条被查到了（"查记忆"交给模型的）：次数加一、记下时间（12.4）。"""
+    wanted = set(ids)
+    if not wanted:
+        return
+    memories = load(path)
+    now = _now()
+    for m in memories:
+        if m.id in wanted:
+            m.uses, m.used = m.uses + 1, now
+    save(memories, path)
+
+
+def strength(memory, now=None):
+    """记得多牢（12.4）：用得越多越牢（取对数，别让老条目一直霸着），越久没用到越淡（FADE_DAYS 天减半）。
+    "用到" = 被查到或者改过，取最近的一次。"""
+    last = max(memory.used, memory.updated, memory.created) or "2000-01-01T00:00:00"
+    try:
+        days = max(0.0, ((now or datetime.now()) - datetime.fromisoformat(last)).total_seconds() / 86400)
+    except ValueError:
+        days = 365.0
+    return (1 + math.log1p(memory.uses)) * 0.5 ** (days / FADE_DAYS)
+
+
 # ---------- 给模型看的 ----------
 
 def relevant(memories, workspace=""):
@@ -142,12 +174,23 @@ def _newest_first(memories):
     return sorted(memories, key=lambda m: (m.updated or m.created, m.id), reverse=True)
 
 
-def index_lines(memories, workspace=""):
-    """目录：(关于你的几行, 这个项目的几行)，每行 "[m3] 标题"，最近改过的在前，每种最多 MAX_INDEX 行。"""
+def _number(memory):
+    return int(memory.id[1:]) if memory.id[1:].isdigit() else 0
+
+
+def index_lines(memories, workspace="", now=None):
+    """目录：(关于你的几行, 这个项目的几行)，每行 "[m3] 标题"，记得牢的在前（strength），每种最多 MAX_INDEX 行；
+    排不上的（淡出了）最后一行只说有几条、用 recall 能找到。"""
     usable = relevant(memories, workspace)
-    user = [f"[{m.id}] {m.title}" for m in _newest_first([m for m in usable if m.scope == USER])[:MAX_INDEX]]
-    project = [f"[{m.id}] {m.title}" for m in _newest_first([m for m in usable if m.scope == PROJECT])[:MAX_INDEX]]
-    return user, project
+
+    def lines(scope):
+        ranked = sorted((m for m in usable if m.scope == scope), reverse=True,   # 一样牢的：新的在前
+                        key=lambda m: (round(strength(m, now), 6), m.updated or m.created, _number(m)))
+        shown = [f"[{m.id}] {m.title}" for m in ranked[:MAX_INDEX]]
+        faded = len(ranked) - len(shown)
+        return shown + ([f"(+{faded} older entries not listed; recall can still find them)"] if faded else [])
+
+    return lines(USER), lines(PROJECT)
 
 
 def search(memories, query="", ids=(), workspace=""):

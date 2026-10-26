@@ -77,6 +77,11 @@ def notebook_tools(workspace, path=None):
         log.info("记事本：查了，找到 %d 条", len(found))
         if not found:
             return _text("Nothing found in the notebook.")
+        if ids or args.get("query"):   # 有目的地查到的才算"想起来了"（12.4；什么都没给是翻全部，不算）
+            try:
+                memory.touch([m.id for m in found[:MAX_RECALL]], path=path)
+            except OSError:
+                log.info("记事本：没记下用到的次数")
         more = f"\n(… {len(found) - MAX_RECALL} more; search with more specific words)" if len(found) > MAX_RECALL else ""
         return _text("\n\n".join(memory.describe(m) for m in found[:MAX_RECALL]) + more)
 
