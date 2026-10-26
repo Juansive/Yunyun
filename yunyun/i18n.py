@@ -594,6 +594,7 @@ TEXTS = {
     "provider_zhipu": {"zh": "智谱 GLM（推荐，免费）", "en": "Zhipu GLM (recommended, free)", "ja": "Zhipu GLM（おすすめ・無料）"},
     "provider_siliconflow": {"zh": "硅基流动", "en": "SiliconFlow", "ja": "SiliconFlow"},
     "provider_dashscope": {"zh": "通义千问（阿里云百炼）", "en": "Qwen (Alibaba Cloud)", "ja": "Qwen（Alibaba Cloud）"},
+    "provider_deepseek": {"zh": "DeepSeek（V4.1 Flash）", "en": "DeepSeek (V4.1 Flash)", "ja": "DeepSeek（V4.1 Flash）"},
     "provider_ollama": {
         "zh": "本地模型（Ollama，邮件不出电脑）",
         "en": "Local model (Ollama, mail stays on this PC)",
@@ -613,6 +614,13 @@ TEXTS = {
         "zh": "Key 怎么拿：打开 {} 登录阿里云 → API-KEY → 创建。新用户有免费额度，用完后会按量收费。",
         "en": "How to get a key: open {} and sign in → API-KEY → create. New users get free quota; usage is billed after that.",
         "ja": "キーの取得：{} にログイン → API-KEY → 作成。新規ユーザーは無料枠あり、超過分は従量課金です。",
+    },
+    "ai_hint_deepseek": {
+        "zh": "Key 怎么拿：打开 {} 注册并登录 → 创建 API Key，复制到这里。按量收费（要先充值），很便宜；北京时间夜里和周末半价。",
+        "en": "How to get a key: open {} and sign in → create an API key, then paste it here. Pay as you go (top up first); "
+              "it's cheap, and half price at night and on weekends (Beijing time).",
+        "ja": "キーの取得：{} で登録・ログイン → API キーを作成して、ここに貼り付け。従量課金（先にチャージが必要）でとても安く、"
+              "北京時間の夜間と週末は半額です。",
     },
     "ai_hint_ollama": {
         "zh": "用这台电脑上的免费开源模型，不用注册、不用 Key。先下载安装 Ollama：{}。芸芸会在处理邮件时自动启动它、用完就关，平时不占内存。"

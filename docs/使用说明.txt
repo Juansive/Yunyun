@@ -33,6 +33,8 @@
 2. 设置 AI（可选，推荐）：添加完邮箱后会自动翻到"AI"页，下面两种选一种：
    · 智谱（免费）：打开 open.bigmodel.cn 注册并登录 → 右上角头像 → API Keys → 添加新的 API Key，
      复制到芸芸里，点"测试并保存"。
+   · DeepSeek（按量收费，很便宜，比免费的智谱快）：打开 platform.deepseek.com/api_keys 注册、充值、创建 API Key，
+     服务商选"DeepSeek（V4.1 Flash）"，填进去点"测试并保存"。
    · 本地模型（邮件不出电脑，不用注册）：先到 ollama.com/download 下载安装 Ollama；
      服务商选"本地模型（Ollama）"→ 点"测试并保存"→ 点"下载模型"（约 1.4 GB）。
      芸芸只在处理邮件时启动它，用完就关，平时不占内存。

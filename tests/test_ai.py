@@ -259,6 +259,15 @@ def test_custom_provider_tidies_the_url():
     assert custom_provider("http://localhost:1234/v1/").local
 
 
+def test_every_mail_provider_has_texts():
+    """邮件 AI 的每家服务商在设置页都要有显示名，要 Key 的还要有申请说明（三种语言）。"""
+    from yunyun.i18n import TEXTS
+    for code, info in PROVIDERS.items():
+        keys = [f"provider_{code}"] + ([f"ai_hint_{code}"] if not info.custom else [])
+        for key in keys:
+            assert set(TEXTS[key]) >= {"zh", "en", "ja"}, key
+
+
 def test_custom_online_api_sends_key_through_the_usual_route(monkeypatch):
     captured = {}
     monkeypatch.setattr(client.urllib.request, "urlopen",

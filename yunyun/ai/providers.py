@@ -51,6 +51,13 @@ PROVIDERS = {
             extra={"enable_thinking": False},
         ),
         Provider(
+            code="deepseek",
+            base_url="https://api.deepseek.com",
+            default_model="deepseek-flash",      # 2026-10-26 官方价格页：就是 DeepSeek-V4.1-Flash；便宜（闲时半价）、不免费
+            key_url="https://platform.deepseek.com/api_keys",
+            extra={"thinking": {"type": "disabled"}},  # 邮件评测（tools/mail_eval）里也是关掉思考跑的
+        ),
+        Provider(
             code="ollama",
             base_url="http://127.0.0.1:11434",   # Ollama 默认只在本机监听这个端口（写 IP 而不是 localhost，免得先去试 IPv6）
             default_model="qwen3:1.7b",          # 约 1.4 GB，中文好；想要更聪明可以换 qwen3:4b（约 2.5 GB）
