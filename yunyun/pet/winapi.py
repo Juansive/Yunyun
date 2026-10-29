@@ -180,6 +180,14 @@ def left_button_down():
     return bool(user32.GetAsyncKeyState(button) & 0x8000)
 
 
+def right_button_down():
+    """鼠标右键现在是不是按着。长按右键的轮盘用：鼠标在轮盘上松开时，"松开"的消息不一定送得到芸芸。"""
+    if not IS_WINDOWS:
+        return False
+    button = VK_LBUTTON if user32.GetSystemMetrics(SM_SWAPBUTTON) else VK_RBUTTON
+    return bool(user32.GetAsyncKeyState(button) & 0x8000)
+
+
 # ---------- 全局快捷键（按住说话，阶段 7；pet/hotkey.py）----------
 
 def register_hotkey(hotkey_id, modifiers, vk):

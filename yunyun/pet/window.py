@@ -12,9 +12,9 @@ import math
 import threading
 from dataclasses import fields
 
-from PySide6.QtCore import (QAbstractAnimation, QElapsedTimer, QPoint, QPointF, QRect, QSettings, QSize, Qt, QTimer,
+from PySide6.QtCore import (QAbstractAnimation, QElapsedTimer, QPoint, QPointF, QRect, QRectF, QSettings, QSize, Qt, QTimer,
                             QUrl, QVariantAnimation, Signal)
-from PySide6.QtGui import QDesktopServices, QGuiApplication, QPainter, QPixmap
+from PySide6.QtGui import QColor, QCursor, QDesktopServices, QGuiApplication, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import QApplication, QWidget
 
 from yunyun import i18n, logs, shortcut
@@ -29,6 +29,7 @@ from yunyun.pet.menu import DANGER, FancyAction, Icon, KeepOpenMenu, glyph_icon
 from yunyun.pet.sprites import Sprites
 from yunyun.pet.state import PetState
 from yunyun.pet.sway import Sway
+from yunyun.pet.wheel import Wheel, WheelItem
 
 _ALWAYS_ON_TOP_KEY = "window/always_on_top"
 _ANNOUNCED_VERSION_KEY = "update/announced"   # 已经说过的新版本号
@@ -100,6 +101,8 @@ class PetWindow(QWidget):
     HOP_HEIGHT = 0.7        # 跳多高：边距的几成（满一个边距时，占位图顶上的"Z"会碰到窗口边被裁掉）
     SAVE_POS_DELAY_MS = 500 # 拖动停下多久后保存位置（毫秒）
     SWAY_TICK_MS = 16       # 被拎着摆动时多久算一帧（约每秒 60 帧，只在拎着的时候运行）
+    HOLD_MS = 1000          # 右键按住多久唤出轮盘（不到就松开 = 照旧弹右键菜单）
+    HOLD_RING_R = 13        # 长按时身上那个小圆圈的半径
 
     clicked = Signal()            # 芸芸被单击（不是拖动）
     language_changed = Signal()   # 用户切换了语言（托盘、设置窗口要更新文字）
@@ -218,6 +221,16 @@ class PetWindow(QWidget):
         self._poking = False      # 双击以后接着点：每点一下多弹一下，不再做单击的事
         self._pokes = 0           # 这一串连着点了几下：每两下（= 一次双击）出一声
         self._poke_clock = QElapsedTimer()   # 离上一次点隔了多久（超过系统的双击间隔就不算接着点了）
+
+        # 长按右键唤出轮盘（2026-10-29 用户要的，pet/wheel.py）：按住时身上一个白色空心小圆圈的线转一圈。
+        # 右键的按下 / 松开都自己处理（Qt 默认松开时才发 contextMenuEvent，分不出长按）
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.PreventContextMenu)
+        self._hold = QVariantAnimation(self, startValue=0.0, endValue=1.0, duration=self.HOLD_MS,
+                                       valueChanged=lambda _: self.update(), finished=self._open_wheel)
+        self._hold_pos = None     # 右键按在窗口里的哪儿（画小圆圈）；没在长按时为 None
+        self._wheel = None
+        # 轮盘开着时：鼠标位置交给它；顺便看右键还按着没有（"松开"的消息可能丢）
+        self._wheel_timer = QTimer(self, interval=self.SWAY_TICK_MS, timeout=self._wheel_tick)
 
         self._task_done.connect(self._on_task_done)
         self.set_state(PetState.IDLE)
@@ -708,6 +721,25 @@ class PetWindow(QWidget):
             painter.rotate(self._sway.angle)
             painter.translate(-pivot)
         painter.drawPixmap(QPointF(x, y), pixmap)
+        if self._hold_pos is not None:
+            self._paint_hold(painter)
+
+    def _paint_hold(self, painter):
+        """长按右键：按的地方一个白色空心小圆圈，线从正上方顺时针转一圈（HOLD_MS）。"""
+        r = self.HOLD_RING_R
+        pos = QPointF(min(max(self._hold_pos.x(), r + 4), self.width() - r - 4),
+                      min(max(self._hold_pos.y(), r + 4), self.height() - r - 4))   # 别画出窗口
+        painter.resetTransform()   # 不跟着弹一下 / 摆动变形
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.setPen(QPen(QColor(30, 34, 52, 70), 5))   # 淡淡的深色底：白毛上也看得见
+        painter.drawEllipse(pos, r, r)
+        painter.setPen(QPen(QColor(255, 255, 255, 120), 2.5))
+        painter.drawEllipse(pos, r, r)
+        painter.setPen(QPen(QColor("white"), 2.5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        # drawArc 的角度以 1/16 度为单位，0 在右边、正数逆时针：从正上方（90°）往负的方向转 = 顺时针
+        painter.drawArc(QRectF(pos.x() - r, pos.y() - r, 2 * r, 2 * r), 90 * 16,
+                        -round(360 * 16 * (self._hold.currentValue() or 0)))
 
     def _scaled(self, pixmap):
         """把原图缩放到窗口大小。
@@ -739,6 +771,10 @@ class PetWindow(QWidget):
             self._press_pos = event.globalPosition().toPoint()
             self._drag_offset = self._press_pos - self.pos()
             self.setCursor(Qt.CursorShape.ClosedHandCursor)
+        elif event.button() == Qt.MouseButton.RightButton and self._wheel is None:
+            self._restore_badge()  # 右键芸芸 = 把隐藏的小红点找回来
+            self._hold_pos = event.position()
+            self._hold.start()     # 按满 HOLD_MS → _open_wheel
 
     def mouseMoveEvent(self, event):
         # buttons()（复数）返回"此刻按住了哪些键"；只有按住左键时才拖动
@@ -751,6 +787,8 @@ class PetWindow(QWidget):
             self.move(pos - self._drag_offset)
 
     def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.RightButton:
+            self._right_released(event.globalPosition().toPoint())
         if event.button() == Qt.MouseButton.LeftButton and self._press_pos is not None:
             # 没拖过阈值、松开时离按下的位置也很近 → 算单击；否则是一次拖动
             moved = (event.globalPosition().toPoint() - self._press_pos).manhattanLength()
@@ -864,12 +902,71 @@ class PetWindow(QWidget):
     def _left_button_down(self):
         return bool(QGuiApplication.mouseButtons() & Qt.MouseButton.LeftButton)
 
-    # ---------- 右键菜单 ----------
+    # ---------- 右键：短按弹菜单，长按唤出轮盘 ----------
 
-    def contextMenuEvent(self, event):
-        """右键时 Qt 会调用它：弹出菜单，直到菜单关闭才返回。"""
-        self._restore_badge()  # 右键芸芸 = 把隐藏的小红点找回来
-        self._build_menu().exec(event.globalPos())
+    def _right_released(self, pos):
+        """松开右键：轮盘开着就打开划到的那项（没划到 = 取消）；还没按满就照旧弹菜单（直到菜单关闭才返回）。"""
+        if self._wheel is not None:
+            self._wheel_timer.stop()
+            self._wheel.track(pos)
+            self._wheel.release()
+        elif self._hold_pos is not None:
+            self._hold.stop()
+            self._hold_pos = None
+            self.update()
+            self._build_menu().exec(pos)
+
+    def _open_wheel(self):
+        self._hold_pos = None
+        self.update()
+        self._wheel = Wheel(self._wheel_items(), self._cursor_pos())
+        self._wheel.closed.connect(self._on_wheel_closed)
+        self._wheel.popup()
+        self._wheel_timer.start()
+
+    def _on_wheel_closed(self):
+        self._wheel_timer.stop()
+        self._wheel = None
+
+    def _wheel_tick(self):
+        if self._wheel is None:
+            return
+        pos = self._cursor_pos()
+        if self._right_button_down():
+            self._wheel.track(pos)
+        else:
+            self._right_released(pos)   # "松开"的消息丢了（比如中途弹出了别的窗口）：当作已经松开
+
+    @staticmethod
+    def _cursor_pos():
+        return QCursor.pos()
+
+    @staticmethod
+    def _right_button_down():
+        return winapi.right_button_down()   # 问 Windows：鼠标不在芸芸身上时 Qt 记的按键状态可能是旧的
+
+    def _wheel_items(self):
+        """轮盘上的几项（用户选的：常用的 6～8 项，不放"退出"——退出要连点两下，留在右键菜单里）。
+
+        从正上方开始顺时针排：急用的（停止、别说了，用得上才有）在最前面；变灰的规则和右键菜单一样。
+        """
+        tr = i18n.tr
+        items = []
+        assistant_on = assistant_available() and self._assistant is not None
+        if assistant_on and self._assistant.busy:
+            items.append(WheelItem(Icon.STOP, tr("menu_assistant_stop").lstrip("■ "), self.stop_assistant, danger=True))
+        if assistant_on and self._assistant.speaking:
+            items.append(WheelItem(Icon.MUTE, tr("menu_assistant_hush"), self._assistant.hush))
+        if assistant_available():
+            items.append(WheelItem("✦", tr("menu_assistant").lstrip("✦ "), self.open_assistant))
+            items.append(WheelItem(Icon.HISTORY, tr("menu_assistant_history"), self.open_assistant_history))
+        items.append(WheelItem(Icon.SETTINGS, tr("menu_settings"), self.open_settings))
+        items.append(WheelItem(Icon.MAIL, tr("menu_recent_mail"), self.show_recent_mail,
+                               self.history is not None and not self.history.is_empty() and not self._mail_processing))
+        items.append(WheelItem(Icon.ACCEPT, tr("menu_dismiss_mail"), self._dismiss_mail, self._mail_count > 0))
+        items.append(WheelItem(Icon.PLAY if self._user_paused else Icon.PAUSE,
+                               tr("menu_resume") if self._user_paused else tr("menu_pause"), self._toggle_pause))
+        return items
 
     def _build_menu(self):
         """每次右键都重新创建菜单，这样菜单的语言、"暂停/开始"、勾选状态总是最新的。"""

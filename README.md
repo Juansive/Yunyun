@@ -117,6 +117,7 @@ Once Yunyun appears, **right-click her → Settings… → General → Desktop s
 | Start with Windows | Right-click → Settings… → General → Start with Windows |
 | Move her | Just drag Yunyun; she'll be there next time too |
 | Quit | Right-click → **quickly double-click** "Quit" (prevents accidental clicks) |
+| Quick wheel | **Hold** the right button on Yunyun for a second (a small white ring fills up) → a wheel pops out with the common items (Settings, Recent Mail, Pause…). Keep holding, slide toward one and let go to open it; let go in the middle to cancel. A normal right-click still opens the full menu |
 
 The badge only counts unread mail that arrives **after Yunyun starts watching your mailbox** — old unread mail isn't counted.
 

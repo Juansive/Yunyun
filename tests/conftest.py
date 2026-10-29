@@ -103,6 +103,7 @@ def no_real_assistant(monkeypatch, tmp_path):
     monkeypatch.setattr(screen_capture, "capture", fake_capture)   # 按坐标点的确认卡片截的一小块（11.6d）也是假的
     # 鼠标左键按没按着：测试里不看你真的鼠标（跑测试时你在点东西，结果就会变）
     monkeypatch.setattr(winapi, "left_button_down", lambda: False)
+    monkeypatch.setattr(winapi, "right_button_down", lambda: False)   # 右键也是（长按右键的轮盘）
     # 旁观模式（阶段 8）：绝不读、不改你真的 ~/.claude/settings.json
     from yunyun.watch import hooks as watch_hooks
     monkeypatch.setattr(watch_hooks, "settings_path", lambda: tmp_path / "claude_settings.json")
