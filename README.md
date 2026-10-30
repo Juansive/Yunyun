@@ -117,7 +117,7 @@ Once Yunyun appears, **right-click her → Settings… → General → Desktop s
 | Start with Windows | Right-click → Settings… → General → Start with Windows |
 | Move her | Just drag Yunyun; she'll be there next time too |
 | Quit | Right-click → **quickly double-click** "Quit" (prevents accidental clicks) |
-| Quick wheel | **Hold** the right button on Yunyun for a second (a small white ring fills up) → a wheel pops out with the common items (Settings, Recent Mail, Pause…). Keep holding, slide toward one and let go to open it; let go in the middle to cancel. A normal right-click still opens the full menu |
+| Quick wheel | **Hold** the right button on Yunyun for a moment (a small white ring fills up) → a ring of common items (Settings, Recent Mail, Pause…) pops out around her. Keep holding, slide toward one (its name shows at her feet) and let go to open it; let go on Yunyun to cancel. A normal right-click still opens the full menu |
 
 The badge only counts unread mail that arrives **after Yunyun starts watching your mailbox** — old unread mail isn't counted.
 
@@ -255,5 +255,6 @@ Before sharing, bump the version in `yunyun/__init__.py`, then upload both zips 
 
 The source code is released under the [MIT License](LICENSE).
 
+- The labels of the right-click wheel use a small subset of [Yozai Font](https://github.com/lxgw/yozai-font) (SIL Open Font License 1.1, renamed YunyunWheel; see [assets/fonts/OFL.txt](assets/fonts/OFL.txt)).
 - Not covered: the optional meme sound clips in [sounds/](sounds/README.md), which come from a public meme-sound compilation and were not made by this project.
 - The release zips also bundle third-party software (Python, Qt / PySide6, Claude Code, Playwright, sherpa-onnx and others), which stays under its own license and terms; the full list and license texts are in `THIRD_PARTY_NOTICES.txt` inside the zip.

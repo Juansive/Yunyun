@@ -174,6 +174,11 @@ def _extras():
         (("claude_agent_sdk/_bundled/claude*",),
          lambda: Component("Claude Code (claude.exe)", _cli_version(), "Proprietary (Anthropic PBC) / 专有软件",
                            "https://code.claude.com/docs/en/legal-and-compliance", CLAUDE_NOTE)),
+        (("assets/fonts/yunyun-wheel.ttf",),
+         lambda: Component("Yozai Font (subset, renamed YunyunWheel)", "0.868", "OFL-1.1", "https://github.com/lxgw/yozai-font",
+                           "轮盘上的名字用的字体：从悠哉字体里只截了用到的几十个字，按 OFL 的要求改了名字。\n"
+                           "Used for the labels of the right-click wheel: a subset of Yozai Font, renamed as the OFL requires.",
+                           [("OFL.txt", (ROOT / "assets" / "fonts" / "OFL.txt").read_text(encoding="utf-8"))])),
         (("sherpa_onnx/lib/onnxruntime*.dll",),
          lambda: Component("ONNX Runtime", "", "MIT", "https://github.com/microsoft/onnxruntime",
                            "它带的第三方代码见 https://github.com/microsoft/onnxruntime/blob/main/ThirdPartyNotices.txt\n"

@@ -1,16 +1,18 @@
-"""长按右键唤出的轮盘：短按照旧弹菜单、按满一秒弹轮盘、划到哪项松手开哪项、在中间松手取消。"""
+"""长按右键唤出的轮盘：短按照旧弹菜单、按满弹轮盘（绕着芸芸）、划到哪项松手开哪项、在芸芸身上松手取消。"""
 import math
 
 import pytest
 from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
-from PySide6.QtGui import QMouseEvent
+from PySide6.QtGui import QMouseEvent, QRawFont
 
 from helpers import wait, wait_until
 from yunyun.pet import wheel as wheel_module
 from yunyun.pet.menu import KeepOpenMenu
 from yunyun.pet.sprites import load_sprites
 from yunyun.pet.state import PetState
-from yunyun.pet.wheel import Wheel, WheelItem, pick
+from yunyun import i18n
+from yunyun.paths import resource_path
+from yunyun.pet.wheel import WHEEL_KEYS, Wheel, WheelItem, pick, plain_label
 from yunyun.pet.window import PetWindow
 
 RIGHT = Qt.MouseButton.RightButton
@@ -55,9 +57,10 @@ def hold(qapp, pet):
     return pet._wheel
 
 
-def toward(pet, index, distance=70):
-    """把鼠标挪到第 index 项的方向。"""
+def toward(pet, index):
+    """把鼠标挪到第 index 项的方向（圆环上）。"""
     w = pet._wheel
+    distance = (w.inner + w.outer) / 2
     angle = math.radians(wheel_module.item_angle(index, len(w.items)))
     center = w.geometry().center()
     pet.cursor = center + QPoint(round(math.cos(angle) * distance), round(math.sin(angle) * distance))
@@ -68,12 +71,12 @@ def index_of(w, text):
 
 
 def test_pick_by_direction():
-    assert pick(QPointF(0, -50), 4) == 0     # 正上方 = 第一项
-    assert pick(QPointF(50, 0), 4) == 1      # 顺时针：右边第二项
-    assert pick(QPointF(0, 50), 4) == 2
-    assert pick(QPointF(-50, -5), 4) == 3
-    assert pick(QPointF(5, 5), 4) is None    # 离中间太近：没选
-    assert pick(QPointF(300, 0), 4) == 1     # 划出轮盘外面也按方向算
+    assert pick(QPointF(0, -50), 4, 20) == 0     # 正上方 = 第一项
+    assert pick(QPointF(50, 0), 4, 20) == 1      # 顺时针：右边第二项
+    assert pick(QPointF(0, 50), 4, 20) == 2
+    assert pick(QPointF(-50, -5), 4, 20) == 3
+    assert pick(QPointF(5, 15), 4, 20) is None   # 还在圆环里面（芸芸身上）：没选
+    assert pick(QPointF(300, 0), 4, 20) == 1     # 划出外圆也按方向算
 
 
 def test_short_right_click_opens_menu(qapp, pet):
@@ -89,6 +92,8 @@ def test_short_right_click_opens_menu(qapp, pet):
 def test_long_press_opens_wheel_without_menu(qapp, pet):
     w = hold(qapp, pet)
     assert w.isVisible() and pet._hold_pos is None
+    assert w.geometry().center() == pet.geometry().center()   # 绕着芸芸
+    assert w.inner > pet.width() / 2                            # 圆环里面放得下她
     texts = [item.text for item in w.items]
     assert "设置…" in texts and "退出" not in texts   # 退出要连点两下，不放在轮盘上
     toward(pet, index_of(w, "设置…"))
@@ -109,11 +114,11 @@ def test_release_on_item_opens_it(qapp, pet, monkeypatch):
     assert not w.isVisible()
 
 
-def test_release_in_center_cancels(qapp, pet, monkeypatch):
+def test_release_on_her_cancels(qapp, pet, monkeypatch):
     opened = []
     monkeypatch.setattr(pet, "open_settings", lambda *a: opened.append(a))
     w = hold(qapp, pet)
-    pet.cursor = w.geometry().center()
+    pet.cursor = w.geometry().center() + QPoint(20, -30)   # 还在芸芸身上
     release(pet)
     assert opened == [] and pet.menus == []
     wait_until(qapp, lambda: pet._wheel is None)
@@ -145,12 +150,21 @@ def test_lost_release_still_closes(qapp, pet, monkeypatch):
 
 
 def test_items_pop_one_by_one(qapp):
-    w = Wheel([WheelItem(0xE713, str(i), lambda: None) for i in range(4)], QPoint(400, 400))
+    w = Wheel([WheelItem(0xE713, str(i), lambda: None) for i in range(4)], QPoint(400, 400), 90)
     w._pop.start()
     w._pop.pause()
-    w._pop.setCurrentTime(wheel_module.STAGGER_MS * 2)   # 中间的圆、第一项已经开始，后面的还没出来
+    w._pop.setCurrentTime(wheel_module.STAGGER_MS * 2)   # 前两块已经开始，后面的还没出来
     assert w._progress(0) > w._progress(1) > 0
     assert w._progress(3) == 0
     w._pop.stop()
-    assert all(w._progress(i) == 1 for i in range(5))
+    assert all(w._progress(i) == 1 for i in range(4))
     w.deleteLater()
+
+
+def test_font_has_every_label_char(qapp):
+    """轮盘的名字改了 / 加了一项：字体里缺字就要重新跑 tools/make_wheel_font.py。"""
+    font = QRawFont(str(resource_path("assets", "fonts", "yunyun-wheel.ttf")), 15)
+    assert font.isValid()
+    missing = {c for key in WHEEL_KEYS for text in i18n.TEXTS[key].values()
+               for c in plain_label(text) if c != " " and not font.supportsCharacter(ord(c))}
+    assert missing == set()

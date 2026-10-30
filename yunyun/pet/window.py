@@ -29,7 +29,7 @@ from yunyun.pet.menu import DANGER, FancyAction, Icon, KeepOpenMenu, glyph_icon
 from yunyun.pet.sprites import Sprites
 from yunyun.pet.state import PetState
 from yunyun.pet.sway import Sway
-from yunyun.pet.wheel import Wheel, WheelItem
+from yunyun.pet.wheel import Wheel, WheelItem, plain_label
 
 _ALWAYS_ON_TOP_KEY = "window/always_on_top"
 _ANNOUNCED_VERSION_KEY = "update/announced"   # 已经说过的新版本号
@@ -101,7 +101,8 @@ class PetWindow(QWidget):
     HOP_HEIGHT = 0.7        # 跳多高：边距的几成（满一个边距时，占位图顶上的"Z"会碰到窗口边被裁掉）
     SAVE_POS_DELAY_MS = 500 # 拖动停下多久后保存位置（毫秒）
     SWAY_TICK_MS = 16       # 被拎着摆动时多久算一帧（约每秒 60 帧，只在拎着的时候运行）
-    HOLD_MS = 1000          # 右键按住多久唤出轮盘（不到就松开 = 照旧弹右键菜单）
+    HOLD_MS = 600           # 右键按住多久唤出轮盘（不到就松开 = 照旧弹右键菜单；10-30 用户嫌 1 秒久）
+    WHEEL_HOLE = 0.58       # 轮盘内圆的半径：窗口边长的几成（圆环里面放得下芸芸，不遮住她）
     HOLD_RING_R = 13        # 长按时身上那个小圆圈的半径
 
     clicked = Signal()            # 芸芸被单击（不是拖动）
@@ -919,7 +920,7 @@ class PetWindow(QWidget):
     def _open_wheel(self):
         self._hold_pos = None
         self.update()
-        self._wheel = Wheel(self._wheel_items(), self._cursor_pos())
+        self._wheel = Wheel(self._wheel_items(), self.geometry().center(), self.width() * self.WHEEL_HOLE)
         self._wheel.closed.connect(self._on_wheel_closed)
         self._wheel.popup()
         self._wheel_timer.start()
@@ -954,11 +955,11 @@ class PetWindow(QWidget):
         items = []
         assistant_on = assistant_available() and self._assistant is not None
         if assistant_on and self._assistant.busy:
-            items.append(WheelItem(Icon.STOP, tr("menu_assistant_stop").lstrip("■ "), self.stop_assistant, danger=True))
+            items.append(WheelItem(Icon.STOP, plain_label(tr("menu_assistant_stop")), self.stop_assistant, danger=True))
         if assistant_on and self._assistant.speaking:
             items.append(WheelItem(Icon.MUTE, tr("menu_assistant_hush"), self._assistant.hush))
         if assistant_available():
-            items.append(WheelItem("✦", tr("menu_assistant").lstrip("✦ "), self.open_assistant))
+            items.append(WheelItem("✦", plain_label(tr("menu_assistant")), self.open_assistant))
             items.append(WheelItem(Icon.HISTORY, tr("menu_assistant_history"), self.open_assistant_history))
         items.append(WheelItem(Icon.SETTINGS, tr("menu_settings"), self.open_settings))
         items.append(WheelItem(Icon.MAIL, tr("menu_recent_mail"), self.show_recent_mail,

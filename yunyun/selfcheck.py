@@ -78,7 +78,10 @@ def _sprites():
     import winsound  # noqa: F401（双击的"啵"用它播）
     if not resource_path("assets", "sounds", "bounce.wav").is_file():   # 没带上的话只是悄悄不出声，不容易发现
         raise RuntimeError("没有 assets/sounds/bounce.wav（双击的音效）")
-    return f"{ASSET_DIR}（{frames}+ 张图；助手模式自己的 {own} 张；svg 图标；音效），界面风格 {app.style().name()}"
+    from yunyun.pet.wheel import label_family
+    if label_family() is None or not resource_path("assets", "fonts", "OFL.txt").is_file():   # 没带上会悄悄退回系统字体
+        raise RuntimeError("轮盘的字体 assets/fonts/yunyun-wheel.ttf 或它的许可证 OFL.txt 没带上")
+    return f"{ASSET_DIR}（{frames}+ 张图；助手模式自己的 {own} 张；svg 图标；音效；轮盘字体），界面风格 {app.style().name()}"
 
 
 def _qt_translation():
